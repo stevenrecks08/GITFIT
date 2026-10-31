@@ -53,8 +53,25 @@ function fromDayKey(key) {
 
 // Line graph of estimated max, from the first point to today.
 // points = [{ time (ms), value (in the chosen unit) }], oldest first.
-function maxChart(points) {
+// With no points, draws an empty graph with emptyNote written over it.
+function maxChart(points, emptyNote) {
   const W = 320, H = 170, L = 40, R = 10, T = 10, B = 24; // size and margins (SVG units)
+
+  if (!points.length) {
+    const grid = [0, 0.5, 1].map(f => {
+      const y = T + f * (H - T - B);
+      return `<line class="chart-grid" x1="${L}" x2="${W - R}" y1="${y}" y2="${y}"/>`;
+    }).join('');
+    return `
+      <div class="is-empty">
+        <svg class="chart" viewBox="0 0 ${W} ${H}" aria-hidden="true">
+          ${grid}
+          <text class="chart-label" x="${W - R}" y="${H - 6}" text-anchor="end">Today</text>
+        </svg>
+        <p class="empty-note"><span>${emptyNote}</span></p>
+      </div>`;
+  }
+
   const t0 = points[0].time;
   const t1 = Math.max(Date.now(), points[points.length - 1].time);
   const values = points.map(p => p.value);
@@ -85,8 +102,8 @@ function maxChart(points) {
 }
 
 // Month calendar. Days in `logged` are tappable; all others are grayed out.
-// minMonth/maxMonth ('YYYY-MM') limit the arrows.
-function logCalendar(month, logged, selected, minMonth, maxMonth) {
+// minMonth/maxMonth ('YYYY-MM') limit the arrows. emptyNote is written over it when set.
+function logCalendar(month, logged, selected, minMonth, maxMonth, emptyNote) {
   const first = fromDayKey(`${month}-01`);
   const daysInMonth = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
   const blanks = (first.getDay() + 6) % 7; // weeks start on Monday
@@ -110,9 +127,10 @@ function logCalendar(month, logged, selected, minMonth, maxMonth) {
         <button type="button" class="btn btn-small" data-action="log-month" data-id="1"
           ${month >= maxMonth ? 'disabled' : ''} aria-label="Next month">›</button>
       </div>
-      <div class="cal-grid">
+      <div class="cal-grid ${emptyNote ? 'is-empty' : ''}">
         ${['M', 'T', 'W', 'T', 'F', 'S', 'S'].map(d => `<span class="cal-weekday">${d}</span>`).join('')}
         ${cells}
+        ${emptyNote ? `<p class="empty-note"><span>${emptyNote}</span></p>` : ''}
       </div>
     </div>`;
 }
@@ -497,40 +515,42 @@ const Views = {
     const history = Store.exerciseHistory(refId);
     const info = Library.get(refId);
     const name = info ? info.name : 'Unknown exercise';
-    const screen = { title: 'Log', back: '#/log' };
-    const heading = `<h1 class="log-name">${esc(name)}</h1>`;
-
-    if (!history.length) {
-      return { ...screen, html: `${heading}<p class="empty">No history yet.</p>` };
-    }
+    // With no history, the graph and calendar still show, empty, with a note over them.
+    const first = history[0];
+    const last = history[history.length - 1];
+    const heading = `
+      <h1 class="log-name">${esc(name)}</h1>
+      <p class="log-first">${first ? `First logged ${fromDayKey(first.dayKey).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}` : 'Not logged yet'}</p>`;
 
     const unit = Units.weightUnit();
     const weighted = history.filter(h => h.best);
     const latest = weighted[weighted.length - 1];
-    const maxSection = latest ? `
+    const points = weighted.map(h => ({ time: new Date(h.date).getTime(), value: Number(Units.showWeight(h.best.max)) }));
+    const maxSection = `
       <div class="card">
         <p class="log-label">Current estimated max</p>
-        <p class="log-max">${Units.showWeight(latest.best.max)} <span>${unit}</span></p>
-        <p class="log-sub">Best set on ${shortDate(latest.date)}: ${formatSet(latest.best.set)}</p>
-        ${maxChart(weighted.map(h => ({ time: new Date(h.date).getTime(), value: Number(Units.showWeight(h.best.max)) })))}
+        <p class="log-max ${latest ? '' : 'is-blank'}">${latest ? `${Units.showWeight(latest.best.max)} <span>${unit}</span>` : '—'}</p>
+        <p class="log-sub">${latest ? `Best set on ${shortDate(latest.date)}: ${formatSet(latest.best.set)}` : '&nbsp;'}</p>
+        ${maxChart(points, history.length ? 'No sets with weight yet' : 'No history yet')}
         <p class="log-formula">Estimated with the Epley formula: weight × (1 + reps ÷ 30)</p>
-      </div>` : `
-      <p class="empty">No sets with weight yet, so there's no estimated max.</p>`;
+      </div>`;
 
     const logged = new Set(history.map(h => h.dayKey));
-    const firstMonth = history[0].dayKey.slice(0, 7);
-    const lastMonth = history[history.length - 1].dayKey.slice(0, 7);
     const thisMonth = dayKey(new Date()).slice(0, 7);
+    const firstMonth = first ? first.dayKey.slice(0, 7) : thisMonth;
+    const lastMonth = last ? last.dayKey.slice(0, 7) : thisMonth;
     const month = state.month || lastMonth;
 
     return {
-      ...screen,
+      title: 'Log',
+      back: '#/log',
       html: `
         ${heading}
         ${maxSection}
         <h2>History</h2>
-        ${logCalendar(month, logged, state.day, firstMonth, lastMonth > thisMonth ? lastMonth : thisMonth)}
-        ${state.day ? logDayCard(history.filter(h => h.dayKey === state.day), state.day) : '<p class="muted log-hint">Tap a highlighted day to see its sets.</p>'}
+        ${logCalendar(month, logged, state.day, firstMonth, lastMonth > thisMonth ? lastMonth : thisMonth, history.length ? '' : 'No history yet')}
+        ${state.day ? logDayCard(history.filter(h => h.dayKey === state.day), state.day)
+          : history.length ? '<p class="muted log-hint">Tap a highlighted day to see its sets.</p>' : ''}
       `,
     };
   },

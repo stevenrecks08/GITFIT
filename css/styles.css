@@ -403,7 +403,26 @@ input[type="search"] { -webkit-appearance: none; appearance: none; }
 .note { margin: 0; font-size: 14px; }
 
 /* ---------- Exercise log ---------- */
-.log-name { margin: 4px 0 14px; font-size: 22px; overflow-wrap: anywhere; }
+.log-name { margin: 4px 0 2px; font-size: 22px; overflow-wrap: anywhere; }
+.log-first { margin: 0 0 14px; font-size: 13px; color: var(--muted); }
+
+/* Empty graph/calendar: a soft note written over the faded grid */
+.is-empty { position: relative; }
+.is-empty .empty-note {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 600;
+  pointer-events: none;
+}
+.empty-note span { padding: 6px 14px; border-radius: 999px; background: var(--surface); }
+.is-empty .chart, .is-empty .cal-day { opacity: 0.25; }
+.log-max.is-blank { color: var(--muted); }
 .log-label { margin: 0; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
 .log-max { margin: 2px 0 0; font-size: 34px; font-weight: 700; color: var(--accent); }
 .log-max span { font-size: 18px; font-weight: 600; color: var(--muted); }
