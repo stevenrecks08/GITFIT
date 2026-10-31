@@ -470,7 +470,8 @@ const Views = {
   },
 
   // ---------- Profile: avatar + name. Settings open from the gear in the top bar. ----------
-  profile() {
+  // mapMode = which numbers the muscle map shows: 'growth' or 'sets'
+  profile(mapMode) {
     const s = Store.data.settings;
     const name = profileName();
     const height = Units.showHeight(s.heightIn);
@@ -490,8 +491,55 @@ const Views = {
           ${stats ? `<p class="muted profile-stats">${stats}</p>` : ''}
         </div>
         <a class="btn" href="#/log">Log</a>
+        ${this.muscleMap(mapMode)}
       `,
     };
+  },
+
+  // ---------- Muscle map (on Profile) ----------
+  muscleMap(mode) {
+    const values = mode === 'sets' ? Stats.muscleSets() : Stats.muscleGrowth();
+    const colors = {};
+    for (const id in MUSCLES) colors[id] = MapColors[mode](values[id]);
+
+    const toggle = ['growth', 'sets'].map(m => `
+      <button type="button" class="segment ${m === mode ? 'is-active' : ''}" data-action="map-mode" data-id="${m}"
+        aria-pressed="${m === mode}">${m === 'growth' ? 'Growth' : 'Sets'}</button>`).join('');
+
+    const legend = mode === 'sets' ? `
+      <div class="legend-bar" style="background: linear-gradient(90deg, ${MapColors.sets(1)}, ${MapColors.sets(SETS_SCALE)})"></div>
+      <div class="legend-labels"><span>1</span><span>${SETS_SCALE / 2}</span><span>${SETS_SCALE}+ sets/week</span></div>
+      <p class="legend-empty"><i style="background:${MAP_EMPTY}"></i>No sets in the last ${Stats.SETS_WEEKS} weeks</p>` : `
+      <div class="legend-bar" style="background: linear-gradient(90deg, ${MapColors.growth(-GROWTH_SCALE)}, ${MapColors.growth(0)}, ${MapColors.growth(GROWTH_SCALE)})"></div>
+      <div class="legend-labels"><span>−${GROWTH_SCALE}%</span><span>Flat</span><span>+${GROWTH_SCALE}%</span></div>
+      <p class="legend-empty"><i style="background:${MAP_EMPTY}"></i>Less than ${Stats.MIN_WEEKS} weeks of data</p>`;
+
+    return `
+      <h2>Muscle map</h2>
+      <div class="card">
+        <div class="segmented">${toggle}</div>
+        <p class="map-caption">${mode === 'sets'
+          ? `Average sets per week, last ${Stats.SETS_WEEKS} weeks`
+          : `Change in estimated max, last ${Stats.GROWTH_WEEKS} weeks`}</p>
+        <div class="body-map" id="body-map">
+          ${bodyMapSvg(colors, null)}
+          <div class="map-pop" id="map-pop" role="status" hidden></div>
+        </div>
+        <div class="legend">${legend}</div>
+      </div>`;
+  },
+
+  // Popup text for a tapped muscle: "Biceps: +8% in 6 weeks" or "Calves: 3 sets/week"
+  musclePopup(id, mode) {
+    const name = MUSCLES[id];
+    if (mode === 'sets') {
+      const perWeek = Number((Stats.muscleSets()[id] || 0).toFixed(1));
+      return `${name}: ${perWeek} ${perWeek === 1 ? 'set' : 'sets'}/week`;
+    }
+    const pct = Stats.muscleGrowth()[id];
+    if (pct == null) return `${name}: not enough data yet`;
+    const rounded = Math.round(pct);
+    return `${name}: ${rounded > 0 ? '+' : rounded < 0 ? '−' : ''}${Math.abs(rounded)}% in ${Stats.GROWTH_WEEKS} weeks`;
   },
 
   // ---------- Log: search for an exercise to see its history ----------

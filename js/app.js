@@ -6,6 +6,7 @@
 //   #/day/<id>         → do a workout for that day [Workouts tab]
 //   #/profile          → profile                  [Profile tab]
 //   #/settings         → settings (gear on Profile) [Profile tab]
+//   (Profile also shows the muscle map; see bodymap.js and stats.js)
 //   #/log              → search exercises to see their log [Profile tab]
 //   #/log/<exercise>   → one exercise's log         [Profile tab]
 // Using the URL means the browser/phone Back gesture works for free.
@@ -52,6 +53,9 @@ let openExerciseId = null;
 let logQuery = '';
 let logState = { month: null, day: null };
 
+// What the muscle map on Profile shows: 'growth' or 'sets'.
+let mapMode = 'growth';
+
 function currentRoute() {
   const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
   if (parts[0] === 'day' && parts[1]) {
@@ -78,7 +82,7 @@ function render() {
   if (route.view === 'home') {
     screen = Views.home();
   } else if (route.view === 'profile') {
-    screen = Views.profile();
+    screen = Views.profile(mapMode);
   } else if (route.view === 'settings') {
     screen = Views.settings();
   } else if (route.view === 'log') {
@@ -264,6 +268,33 @@ const actions = {
     document.querySelector('.log-day')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   },
 
+  // Muscle map toggle: Growth or Sets.
+  'map-mode'(mode) {
+    mapMode = mode;
+    render();
+  },
+
+  // Tapped a muscle on the map: highlight it (front and back) and show its number
+  // in a small popup above it. Tapping it again closes the popup.
+  'muscle'(id, shape) {
+    const map = document.getElementById('body-map');
+    const pop = document.getElementById('map-pop');
+    const wasSelected = shape.classList.contains('is-selected');
+    closeMusclePopup();
+    if (wasSelected) return;
+
+    map.querySelectorAll(`[data-id="${id}"]`).forEach(s => s.classList.add('is-selected'));
+    pop.textContent = Views.musclePopup(id, mapMode);
+    pop.hidden = false;
+
+    const box = shape.getBoundingClientRect();
+    const area = map.getBoundingClientRect();
+    const left = box.left + box.width / 2 - area.left - pop.offsetWidth / 2;
+    const above = box.top - area.top - pop.offsetHeight - 6;
+    pop.style.left = `${Math.max(0, Math.min(area.width - pop.offsetWidth, left))}px`;
+    pop.style.top = `${above >= 0 ? above : box.bottom - area.top + 6}px`;
+  },
+
   'delete-all'() {
     if (!confirm('Delete ALL data? This removes every workout day, exercise, custom exercise, workout history and setting from this device. It cannot be undone.')) return;
     Store.deleteAll();
@@ -272,8 +303,16 @@ const actions = {
   },
 };
 
+function closeMusclePopup() {
+  const pop = document.getElementById('map-pop');
+  if (!pop) return;
+  pop.hidden = true;
+  document.querySelectorAll('#body-map .is-selected').forEach(s => s.classList.remove('is-selected'));
+}
+
 document.addEventListener('click', event => {
   const button = event.target.closest('[data-action]');
+  if (!button || button.dataset.action !== 'muscle') closeMusclePopup(); // tap anywhere else closes it
   if (!button) return;
   actions[button.dataset.action](button.dataset.id, button);
 });

@@ -21,6 +21,8 @@ css/styles.css    All styling. Colors are at the top under :root
 js/library.js     Built-in exercise library and muscle list — add exercises here
 js/storage.js     All saving/loading (localStorage), plus export/import
 js/units.js       Converts weights/heights between saved units (lbs, inches) and shown units
+js/stats.js       Works out per-muscle numbers (growth, sets per week) from saved workouts
+js/bodymap.js     The front/back muscle map drawing and its colors
 js/tabs.js        The bottom tab bar (Workouts, Profile) — add new tabs here
 js/views.js       Builds the HTML for each screen (home, edit day, workout, profile)
 js/app.js         Picks the screen from the URL and handles taps, typing and forms
@@ -51,6 +53,7 @@ It's then saved automatically and included in backups.
 ## Adding features later
 
 - **Log** — Profile → Log searches exercises; each one's page (`Views.exerciseLog()`) shows an estimated 1-rep max graph, a calendar, and a day's sets. Its data comes from `Store.exerciseHistory(refId)`, and the estimate from `estimateMax()` (Epley) in `storage.js`.
+- **Muscle map** — on Profile. *Growth* = average % change in estimated max over 6 weeks for the exercises that train each muscle (needs 3+ weeks logged); *Sets* = average sets per week over 4 weeks. Primary muscles count 1, secondary 0.5. The time spans are at the top of `Stats` in `stats.js`; the color scales are `GROWTH_SCALE` / `SETS_SCALE` in `bodymap.js`.
 - **More history** — every finished workout is in `Store.data.sessions` (oldest first), with date, day name and each exercise's sets.
 - New screens follow the same pattern: a function in `views.js` that returns `{ title, back, html }`, and a route in `app.js`.
 

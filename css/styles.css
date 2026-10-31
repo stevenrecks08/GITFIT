@@ -402,6 +402,49 @@ input[type="search"] { -webkit-appearance: none; appearance: none; }
 .profile-head + .btn { margin-top: 24px; text-decoration: none; }
 .note { margin: 0; font-size: 14px; }
 
+/* ---------- Muscle map (Profile) ---------- */
+.segmented { display: flex; padding: 3px; gap: 3px; border-radius: 12px; background: var(--surface-2); }
+.segment {
+  flex: 1;
+  min-height: 40px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 600;
+}
+.segment.is-active { background: var(--bg); color: var(--text); }
+.map-caption { margin: 10px 0 4px; font-size: 13px; color: var(--muted); text-align: center; }
+
+.body-map { position: relative; display: flex; gap: 8px; }
+.body-figure { flex: 1; margin: 0; }
+.body-figure svg { display: block; width: 100%; height: auto; }
+.body-figure figcaption { margin-top: 2px; font-size: 12px; color: var(--muted); text-align: center; }
+.body-part { fill: var(--surface-2); }
+.muscle { stroke: var(--surface); stroke-width: 1.4; stroke-linejoin: round; cursor: pointer; }
+.muscle.is-selected { stroke: var(--text); stroke-width: 2; }
+.body-line { fill: none; stroke: var(--surface); stroke-width: 1.2; pointer-events: none; }
+
+.map-pop {
+  position: absolute;
+  z-index: 2;
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.legend { margin-top: 12px; }
+.legend-bar { height: 8px; border-radius: 999px; }
+.legend-labels { display: flex; justify-content: space-between; margin-top: 4px; font-size: 12px; color: var(--muted); }
+.legend-empty { display: flex; align-items: center; gap: 6px; margin: 8px 0 0; font-size: 12px; color: var(--muted); }
+.legend-empty i { width: 12px; height: 12px; border-radius: 3px; }
+
 /* ---------- Exercise log ---------- */
 .log-name { margin: 4px 0 2px; font-size: 22px; overflow-wrap: anywhere; }
 .log-first { margin: 0 0 14px; font-size: 13px; color: var(--muted); }
