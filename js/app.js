@@ -6,6 +6,8 @@
 //   #/day/<id>         → do a workout for that day [Workouts tab]
 //   #/profile          → profile                  [Profile tab]
 //   #/settings         → settings (gear on Profile) [Profile tab]
+//   #/log              → search exercises to see their log [Profile tab]
+//   #/log/<exercise>   → one exercise's log         [Profile tab]
 // Using the URL means the browser/phone Back gesture works for free.
 
 const appEl = document.getElementById('app');
@@ -45,6 +47,11 @@ function showPanel() {
 // Which exercise is expanded on the workout screen (null = all collapsed).
 let openExerciseId = null;
 
+// Log screens: the search text (kept so Back returns to the same results),
+// and the calendar month / tapped day on an exercise's log.
+let logQuery = '';
+let logState = { month: null, day: null };
+
 function currentRoute() {
   const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
   if (parts[0] === 'day' && parts[1]) {
@@ -52,6 +59,11 @@ function currentRoute() {
   }
   if (parts[0] === 'profile') return { view: 'profile', tab: 'profile' };
   if (parts[0] === 'settings') return { view: 'settings', tab: 'profile' };
+  if (parts[0] === 'log') {
+    return parts[1]
+      ? { view: 'exercise-log', refId: decodeURIComponent(parts[1]), tab: 'profile' }
+      : { view: 'log', tab: 'profile' };
+  }
   return { view: 'home', tab: 'workouts' };
 }
 
@@ -69,6 +81,10 @@ function render() {
     screen = Views.profile();
   } else if (route.view === 'settings') {
     screen = Views.settings();
+  } else if (route.view === 'log') {
+    screen = Views.logSearch(logQuery);
+  } else if (route.view === 'exercise-log') {
+    screen = Views.exerciseLog(route.refId, logState);
   } else {
     const day = Store.getDay(route.dayId);
     if (!day) return go('#/');
@@ -226,6 +242,28 @@ const actions = {
     document.getElementById('import-file').click();
   },
 
+  // Tapped an exercise in the Log search results.
+  'open-log'(refId) {
+    go(`#/log/${encodeURIComponent(refId)}`);
+  },
+
+  // Calendar arrows: dir is -1 (previous month) or 1 (next month).
+  'log-month'(dir) {
+    const shown = document.querySelector('.calendar').dataset.month;
+    const date = fromDayKey(`${shown}-01`);
+    date.setMonth(date.getMonth() + Number(dir));
+    logState.month = dayKey(date).slice(0, 7);
+    render();
+  },
+
+  // Tapped a highlighted day: show its sets (tap again to hide them).
+  'log-day'(key) {
+    logState.month = key.slice(0, 7);
+    logState.day = logState.day === key ? null : key;
+    render();
+    document.querySelector('.log-day')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  },
+
   'delete-all'() {
     if (!confirm('Delete ALL data? This removes every workout day, exercise, custom exercise, workout history and setting from this device. It cannot be undone.')) return;
     Store.deleteAll();
@@ -250,6 +288,12 @@ appEl.addEventListener('input', event => {
   const input = event.target;
 
   // Library search: redraw only the results so the search box keeps focus.
+  if (input.id === 'log-search') {
+    logQuery = input.value;
+    document.getElementById('log-results').innerHTML = Views.libraryResults(input.value, 'open-log');
+    return;
+  }
+
   if (input.id === 'lib-search') {
     picker.query = input.value;
     document.getElementById('lib-results').innerHTML = Views.libraryResults(input.value);
@@ -407,6 +451,7 @@ appEl.addEventListener('submit', event => {
 window.addEventListener('hashchange', () => {
   picker = newPicker();
   openExerciseId = null;
+  logState = { month: null, day: null };
   render();
   window.scrollTo(0, 0);
 });

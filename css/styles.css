@@ -399,7 +399,58 @@ input[type="search"] { -webkit-appearance: none; appearance: none; }
 .profile-name { margin: 0; font-size: 24px; font-weight: 700; text-align: center; overflow-wrap: anywhere; }
 
 .profile-stats { margin: -6px 0 0; font-size: 15px; }
+.profile-head + .btn { margin-top: 24px; text-decoration: none; }
 .note { margin: 0; font-size: 14px; }
+
+/* ---------- Exercise log ---------- */
+.log-name { margin: 4px 0 14px; font-size: 22px; overflow-wrap: anywhere; }
+.log-label { margin: 0; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+.log-max { margin: 2px 0 0; font-size: 34px; font-weight: 700; color: var(--accent); }
+.log-max span { font-size: 18px; font-weight: 600; color: var(--muted); }
+.log-sub { margin: 2px 0 10px; font-size: 14px; color: var(--muted); }
+.log-formula { margin: 6px 0 0; font-size: 12px; color: var(--muted); }
+.log-hint { margin: 12px 0 0; font-size: 14px; text-align: center; }
+
+.chart { display: block; width: 100%; height: auto; overflow: visible; }
+.chart-grid { stroke: var(--border); stroke-width: 1; }
+.chart-label { fill: var(--muted); font-size: 11px; }
+.chart-line { fill: none; stroke: var(--accent); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+.chart-dot { fill: var(--accent); stroke: var(--surface); stroke-width: 1.5; }
+
+.cal-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.cal-head .btn { font-size: 22px; }
+.cal-head .btn:disabled { opacity: 0.3; cursor: default; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; text-align: center; }
+.cal-weekday { font-size: 12px; font-weight: 600; color: var(--muted); padding-bottom: 4px; }
+.cal-day {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  color: var(--muted);
+  opacity: 0.45;
+  font-size: 15px;
+}
+.cal-day.is-today { border-color: var(--border); }
+.cal-day.is-logged {
+  padding: 0;
+  opacity: 1;
+  background: var(--surface-2);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 700;
+}
+.cal-day.is-logged:active { opacity: 0.7; }
+.cal-day.is-selected { background: var(--accent); color: var(--accent-text); }
+
+.log-day { margin-top: 10px; }
+.log-day-date { margin: 0 0 10px; font-weight: 700; }
+.log-sets { display: grid; grid-template-columns: 3em 1fr 1fr; row-gap: 8px; font-size: 16px; }
+.log-sets-head { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+.log-day-max { margin: 12px 0 0; padding-top: 10px; border-top: 1px solid var(--border); color: var(--muted); }
+.log-day-max strong { color: var(--text); }
 
 /* ---------- Toast message ---------- */
 .toast {

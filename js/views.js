@@ -40,6 +40,104 @@ function initials(name) {
   return name.split(/\s+/).map(word => word[0]).slice(0, 2).join('').toUpperCase();
 }
 
+// "Oct 30"
+function shortDate(date) {
+  return new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+// 'YYYY-MM-DD' → a Date at local midnight.
+function fromDayKey(key) {
+  const [y, m, d] = key.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+// Line graph of estimated max, from the first point to today.
+// points = [{ time (ms), value (in the chosen unit) }], oldest first.
+function maxChart(points) {
+  const W = 320, H = 170, L = 40, R = 10, T = 10, B = 24; // size and margins (SVG units)
+  const t0 = points[0].time;
+  const t1 = Math.max(Date.now(), points[points.length - 1].time);
+  const values = points.map(p => p.value);
+  const pad = Math.max((Math.max(...values) - Math.min(...values)) * 0.15, Math.max(...values) * 0.05, 1);
+  const lo = Math.max(0, Math.min(...values) - pad);
+  const hi = Math.max(...values) + pad;
+
+  const x = t => (t1 === t0 ? (L + W - R) / 2 : L + (t - t0) / (t1 - t0) * (W - L - R));
+  const y = v => T + (hi - v) / (hi - lo) * (H - T - B);
+
+  const grid = [lo, (lo + hi) / 2, hi].map(v => `
+    <line class="chart-grid" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/>
+    <text class="chart-label" x="${L - 6}" y="${y(v) + 4}" text-anchor="end">${Math.round(v)}</text>`).join('');
+  const line = points.map((p, i) => `${i ? 'L' : 'M'}${x(p.time).toFixed(1)},${y(p.value).toFixed(1)}`).join(' ');
+  const dots = points.map(p => `<circle class="chart-dot" cx="${x(p.time).toFixed(1)}" cy="${y(p.value).toFixed(1)}" r="3.5"/>`).join('');
+  const xLabels = t1 === t0
+    ? `<text class="chart-label" x="${(L + W - R) / 2}" y="${H - 6}" text-anchor="middle">Today</text>`
+    : `<text class="chart-label" x="${L}" y="${H - 6}">${shortDate(t0)}</text>
+       <text class="chart-label" x="${W - R}" y="${H - 6}" text-anchor="end">Today</text>`;
+
+  return `
+    <svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Estimated max over time">
+      ${grid}
+      <path class="chart-line" d="${line}"/>
+      ${dots}
+      ${xLabels}
+    </svg>`;
+}
+
+// Month calendar. Days in `logged` are tappable; all others are grayed out.
+// minMonth/maxMonth ('YYYY-MM') limit the arrows.
+function logCalendar(month, logged, selected, minMonth, maxMonth) {
+  const first = fromDayKey(`${month}-01`);
+  const daysInMonth = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
+  const blanks = (first.getDay() + 6) % 7; // weeks start on Monday
+  const today = dayKey(new Date());
+
+  let cells = '<span></span>'.repeat(blanks);
+  for (let d = 1; d <= daysInMonth; d++) {
+    const key = `${month}-${String(d).padStart(2, '0')}`;
+    const classes = ['cal-day', key === today ? 'is-today' : '', key === selected ? 'is-selected' : ''].join(' ');
+    cells += logged.has(key)
+      ? `<button type="button" class="${classes} is-logged" data-action="log-day" data-id="${key}">${d}</button>`
+      : `<span class="${classes}">${d}</span>`;
+  }
+
+  return `
+    <div class="card calendar" data-month="${month}">
+      <div class="cal-head">
+        <button type="button" class="btn btn-small" data-action="log-month" data-id="-1"
+          ${month <= minMonth ? 'disabled' : ''} aria-label="Previous month">‹</button>
+        <strong>${first.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</strong>
+        <button type="button" class="btn btn-small" data-action="log-month" data-id="1"
+          ${month >= maxMonth ? 'disabled' : ''} aria-label="Next month">›</button>
+      </div>
+      <div class="cal-grid">
+        ${['M', 'T', 'W', 'T', 'F', 'S', 'S'].map(d => `<span class="cal-weekday">${d}</span>`).join('')}
+        ${cells}
+      </div>
+    </div>`;
+}
+
+// The sets done on one day (all workouts that day), plus that day's estimated max.
+function logDayCard(entries, key) {
+  const sets = entries.flatMap(h => h.sets);
+  const maxes = entries.filter(h => h.best).map(h => h.best.max);
+  const unit = Units.weightUnit();
+  const rows = sets.map((set, i) => `
+    <span>${i + 1}</span>
+    <span>${set.weight == null ? 'BW' : `${Units.showWeight(set.weight)} ${unit}`}</span>
+    <span>${set.reps}</span>`).join('');
+
+  return `
+    <div class="card log-day">
+      <p class="log-day-date">${fromDayKey(key).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</p>
+      <div class="log-sets">
+        <span class="log-sets-head">Set</span><span class="log-sets-head">Weight</span><span class="log-sets-head">Reps</span>
+        ${rows}
+      </div>
+      ${maxes.length ? `<p class="log-day-max">Estimated max: <strong>${Units.showWeight(Math.max(...maxes))} ${unit}</strong></p>` : ''}
+    </div>`;
+}
+
 const Views = {
 
   // ---------- Home: the week, Monday to Sunday ----------
@@ -175,14 +273,17 @@ const Views = {
 
   // The search results list. Redrawn on its own while you type, so the search box keeps focus.
   // Nothing is listed until you start typing, then only the best few matches.
-  libraryResults(query) {
+  // action = what tapping a result does (picking for a day, or opening its log).
+  libraryResults(query, action = 'pick-exercise') {
     if (!query.trim()) return '';
     const { results, total } = Library.search(query);
-    if (!results.length) return `<p class="empty">No matches. Create it as a custom exercise.</p>`;
+    if (!results.length) {
+      return `<p class="empty">No matches.${action === 'pick-exercise' ? ' Create it as a custom exercise.' : ''}</p>`;
+    }
     const more = total > results.length
       ? `<p class="lib-more">Showing the best ${results.length} of ${total} — keep typing to narrow it down.</p>` : '';
     return results.map(e => `
-      <button type="button" class="lib-item" data-action="pick-exercise" data-id="${e.id}">
+      <button type="button" class="lib-item" data-action="${action}" data-id="${e.id}">
         <span class="lib-name">${esc(e.name)} ${e.custom ? '<span class="tag">Custom</span>' : ''}</span>
         <span class="lib-meta">${esc(e.equipment)} · ${esc(Library.primaryLabel(e))}</span>
       </button>`).join('') + more;
@@ -370,6 +471,66 @@ const Views = {
           <p class="profile-name">${esc(name)}</p>
           ${stats ? `<p class="muted profile-stats">${stats}</p>` : ''}
         </div>
+        <a class="btn" href="#/log">Log</a>
+      `,
+    };
+  },
+
+  // ---------- Log: search for an exercise to see its history ----------
+  logSearch(query) {
+    return {
+      title: 'Log',
+      back: '#/profile',
+      html: `
+        <div class="card stack">
+          <input type="search" id="log-search" value="${esc(query)}"
+            placeholder="Search name, muscle or equipment" autocomplete="off" aria-label="Search exercises">
+          <div id="log-results" class="lib-results">${this.libraryResults(query, 'open-log')}</div>
+        </div>
+      `,
+    };
+  },
+
+  // ---------- One exercise's log: estimated max graph, calendar, a day's sets ----------
+  // state = { month: 'YYYY-MM' shown in the calendar (null = latest), day: 'YYYY-MM-DD' tapped (or null) }
+  exerciseLog(refId, state) {
+    const history = Store.exerciseHistory(refId);
+    const info = Library.get(refId);
+    const name = info ? info.name : 'Unknown exercise';
+    const screen = { title: 'Log', back: '#/log' };
+    const heading = `<h1 class="log-name">${esc(name)}</h1>`;
+
+    if (!history.length) {
+      return { ...screen, html: `${heading}<p class="empty">No history yet.</p>` };
+    }
+
+    const unit = Units.weightUnit();
+    const weighted = history.filter(h => h.best);
+    const latest = weighted[weighted.length - 1];
+    const maxSection = latest ? `
+      <div class="card">
+        <p class="log-label">Current estimated max</p>
+        <p class="log-max">${Units.showWeight(latest.best.max)} <span>${unit}</span></p>
+        <p class="log-sub">Best set on ${shortDate(latest.date)}: ${formatSet(latest.best.set)}</p>
+        ${maxChart(weighted.map(h => ({ time: new Date(h.date).getTime(), value: Number(Units.showWeight(h.best.max)) })))}
+        <p class="log-formula">Estimated with the Epley formula: weight × (1 + reps ÷ 30)</p>
+      </div>` : `
+      <p class="empty">No sets with weight yet, so there's no estimated max.</p>`;
+
+    const logged = new Set(history.map(h => h.dayKey));
+    const firstMonth = history[0].dayKey.slice(0, 7);
+    const lastMonth = history[history.length - 1].dayKey.slice(0, 7);
+    const thisMonth = dayKey(new Date()).slice(0, 7);
+    const month = state.month || lastMonth;
+
+    return {
+      ...screen,
+      html: `
+        ${heading}
+        ${maxSection}
+        <h2>History</h2>
+        ${logCalendar(month, logged, state.day, firstMonth, lastMonth > thisMonth ? lastMonth : thisMonth)}
+        ${state.day ? logDayCard(history.filter(h => h.dayKey === state.day), state.day) : '<p class="muted log-hint">Tap a highlighted day to see its sets.</p>'}
       `,
     };
   },

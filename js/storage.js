@@ -83,6 +83,19 @@ function newId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
 
+// Estimated 1-rep max in lbs (Epley formula: weight × (1 + reps ÷ 30)).
+// null for bodyweight sets or sets without reps.
+function estimateMax(set) {
+  if (!set.weight || !set.reps) return null;
+  return set.weight * (1 + set.reps / 30);
+}
+
+// A date as 'YYYY-MM-DD' in the phone's own time zone (saved dates are UTC).
+function dayKey(date) {
+  const d = new Date(date);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 function emptyData() {
   return normalize({});
 }
@@ -422,6 +435,26 @@ const Store = {
     }
     this.data = normalize(parsed);
     this.save();
+  },
+
+  // ---------- Exercise log ----------
+
+  // Every finished workout that included this exercise, oldest first:
+  //   [{ date (ISO), dayKey ('YYYY-MM-DD', local), sets: [{weight, reps}], best: {set, max} or null }]
+  // best = the set with the highest estimated 1-rep max (null if no set had a weight).
+  exerciseHistory(refId) {
+    const history = [];
+    for (const session of this.data.sessions) {
+      const sets = session.exercises.filter(e => e.refId === refId).flatMap(e => e.sets);
+      if (!sets.length) continue;
+      let best = null;
+      for (const set of sets) {
+        const max = estimateMax(set);
+        if (max != null && (!best || max > best.max)) best = { set, max };
+      }
+      history.push({ date: session.date, dayKey: dayKey(session.date), sets, best });
+    }
+    return history.sort((a, b) => new Date(a.date) - new Date(b.date));
   },
 
   // Wipes everything and starts over with an empty week and default settings.

@@ -50,8 +50,8 @@ It's then saved automatically and included in backups.
 
 ## Adding features later
 
-- **History** — every finished workout is in `Store.data.sessions` (oldest first), with date, day name and each exercise's sets. Add a `Views.history()` function and a `#/history` route in `currentRoute()`.
-- **Graphs / progress** — loop over `Store.data.sessions`, pick out one `exerciseId`, and chart the weight or reps over time.
+- **Log** — Profile → Log searches exercises; each one's page (`Views.exerciseLog()`) shows an estimated 1-rep max graph, a calendar, and a day's sets. Its data comes from `Store.exerciseHistory(refId)`, and the estimate from `estimateMax()` (Epley) in `storage.js`.
+- **More history** — every finished workout is in `Store.data.sessions` (oldest first), with date, day name and each exercise's sets.
 - New screens follow the same pattern: a function in `views.js` that returns `{ title, back, html }`, and a route in `app.js`.
 
 ## Getting it on your iPhone (later)
