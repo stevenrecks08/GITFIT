@@ -90,16 +90,6 @@ const Views = {
         ${resume}
         <h2>This week</h2>
         ${dayCards}
-
-        <h2>Backup</h2>
-        <div class="row">
-          <button class="btn" data-action="export">Export</button>
-          <button class="btn" data-action="import">Import</button>
-        </div>
-        <p class="muted" style="font-size:14px">
-          Your data lives only on this device. Export now and then to keep a copy safe.
-        </p>
-        <input type="file" id="import-file" accept=".json,application/json" hidden>
       `,
     };
   },
@@ -441,6 +431,19 @@ const Views = {
           </div>
         </form>
         <p class="muted" style="font-size:14px">Changes save automatically and are included in backups.</p>
+
+        <h2>Backup</h2>
+        <div class="row">
+          <button class="btn" data-action="export">Export</button>
+          <button class="btn" data-action="import">Import</button>
+        </div>
+        <p class="muted" style="font-size:14px">
+          Your data lives only on this device. Export now and then to keep a copy safe.
+        </p>
+        <input type="file" id="import-file" accept=".json,application/json" hidden>
+
+        <h2>Danger zone</h2>
+        <button class="btn btn-danger" data-action="delete-all">Delete all data</button>
       `,
     };
   },

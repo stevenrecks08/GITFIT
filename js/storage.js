@@ -423,4 +423,10 @@ const Store = {
     this.data = normalize(parsed);
     this.save();
   },
+
+  // Wipes everything and starts over with an empty week and default settings.
+  deleteAll() {
+    this.data = emptyData();
+    this.save();
+  },
 };

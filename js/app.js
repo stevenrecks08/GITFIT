@@ -225,6 +225,13 @@ const actions = {
   'import'() {
     document.getElementById('import-file').click();
   },
+
+  'delete-all'() {
+    if (!confirm('Delete ALL data? This removes every workout day, exercise, custom exercise, workout history and setting from this device. It cannot be undone.')) return;
+    Store.deleteAll();
+    toast('All data deleted');
+    render();
+  },
 };
 
 document.addEventListener('click', event => {
