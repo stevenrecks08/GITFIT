@@ -104,7 +104,8 @@ const Views = {
   },
 
   // ---------- Edit a day: rest or workout, type of day, exercise list ----------
-  editDay(day, editingId) {
+  // picker = what the add/edit exercise panel shows (see app.js)
+  editDay(day, picker) {
     const kindOption = (value, label, detail) => `
       <label class="choice">
         <input type="radio" name="day-kind" value="${value}" ${(value === 'rest') === day.rest ? 'checked' : ''}>
@@ -127,24 +128,29 @@ const Views = {
       };
     }
 
-    const editing = day.exercises.find(e => e.id === editingId);
-    const form = editing || { name: '', muscle: '', sets: 3, repMin: 8, repMax: 12 };
+    const editing = day.exercises.find(e => e.id === picker.exerciseId);
 
-    const rows = day.exercises.length ? day.exercises.map((ex, i) => `
-      <div class="card ex-row ${ex.id === editingId ? 'is-editing' : ''}">
-        <button class="ex-info" data-action="edit-exercise" data-id="${ex.id}">
-          <span class="ex-name">${esc(ex.name)}</span>
-          <span class="ex-meta">${ex.sets} × ${repRange(ex.repMin, ex.repMax)} · ${esc(ex.muscle)}</span>
-        </button>
-        <button class="btn btn-small" data-action="move-exercise" data-id="${ex.id}" data-dir="-1"
-          aria-label="Move up" ${i === 0 ? 'disabled' : ''}>↑</button>
-        <button class="btn btn-small" data-action="move-exercise" data-id="${ex.id}" data-dir="1"
-          aria-label="Move down" ${i === day.exercises.length - 1 ? 'disabled' : ''}>↓</button>
-      </div>`).join('')
+    const rows = day.exercises.length ? day.exercises.map((ex, i) => {
+      const info = Library.forExercise(ex);
+      return `
+        <div class="card ex-row ${ex.id === picker.exerciseId ? 'is-editing' : ''}">
+          <button class="ex-info" data-action="edit-exercise" data-id="${ex.id}">
+            <span class="ex-name">${esc(info.name)}</span>
+            <span class="ex-meta">${ex.sets} × ${repRange(ex.repMin, ex.repMax)} · ${esc(Library.primaryLabel(info))}</span>
+          </button>
+          <button class="btn btn-small" data-action="move-exercise" data-id="${ex.id}" data-dir="-1"
+            aria-label="Move up" ${i === 0 ? 'disabled' : ''}>↑</button>
+          <button class="btn btn-small" data-action="move-exercise" data-id="${ex.id}" data-dir="1"
+            aria-label="Move down" ${i === day.exercises.length - 1 ? 'disabled' : ''}>↓</button>
+        </div>`;
+    }).join('')
       : `<p class="empty">No exercises yet.</p>`;
 
-    const muscleOptions = MUSCLE_GROUPS.map(m =>
-      `<option ${m === form.muscle ? 'selected' : ''}>${m}</option>`).join('');
+    // The add/edit panel has three steps: pick from library → (or create custom) → sets & reps.
+    let panel;
+    if (picker.mode === 'custom') panel = this.customExerciseForm(picker);
+    else if (picker.mode === 'details') panel = this.exerciseDetailsForm(picker, editing);
+    else panel = this.exercisePicker(picker, editing);
 
     return {
       title: `Edit ${WEEKDAYS[day.weekday]}`,
@@ -159,38 +165,101 @@ const Views = {
         ${rows}
 
         <h2>${editing ? 'Edit exercise' : 'Add exercise'}</h2>
-        <form id="exercise-form" class="card stack">
-          <div>
-            <label for="ex-name">Name</label>
-            <input id="ex-name" name="name" value="${esc(form.name)}" placeholder="e.g. Bench press" autocomplete="off" required>
-          </div>
-          <div>
-            <label for="ex-muscle">Muscle group</label>
-            <select id="ex-muscle" name="muscle">${muscleOptions}</select>
-          </div>
-          <div>
-            <label for="ex-sets">Sets</label>
-            <input id="ex-sets" name="sets" type="number" inputmode="numeric" min="1" max="20" value="${form.sets}" required>
-          </div>
-          <div>
-            <label for="ex-rep-min">Target reps (e.g. 8 to 12)</label>
-            <div class="row range-row">
-              <input id="ex-rep-min" name="repMin" type="number" inputmode="numeric" min="1" max="100"
-                value="${form.repMin}" aria-label="Minimum reps" required>
-              <span class="range-sep">to</span>
-              <input name="repMax" type="number" inputmode="numeric" min="1" max="100"
-                value="${form.repMax}" aria-label="Maximum reps" required>
-            </div>
-          </div>
-          <button class="btn btn-primary">${editing ? 'Save changes' : 'Add exercise'}</button>
-          ${editing ? `
-            <div class="row">
-              <button type="button" class="btn" data-action="cancel-edit">Cancel</button>
-              <button type="button" class="btn btn-danger" data-action="delete-exercise" data-id="${editing.id}">Delete</button>
-            </div>` : ''}
-        </form>
+        <div id="exercise-panel">${panel}</div>
       `,
     };
+  },
+
+  // Step 1: search the library and tap an exercise.
+  exercisePicker(picker, editing) {
+    return `
+      <div class="card stack">
+        <input type="search" id="lib-search" value="${esc(picker.query)}"
+          placeholder="Search name, muscle or equipment" autocomplete="off" aria-label="Search exercises">
+        <button type="button" class="btn" data-action="new-custom">+ Create custom exercise</button>
+        <div id="lib-results" class="lib-results">${this.libraryResults(picker.query)}</div>
+        ${editing ? '<button type="button" class="btn" data-action="cancel-edit">Cancel</button>' : ''}
+      </div>`;
+  },
+
+  // The search results list. Redrawn on its own while you type, so the search box keeps focus.
+  libraryResults(query) {
+    const results = Library.search(query);
+    if (!results.length) return `<p class="empty">No matches. Create it as a custom exercise.</p>`;
+    return results.map(e => `
+      <button type="button" class="lib-item" data-action="pick-exercise" data-id="${e.id}">
+        <span class="lib-name">${esc(e.name)} ${e.custom ? '<span class="tag">Custom</span>' : ''}</span>
+        <span class="lib-meta">${esc(e.equipment)} · ${esc(Library.primaryLabel(e))}</span>
+      </button>`).join('');
+  },
+
+  // Step 2: sets and reps for the picked exercise.
+  exerciseDetailsForm(picker, editing) {
+    const info = Library.forExercise({ refId: picker.refId });
+    const form = editing || { sets: 3, repMin: 8, repMax: 12 };
+    return `
+      <form id="exercise-form" class="card stack">
+        <div class="picked">
+          <div class="picked-info">
+            <strong>${esc(info.name)}</strong>
+            <span class="muted">${esc(info.equipment)}</span>
+            <span class="muscle-line"><b>Primary:</b> ${esc(muscleNames(info.primary) || '—')}</span>
+            ${info.secondary.length ? `<span class="muscle-line"><b>Secondary:</b> ${esc(muscleNames(info.secondary))}</span>` : ''}
+          </div>
+          <button type="button" class="btn btn-small" data-action="change-exercise">Change</button>
+        </div>
+        <div>
+          <label for="ex-sets">Sets</label>
+          <input id="ex-sets" name="sets" type="number" inputmode="numeric" min="1" max="20" value="${form.sets}" required>
+        </div>
+        <div>
+          <label for="ex-rep-min">Target reps (e.g. 8 to 12)</label>
+          <div class="row range-row">
+            <input id="ex-rep-min" name="repMin" type="number" inputmode="numeric" min="1" max="100"
+              value="${form.repMin}" aria-label="Minimum reps" required>
+            <span class="range-sep">to</span>
+            <input name="repMax" type="number" inputmode="numeric" min="1" max="100"
+              value="${form.repMax}" aria-label="Maximum reps" required>
+          </div>
+        </div>
+        <button class="btn btn-primary">${editing ? 'Save changes' : 'Add to day'}</button>
+        <div class="row">
+          <button type="button" class="btn" data-action="cancel-edit">Cancel</button>
+          ${editing ? `<button type="button" class="btn btn-danger" data-action="delete-exercise" data-id="${editing.id}">Delete</button>` : ''}
+        </div>
+      </form>`;
+  },
+
+  // Or: create a custom exercise and pick its muscles.
+  // (A tappable body diagram can replace the muscle lists later.)
+  customExerciseForm(picker) {
+    const equipmentOptions = EQUIPMENT.map(e => `<option>${e}</option>`).join('');
+    const muscleChips = group => Object.entries(MUSCLES).map(([id, label]) => `
+      <label class="chip">
+        <input type="checkbox" name="${group}" value="${id}">
+        <span>${label}</span>
+      </label>`).join('');
+    return `
+      <form id="custom-form" class="card stack">
+        <div>
+          <label for="custom-name">Exercise name</label>
+          <input id="custom-name" name="name" value="${esc(picker.query)}" placeholder="e.g. Landmine Press" autocomplete="off" required>
+        </div>
+        <div>
+          <label for="custom-equipment">Equipment</label>
+          <select id="custom-equipment" name="equipment">${equipmentOptions}</select>
+        </div>
+        <fieldset class="chips">
+          <legend>Primary muscles <span class="muted">— 1 set each</span></legend>
+          ${muscleChips('primary')}
+        </fieldset>
+        <fieldset class="chips chips-secondary">
+          <legend>Secondary muscles <span class="muted">— ½ set each</span></legend>
+          ${muscleChips('secondary')}
+        </fieldset>
+        <button class="btn btn-primary">Save exercise</button>
+        <button type="button" class="btn" data-action="cancel-custom">Back to library</button>
+      </form>`;
   },
 
   // ---------- Workout: compact list, one exercise expanded at a time ----------
@@ -208,7 +277,8 @@ const Views = {
 
     const unit = Units.weightUnit();
     const cards = day.exercises.map(ex => {
-      const last = Store.lastResult(ex.id);
+      const info = Library.forExercise(ex);
+      const last = Store.lastResult(ex);
       const isOpen = ex.id === openId;
       const isDone = !isOpen && Store.draftHasReps(ex.id);
 
@@ -241,10 +311,10 @@ const Views = {
         <div class="card workout-ex ${isOpen ? 'is-open' : ''}" id="ex-${ex.id}">
           <button class="ex-toggle" data-action="toggle-exercise" data-id="${ex.id}" aria-expanded="${isOpen}">
             <span class="ex-toggle-main">
-              <span class="ex-title">${esc(ex.name)}</span>
+              <span class="ex-title">${esc(info.name)}</span>
               <span class="ex-sub">${lastSummary(last)}</span>
             </span>
-            <span class="tag">${esc(ex.muscle)}</span>
+            <span class="tag">${esc(Library.primaryLabel(info))}</span>
             <span class="check" ${isDone ? '' : 'hidden'} aria-label="Done">✓</span>
           </button>
           ${body}

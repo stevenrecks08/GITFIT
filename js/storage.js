@@ -6,23 +6,28 @@
 //
 // Shape of the saved data:
 // {
-//   version: 3,
+//   version: 4,
 //   settings: { name, units: 'imperial' | 'metric', heightIn, bodyWeightLbs },
+//   customExercises: [     // your own exercises, used alongside LIBRARY in library.js
+//     { id: 'custom-…', name, equipment, primary: [muscle ids], secondary: [muscle ids], custom: true }
+//   ],
 //   days: [                // always one per weekday, Monday first
 //     { id, weekday (0 = Monday … 6 = Sunday), name (type of day, e.g. "Legs"), rest,
-//       exercises: [ { id, name, muscle, sets, repMin, repMax } ] }
+//       exercises: [ { id, refId (library or custom exercise id), sets, repMin, repMax } ] }
 //   ],
 //   sessions: [            // one per finished workout, oldest first
 //     { id, dayId, dayName, date (ISO string),
-//       exercises: [ { exerciseId, name, muscle, targetSets, targetRepMin, targetRepMax,
+//       exercises: [ { exerciseId, refId, name, primary, secondary,
+//                      targetSets, targetRepMin, targetRepMax,
 //                      sets: [ { weight, reps } ] } ] }
 //   ],
 //   draft: null or { dayId, startedAt, entries: { [exerciseId]: [ { weight, reps } ] } }
 // }
-// (Sessions saved before version 2 have targetReps instead of targetRepMin/Max.)
+// Older sessions may be missing primary/secondary (they have a single "muscle" text
+// instead), and ones saved before version 2 have targetReps instead of targetRepMin/Max.
 
 const STORAGE_KEY = 'gitfit-data';
-const DATA_VERSION = 3;
+const DATA_VERSION = 4;
 
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
@@ -47,10 +52,22 @@ const DEFAULT_SETTINGS = {
   bodyWeightLbs: null,
 };
 
-const MUSCLE_GROUPS = [
-  'Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps', 'Forearms',
-  'Quads', 'Hamstrings', 'Glutes', 'Calves', 'Core', 'Full body', 'Other',
-];
+// Before version 4, exercises had one muscle group picked from a short list.
+// When an old exercise isn't in the library, it becomes a custom exercise
+// with these muscles as its primary muscles.
+const OLD_MUSCLE_GROUPS = {
+  Chest: ['midChest'],
+  Back: ['lats', 'upperBack'],
+  Shoulders: ['frontDelts'],
+  Biceps: ['biceps'],
+  Triceps: ['triceps'],
+  Forearms: ['forearms'],
+  Quads: ['quads'],
+  Hamstrings: ['hamstrings'],
+  Glutes: ['glutes'],
+  Calves: ['calves'],
+  Core: ['abs'],
+};
 
 function newId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -102,9 +119,39 @@ function buildWeek(days) {
   return [...week, ...unplaced];
 }
 
+// Before version 4, day exercises had their own name and muscle. Now they point
+// at a library exercise (refId). Old ones are linked by name, or turned into
+// custom exercises if the library doesn't have them.
+function linkToLibrary(days, customExercises) {
+  for (const day of days) {
+    for (const ex of day.exercises) {
+      if (ex.refId) continue;
+      const match = Library.findByName(ex.name) || Library.findByName(ex.name, customExercises);
+      if (match) {
+        ex.refId = match.id;
+      } else {
+        const custom = {
+          id: 'custom-' + newId(),
+          name: ex.name || 'Unnamed exercise',
+          equipment: 'Other',
+          primary: OLD_MUSCLE_GROUPS[ex.muscle] || [],
+          secondary: [],
+          custom: true,
+        };
+        customExercises.push(custom);
+        ex.refId = custom.id;
+      }
+      delete ex.name;
+      delete ex.muscle;
+    }
+  }
+}
+
 // Fills in anything missing and upgrades older data so it still works.
 function normalize(data) {
   const days = buildWeek(Array.isArray(data.days) ? data.days : []);
+  const customExercises = Array.isArray(data.customExercises) ? data.customExercises : [];
+  const sessions = Array.isArray(data.sessions) ? data.sessions : [];
 
   // Version 1 had a single target "reps" number; now it's a range.
   for (const day of days) {
@@ -117,11 +164,24 @@ function normalize(data) {
     }
   }
 
+  linkToLibrary(days, customExercises);
+
+  // Give old logged exercises the refId of the day exercise they came from,
+  // so future history/volume features can tell which exercise they were.
+  const refIds = {};
+  for (const day of days) for (const ex of day.exercises) refIds[ex.id] = ex.refId;
+  for (const session of sessions) {
+    for (const entry of session.exercises) {
+      if (!entry.refId && refIds[entry.exerciseId]) entry.refId = refIds[entry.exerciseId];
+    }
+  }
+
   return {
     version: DATA_VERSION,
     settings: { ...DEFAULT_SETTINGS, ...data.settings },
+    customExercises,
     days,
-    sessions: Array.isArray(data.sessions) ? data.sessions : [],
+    sessions,
     draft: data.draft || null,
   };
 }
@@ -164,6 +224,15 @@ const Store = {
 
   // ---------- Exercises ----------
 
+  // Saves a new custom exercise to reuse on any day. Returns it.
+  addCustomExercise(fields) {
+    const exercise = { id: 'custom-' + newId(), ...fields, custom: true };
+    this.data.customExercises.push(exercise);
+    this.save();
+    return exercise;
+  },
+
+  // fields: { refId, sets, repMin, repMax }
   addExercise(dayId, fields) {
     const exercise = { id: newId(), ...fields };
     this.getDay(dayId).exercises.push(exercise);
@@ -195,12 +264,15 @@ const Store = {
 
   // ---------- Sessions (finished workouts) ----------
 
-  // Most recent logged sets for an exercise, or null if never done.
+  // Most recent logged sets for a day's exercise, or null if never done.
+  // Matching the refId too means that if you switch the exercise to a different
+  // one, you don't see the old exercise's numbers.
   // Returns { date, sets: [ { weight, reps } ] }
-  lastResult(exerciseId) {
+  lastResult(dayExercise) {
     for (let i = this.data.sessions.length - 1; i >= 0; i--) {
       const session = this.data.sessions[i];
-      const entry = session.exercises.find(e => e.exerciseId === exerciseId);
+      const entry = session.exercises.find(e =>
+        e.exerciseId === dayExercise.id && (!e.refId || e.refId === dayExercise.refId));
       if (entry && entry.sets.length) return { date: session.date, sets: entry.sets };
     }
     return null;
@@ -226,7 +298,7 @@ const Store = {
       this.data.draft = draft;
     }
     for (const ex of day.exercises) {
-      const lastSets = this.lastResult(ex.id)?.sets || [];
+      const lastSets = this.lastResult(ex)?.sets || [];
       const rows = draft.entries[ex.id] || [];
       // Keeps rows already typed in; adds or trims if the set count was edited.
       draft.entries[ex.id] = Array.from({ length: ex.sets }, (_, i) =>
@@ -267,10 +339,15 @@ const Store = {
         .map(s => ({ weight: toNumber(s.weight), reps: toNumber(s.reps) }))
         .filter(s => s.reps !== null);
       if (sets.length) {
+        // Name and muscles are copied in, so history stays right even if the
+        // exercise is later changed or removed.
+        const info = Library.forExercise(ex);
         exercises.push({
           exerciseId: ex.id,
-          name: ex.name,
-          muscle: ex.muscle,
+          refId: ex.refId,
+          name: info.name,
+          primary: info.primary,
+          secondary: info.secondary,
           targetSets: ex.sets,
           targetRepMin: ex.repMin,
           targetRepMax: ex.repMax,

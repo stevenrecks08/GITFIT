@@ -251,6 +251,59 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1p
 .ex-row .ex-meta { display: block; font-size: 14px; color: var(--muted); margin-top: 2px; }
 .ex-row.is-editing { outline: 2px solid var(--accent); }
 
+/* ---------- Exercise library (edit-day screen) ---------- */
+input[type="search"] { -webkit-appearance: none; appearance: none; }
+
+.lib-results { margin: 4px -14px -14px; border-top: 1px solid var(--border); }
+.lib-item {
+  display: block;
+  width: 100%;
+  min-height: var(--tap);
+  padding: 10px 14px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  text-align: left;
+}
+.lib-item:last-child { border-bottom: none; }
+.lib-item:active { background: var(--surface-2); }
+.lib-name { display: block; font-weight: 600; }
+.lib-name .tag { margin-left: 4px; vertical-align: 1px; }
+.lib-meta { display: block; font-size: 14px; color: var(--muted); margin-top: 2px; }
+.lib-results .empty { padding: 14px; }
+
+/* The picked exercise at the top of the sets & reps form */
+.picked { display: flex; align-items: flex-start; gap: 10px; }
+.picked-info { flex: 1; min-width: 0; }
+.picked-info > * { display: block; }
+.picked-info strong { font-size: 18px; }
+.muscle-line { font-size: 14px; color: var(--muted); margin-top: 4px; }
+.muscle-line b { color: var(--text); font-weight: 600; }
+
+/* Muscle checkboxes styled as tappable pills */
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; border: none; min-width: 0; }
+.chips legend { padding: 0; margin-bottom: 8px; font-size: 14px; color: var(--muted); }
+.chips legend .muted { font-size: 13px; }
+.chip { position: relative; margin: 0; }
+.chip input { position: absolute; top: 0; left: 0; width: 1px; height: 1px; min-height: 0; opacity: 0; pointer-events: none; }
+.chip span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 15px;
+  cursor: pointer;
+}
+.chip input:checked + span { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
+.chip input:focus-visible + span { outline: 2px solid var(--accent); }
+/* Secondary muscles count half, so they get a lighter "half" style */
+.chips-secondary .chip input:checked + span { background: #16331f; color: var(--accent); }
+
 /* ---------- Workout screen ---------- */
 .workout-ex { padding: 0; scroll-margin-top: 72px; }
 .workout-ex + .workout-ex { margin-top: 8px; }

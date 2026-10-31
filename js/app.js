@@ -13,8 +13,21 @@ const backBtn = document.getElementById('back');
 const tabBarEl = document.getElementById('tabbar');
 const toastEl = document.getElementById('toast');
 
-// Which exercise is open in the edit form (only used on the edit screen).
-let editingExerciseId = null;
+// The add/edit exercise panel on the edit-day screen:
+//   exerciseId = the day's exercise being edited (null when adding a new one)
+//   refId      = the library/custom exercise picked
+//   mode       = 'pick' (search library), 'custom' (create custom), 'details' (sets & reps)
+//   query      = text in the search box
+let picker = newPicker();
+function newPicker() {
+  return { exerciseId: null, refId: null, mode: 'pick', query: '' };
+}
+
+// Scrolls the add/edit panel into view (after picking, the form can be far down).
+function showPanel() {
+  document.getElementById('exercise-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 // Which exercise is expanded on the workout screen (null = all collapsed).
 let openExerciseId = null;
 
@@ -43,7 +56,7 @@ function render() {
     const day = Store.getDay(route.dayId);
     if (!day) return go('#/');
     if (route.view === 'edit') {
-      screen = Views.editDay(day, editingExerciseId);
+      screen = Views.editDay(day, picker);
     } else if (day.rest) {
       return go('#/'); // rest days have no workout
     } else {
@@ -85,14 +98,42 @@ const actions = {
     go(`#/day/${id}/edit`);
   },
 
+  // Tapped one of the day's exercises: open it for editing at the sets & reps step.
   'edit-exercise'(id) {
-    editingExerciseId = id;
+    const ex = Store.getDay(currentRoute().dayId).exercises.find(e => e.id === id);
+    picker = { exerciseId: id, refId: ex.refId, mode: 'details', query: '' };
     render();
-    document.getElementById('exercise-form').scrollIntoView({ behavior: 'smooth' });
+    showPanel();
   },
 
   'cancel-edit'() {
-    editingExerciseId = null;
+    picker = newPicker();
+    render();
+  },
+
+  // Tapped an exercise in the library search results.
+  'pick-exercise'(refId) {
+    picker.refId = refId;
+    picker.mode = 'details';
+    render();
+    showPanel();
+  },
+
+  // Back to the library to pick a different exercise.
+  'change-exercise'() {
+    picker.mode = 'pick';
+    render();
+    showPanel();
+  },
+
+  'new-custom'() {
+    picker.mode = 'custom';
+    render();
+    showPanel();
+  },
+
+  'cancel-custom'() {
+    picker.mode = 'pick';
     render();
   },
 
@@ -104,7 +145,7 @@ const actions = {
   'delete-exercise'(id) {
     if (!confirm('Delete this exercise from the day? (Past workouts stay saved.)')) return;
     Store.deleteExercise(currentRoute().dayId, id);
-    editingExerciseId = null;
+    picker = newPicker();
     render();
   },
 
@@ -155,6 +196,14 @@ backBtn.addEventListener('click', () => go(backBtn.dataset.href));
 // Weights are typed in the chosen unit but saved in lbs.
 appEl.addEventListener('input', event => {
   const input = event.target;
+
+  // Library search: redraw only the results so the search box keeps focus.
+  if (input.id === 'lib-search') {
+    picker.query = input.value;
+    document.getElementById('lib-results').innerHTML = Views.libraryResults(input.value);
+    return;
+  }
+
   const field = input.dataset.field;
   if (!field) return;
   const value = field === 'weight' ? Units.readWeight(input.value) : input.value.trim();
@@ -203,8 +252,16 @@ appEl.addEventListener('change', async event => {
   // Workout / Rest day choice on the edit screen.
   if (input.name === 'day-kind') {
     Store.setRestDay(currentRoute().dayId, input.value === 'rest');
-    editingExerciseId = null;
+    picker = newPicker();
     render();
+  }
+
+  // Custom exercise muscles: a muscle can be primary or secondary, not both,
+  // so ticking it in one list unticks it in the other.
+  if (input.form && input.form.id === 'custom-form' && input.type === 'checkbox' && input.checked) {
+    const other = input.name === 'primary' ? 'secondary' : 'primary';
+    const twin = input.form.querySelector(`input[name="${other}"][value="${input.value}"]`);
+    if (twin) twin.checked = false;
   }
 
   if (input.id === 'import-file') {
@@ -232,33 +289,54 @@ appEl.addEventListener('submit', event => {
   const form = event.target;
   const values = Object.fromEntries(new FormData(form));
 
+  // Sets & reps for the picked exercise → add it to the day (or save changes).
   if (form.id === 'exercise-form') {
     const repA = Math.max(1, parseInt(values.repMin, 10) || 1);
     const repB = Math.max(1, parseInt(values.repMax, 10) || repA);
     const fields = {
-      name: values.name.trim(),
-      muscle: values.muscle,
+      refId: picker.refId,
       sets: Math.max(1, parseInt(values.sets, 10) || 1),
       repMin: Math.min(repA, repB), // swapped if typed backwards
       repMax: Math.max(repA, repB),
     };
-    if (!fields.name) return;
     const dayId = currentRoute().dayId;
-    if (editingExerciseId) {
-      Store.updateExercise(dayId, editingExerciseId, fields);
-      editingExerciseId = null;
+    const name = Library.forExercise(fields).name;
+    if (picker.exerciseId) {
+      Store.updateExercise(dayId, picker.exerciseId, fields);
+      toast(`Saved ${name}`);
     } else {
       Store.addExercise(dayId, fields);
+      toast(`Added ${name}`);
     }
+    picker = newPicker();
     render();
-    document.getElementById('ex-name').focus();
+  }
+
+  // New custom exercise → save it, then go on to sets & reps.
+  if (form.id === 'custom-form') {
+    const data = new FormData(form);
+    const primary = data.getAll('primary');
+    if (!primary.length) {
+      toast('Pick at least one primary muscle');
+      return;
+    }
+    const custom = Store.addCustomExercise({
+      name: values.name.trim(),
+      equipment: values.equipment,
+      primary,
+      secondary: data.getAll('secondary').filter(id => !primary.includes(id)),
+    });
+    picker.refId = custom.id;
+    picker.mode = 'details';
+    render();
+    showPanel();
   }
 });
 
 // ---------- Start ----------
 
 window.addEventListener('hashchange', () => {
-  editingExerciseId = null;
+  picker = newPicker();
   openExerciseId = null;
   render();
   window.scrollTo(0, 0);

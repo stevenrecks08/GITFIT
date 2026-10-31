@@ -18,6 +18,7 @@ Data you enter on your computer stays in *that* browser. It won't appear on your
 index.html        The page shell: top bar + an empty <main> that screens are drawn into
 manifest.json     Lets the app be "installed" to a phone home screen
 css/styles.css    All styling. Colors are at the top under :root
+js/library.js     Built-in exercise library and muscle list — add exercises here
 js/storage.js     All saving/loading (localStorage), plus export/import
 js/units.js       Converts weights/heights between saved units (lbs, inches) and shown units
 js/tabs.js        The bottom tab bar (Workouts, Profile) — add new tabs here
@@ -30,6 +31,12 @@ The rule of thumb: **storage.js** knows about data, **views.js** knows about HTM
 ## Units
 
 All weights are **saved in lbs** and heights in **inches**, whatever the Units setting says. `units.js` converts them only for display, so switching units shows old lifts converted, not relabeled. When you show or read a weight anywhere new, go through `Units.showWeight()` / `Units.readWeight()`.
+
+## Exercises and muscles
+
+Exercises on your days point at an exercise in `library.js` (or one of your custom exercises) by its id. Each library exercise has **primary** muscles (count as 1 set each) and **secondary** muscles (count as 0.5 sets each), using the muscle ids in `MUSCLES`. To add a built-in exercise, add a line to `LIBRARY`.
+
+Every finished workout also stores each exercise's name and muscles, so weekly sets per muscle can be counted from `Store.data.sessions` later.
 
 ## Adding a setting
 
