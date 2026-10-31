@@ -1,4 +1,5 @@
-// stats.js — numbers worked out from saved workouts, for the muscle map on Profile.
+// stats.js — per-muscle numbers for the muscle map and set summaries:
+// growth comes from logged workouts, planned sets from your weekly plan.
 // Every exercise trains its primary muscles fully (1) and secondary muscles half (0.5).
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -33,7 +34,6 @@ function forEachMuscle(entry, add) {
 
 const Stats = {
   GROWTH_WEEKS: 6,
-  SETS_WEEKS: 4,
   MIN_WEEKS: 3, // an exercise needs this many different weeks logged to count for growth
 
   // { muscleId: % change in estimated max over the last 6 weeks }
@@ -68,15 +68,29 @@ const Stats = {
     return growth;
   },
 
-  // { muscleId: average sets per week over the last 4 weeks }
-  muscleSets(now = Date.now()) {
-    const sets = {};
-    for (const entry of loggedSince(now - this.SETS_WEEKS * WEEK_MS)) {
-      forEachMuscle(entry, (m, share) => {
-        sets[m] = (sets[m] || 0) + entry.sets.length * share;
+  // Planned sets from your week (not logged workouts), for a list of day exercises:
+  //   muscles = { muscleId: sets }       each exercise's target sets × 1 (primary) or × 0.5 (secondary)
+  //   groups  = { 'Chest': sets, … }    per muscle group; an exercise counts once per group,
+  //                                      at its biggest share there (a row hitting lats and upper back
+  //                                      as primary adds its sets to Back once, not twice)
+  plannedSets(exercises) {
+    const muscles = {};
+    const groups = {};
+    for (const ex of exercises) {
+      const info = Library.forExercise(ex);
+      const groupShare = {};
+      forEachMuscle(info, (m, share) => {
+        muscles[m] = (muscles[m] || 0) + ex.sets * share;
+        const g = MUSCLE_GROUP_OF[m];
+        groupShare[g] = Math.max(groupShare[g] || 0, share);
       });
+      for (const g in groupShare) groups[g] = (groups[g] || 0) + ex.sets * groupShare[g];
     }
-    for (const m in sets) sets[m] /= this.SETS_WEEKS;
-    return sets;
+    return { muscles, groups };
+  },
+
+  // Planned sets for the whole week (rest days have no exercises).
+  weekPlannedSets() {
+    return this.plannedSets(Store.data.days.filter(d => !d.rest).flatMap(d => d.exercises));
   },
 };

@@ -40,6 +40,25 @@ function initials(name) {
   return name.split(/\s+/).map(word => word[0]).slice(0, 2).join('').toUpperCase();
 }
 
+// Planned sets per muscle group, one number column per entry in `columns`
+// ([{ label, groups: { 'Chest': 9, … } }]). The bar shows the last column against SETS_SCALE.
+function plannedSetsTable(columns) {
+  const names = MUSCLE_GROUPS.map(g => g.name).filter(name => columns.some(c => c.groups[name]));
+  if (!names.length) return '<p class="empty">No exercises planned yet.</p>';
+  const show = n => (n ? String(Number(n.toFixed(1))) : '–');
+  const last = columns[columns.length - 1];
+  const head = columns.length > 1
+    ? `<span></span><span></span>${columns.map(c => `<span class="sets-head">${c.label}</span>`).join('')}` : '';
+  const rows = names.map(name => `
+    <span class="sets-group">${name}</span>
+    <span class="sets-bar"><i style="width:${Math.min(100, (last.groups[name] || 0) / SETS_SCALE * 100)}%"></i></span>
+    ${columns.map(c => `<span class="sets-num">${show(c.groups[name])}</span>`).join('')}`).join('');
+  return `
+    <div class="card sets-table" style="grid-template-columns: auto 1fr ${'3.6em '.repeat(columns.length)}">
+      ${head}${rows}
+    </div>`;
+}
+
 // "Oct 30"
 function shortDate(date) {
   return new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
@@ -206,6 +225,9 @@ const Views = {
         ${resume}
         <h2>This week</h2>
         ${dayCards}
+
+        <h2>Planned sets per week</h2>
+        ${plannedSetsTable([{ label: 'Sets', groups: Stats.weekPlannedSets().groups }])}
       `,
     };
   },
@@ -270,6 +292,12 @@ const Views = {
 
         <h2>Exercises</h2>
         ${rows}
+
+        <h2>Planned sets</h2>
+        ${plannedSetsTable([
+          { label: 'This day', groups: Stats.plannedSets(day.exercises).groups },
+          { label: 'Week', groups: Stats.weekPlannedSets().groups },
+        ])}
 
         <h2>${editing ? 'Edit exercise' : 'Add exercise'}</h2>
         <div id="exercise-panel">${panel}</div>
@@ -498,7 +526,7 @@ const Views = {
 
   // ---------- Muscle map (on Profile) ----------
   muscleMap(mode) {
-    const values = mode === 'sets' ? Stats.muscleSets() : Stats.muscleGrowth();
+    const values = mode === 'sets' ? Stats.weekPlannedSets().muscles : Stats.muscleGrowth();
     const colors = {};
     for (const id in MUSCLES) colors[id] = MapColors[mode](values[id]);
 
@@ -509,7 +537,7 @@ const Views = {
     const legend = mode === 'sets' ? `
       <div class="legend-bar" style="background: linear-gradient(90deg, ${MapColors.sets(1)}, ${MapColors.sets(SETS_SCALE)})"></div>
       <div class="legend-labels"><span>1</span><span>${SETS_SCALE / 2}</span><span>${SETS_SCALE}+ sets/week</span></div>
-      <p class="legend-empty"><i style="background:${MAP_EMPTY}"></i>No sets in the last ${Stats.SETS_WEEKS} weeks</p>` : `
+      <p class="legend-empty"><i style="background:${MAP_EMPTY}"></i>No planned sets</p>` : `
       <div class="legend-bar" style="background: linear-gradient(90deg, ${MapColors.growth(-GROWTH_SCALE)}, ${MapColors.growth(0)}, ${MapColors.growth(GROWTH_SCALE)})"></div>
       <div class="legend-labels"><span>−${GROWTH_SCALE}%</span><span>Flat</span><span>+${GROWTH_SCALE}%</span></div>
       <p class="legend-empty"><i style="background:${MAP_EMPTY}"></i>Less than ${Stats.MIN_WEEKS} weeks of data</p>`;
@@ -519,7 +547,7 @@ const Views = {
       <div class="card">
         <div class="segmented">${toggle}</div>
         <p class="map-caption">${mode === 'sets'
-          ? `Average sets per week, last ${Stats.SETS_WEEKS} weeks`
+          ? 'Planned sets per week'
           : `Change in estimated max, last ${Stats.GROWTH_WEEKS} weeks`}</p>
         <div class="body-map" id="body-map">
           ${bodyMapSvg(colors, null)}
@@ -533,7 +561,7 @@ const Views = {
   musclePopup(id, mode) {
     const name = MUSCLES[id];
     if (mode === 'sets') {
-      const perWeek = Number((Stats.muscleSets()[id] || 0).toFixed(1));
+      const perWeek = Number((Stats.weekPlannedSets().muscles[id] || 0).toFixed(1));
       return `${name}: ${perWeek} ${perWeek === 1 ? 'set' : 'sets'}/week`;
     }
     const pct = Stats.muscleGrowth()[id];

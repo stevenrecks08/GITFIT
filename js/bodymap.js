@@ -1,55 +1,64 @@
 // bodymap.js — the 2D muscle map on Profile: a front and a back view.
 //
-// Each figure is drawn on a 200 × 432 grid with the middle of the body at x = 100.
+// Each figure is drawn on a 200 × 380 grid with the middle of the body at x = 100.
 // Only the right half is written out below; the left half is the same shapes mirrored.
+// Front and back share one outline (BODY_HALF), so the two views line up.
 // Muscle ids match MUSCLE_GROUPS in library.js.
 
-// Body parts that aren't muscles (drawn in a plain fill).
+const MAP_H = 380;
+
+// The body outline and parts that aren't muscles (plain fill, drawn underneath the muscles).
 const BODY_CENTER = `
-  <ellipse cx="100" cy="28" rx="16" ry="20"/>
-  <rect x="92" y="44" width="16" height="16" rx="4"/>`;
+  <ellipse cx="100" cy="24" rx="14" ry="17"/>
+  <rect x="89" y="34" width="22" height="20" rx="6"/>`;
 const BODY_HALF = `
-  <ellipse cx="157" cy="244" rx="7" ry="11"/>
-  <path d="M100,206 L119,202 L131,204 L134,228 L108,236 L100,238 Z"/>
-  <ellipse cx="123" cy="343" rx="11" ry="9"/>
-  <path d="M116,414 L130,414 Q140,424 134,430 L112,430 Z"/>`;
+  <path d="M100,36 L111,36 L111,46 Q122,52 136,56 Q158,54 166,72 Q172,90 168,108 Q173,126 169,144
+    Q177,160 173,180 Q169,196 164,206 L152,206 Q144,186 145,160 Q140,148 141,128 L141,108
+    Q140,140 128,168 Q129,180 131,190 Q147,220 143,262 Q139,286 132,294 L134,306 Q145,330 135,356
+    L129,362 L111,362 Q106,330 110,308 L111,296 Q105,288 105,272 Q101,240 101,208 L100,208 Z"/>
+  <ellipse cx="158" cy="215" rx="7" ry="10"/>
+  <path d="M111,362 L130,362 Q141,370 137,377 L109,377 Z"/>`;
 
 // Right-half muscle shapes for each view: [muscleId, path]
+const DELTS_INNER = 'M124,62 Q130,55 142,55 Q150,60 151,74 Q150,88 146,98 Q136,88 130,78 Q126,70 124,62 Z';
+const DELTS_OUTER = 'M142,55 Q160,54 166,72 Q170,88 162,100 Q154,104 146,98 Q150,88 151,74 Q150,60 142,55 Z';
+const CALVES = 'M111,308 Q122,300 135,308 Q145,330 134,354 L120,356 Q107,332 111,308 Z';
+
 const FRONT_MUSCLES = [
-  ['traps', 'M108,54 L128,68 L106,66 Z'],
-  ['upperChest', 'M100,70 L126,68 L128,84 L100,86 Z'],
-  ['midChest', 'M100,86 L128,84 Q132,94 132,104 L100,106 Z'],
-  ['lowerChest', 'M100,106 L132,104 Q128,118 114,122 L100,121 Z'],
-  ['frontDelts', 'M126,68 Q140,66 147,76 L145,104 Q134,96 128,84 Z'],
-  ['sideDelts', 'M147,76 Q157,82 157,98 L152,110 L145,104 Z'],
-  ['biceps', 'M137,106 L145,104 L152,110 Q156,134 151,158 L141,160 Q134,134 137,106 Z'],
-  ['brachialis', 'M152,110 Q160,124 159,150 L151,158 Q156,134 152,110 Z'],
-  ['brachioradialis', 'M151,160 L159,151 Q166,172 164,194 L156,200 Q156,178 151,160 Z'],
-  ['forearmFlexors', 'M141,162 L151,160 Q156,178 156,200 L164,194 Q164,216 160,232 L150,232 Q138,200 141,162 Z'],
-  ['abs', 'M100,124 L116,123 L119,200 L100,205 Z'],
-  ['obliques', 'M116,123 L131,107 Q137,150 131,201 L119,200 Z'],
-  ['quads', 'M108,237 L134,229 Q142,270 136,328 Q126,338 114,332 Q106,290 108,237 Z'],
-  ['adductors', 'M100,239 L108,237 Q106,290 112,318 Q101,296 100,239 Z'],
-  ['calves', 'M112,356 Q122,350 133,356 Q136,388 127,412 L117,412 Q108,388 112,356 Z'],
+  ['traps', 'M111,46 Q122,52 136,56 Q128,62 120,62 Q112,58 111,46 Z'],
+  ['upperChest', 'M100,59 L120,61 Q131,67 139,80 L100,82 Z'],
+  ['midChest', 'M100,82 L139,80 Q143,90 141,100 L100,100 Z'],
+  ['lowerChest', 'M100,100 L141,100 Q137,112 121,115 Q107,115 100,113 Z'],
+  ['frontDelts', DELTS_INNER],
+  ['sideDelts', DELTS_OUTER],
+  ['biceps', 'M142,101 Q148,96 155,101 Q166,112 164,130 Q160,146 150,150 L145,150 Q140,128 142,101 Z'],
+  ['brachialis', 'M164,114 Q171,124 169,144 L161,150 L150,150 Q160,146 164,130 Z'],
+  ['brachioradialis', 'M152,152 L166,150 Q175,160 173,176 L164,187 Q160,166 152,152 Z'],
+  ['forearmFlexors', 'M146,154 L152,152 Q160,166 164,187 L173,176 Q170,194 164,205 L153,205 Q144,182 146,154 Z'],
+  ['abs', 'M100,117 L113,116 L115,170 Q108,176 100,178 Z'],
+  ['obliques', 'M113,116 Q128,115 139,106 Q137,140 128,168 L115,170 Z'],
+  ['quads', 'M106,208 L131,192 Q147,220 143,260 Q139,284 128,292 Q114,292 110,280 Q104,244 106,208 Z'],
+  ['adductors', 'M101,210 L106,208 Q104,244 110,276 Q102,252 101,210 Z'],
+  ['calves', CALVES],
 ];
 
 const BACK_MUSCLES = [
-  ['traps', 'M100,48 L108,54 L128,68 L118,78 L106,90 L100,112 Z'],
-  ['upperBack', 'M100,112 L106,90 L118,78 L128,68 L128,84 Q132,94 134,106 L116,122 L100,128 Z'],
-  ['rearDelts', 'M126,68 Q140,66 147,76 L145,104 Q134,96 128,84 Z'],
-  ['sideDelts', 'M147,76 Q157,82 157,98 L152,110 L145,104 Z'],
-  ['lats', 'M100,128 L116,122 L134,106 Q140,140 131,178 L113,186 Q104,162 100,152 Z'],
-  ['lowerBack', 'M100,152 Q104,162 113,186 L131,178 L131,204 L100,208 Z'],
-  ['triceps', 'M136,106 L145,104 L152,110 Q160,124 159,150 L151,160 L141,160 Q134,134 136,106 Z'],
-  ['forearmExtensors', 'M141,162 L151,160 L159,151 Q166,172 164,194 Q164,216 160,232 L150,232 Q138,200 141,162 Z'],
-  ['glutes', 'M100,208 L131,204 Q141,222 135,248 Q120,260 100,254 Z'],
-  ['hamstrings', 'M107,256 Q122,260 135,250 Q140,290 133,332 L114,332 Q106,296 107,256 Z'],
-  ['adductors', 'M100,256 L107,256 Q106,296 112,320 Q101,296 100,256 Z'],
-  ['calves', 'M110,354 Q123,346 135,354 Q140,384 128,412 L116,412 Q106,384 110,354 Z'],
+  ['traps', 'M100,36 L111,44 Q122,52 138,58 Q128,68 118,84 L100,118 Z'],
+  ['upperBack', 'M100,118 L118,84 Q128,68 138,58 Q143,78 141,98 L121,112 L100,122 Z'],
+  ['rearDelts', DELTS_INNER],
+  ['sideDelts', DELTS_OUTER],
+  ['lats', 'M100,122 L121,112 L141,98 Q144,124 134,148 Q126,160 116,166 Q106,150 100,140 Z'],
+  ['lowerBack', 'M100,140 Q106,150 116,166 L128,164 Q128,176 130,186 L100,188 Z'],
+  ['triceps', 'M142,101 Q148,96 155,101 Q163,101 168,108 Q173,126 169,144 L161,150 L145,150 Q140,128 142,101 Z'],
+  ['forearmExtensors', 'M146,154 L166,150 Q175,160 173,176 Q170,194 164,205 L153,205 Q144,182 146,154 Z'],
+  ['glutes', 'M100,188 L130,186 Q145,202 141,222 Q124,234 100,230 Z'],
+  ['hamstrings', 'M106,232 Q124,234 141,224 Q145,256 137,286 L114,290 Q106,262 106,232 Z'],
+  ['adductors', 'M100,232 L106,232 Q106,262 112,284 Q101,262 100,232 Z'],
+  ['calves', CALVES],
 ];
 
-// Thin lines drawn on top for a bit of detail (ab rows, spine). Not tappable.
-const FRONT_LINES = 'M100,145 L117,144 M100,168 L118,167';
+// Thin lines drawn on top for a bit of detail (ab rows). Not tappable.
+const FRONT_LINES = 'M100,131 L114,130 M100,145 L114,144 M100,159 L115,158';
 const BACK_LINES = '';
 
 const MAP_EMPTY = '#3a404d'; // muscles with no data
@@ -77,7 +86,7 @@ const MapColors = {
   // Gray (none) → dark green (a little) → bright green (a lot).
   sets(perWeek) {
     if (!perWeek) return MAP_EMPTY;
-    return mixColor('#1f5c38', '#4ade80', Math.min(1, perWeek / SETS_SCALE));
+    return mixColor('#173a27', '#4ade80', Math.min(1, perWeek / SETS_SCALE));
   },
 };
 
@@ -89,7 +98,7 @@ function bodyFigure(label, muscles, lines, colors, selected) {
   const mirrored = content => `${content}<g transform="translate(200 0) scale(-1 1)">${content}</g>`;
   return `
     <figure class="body-figure">
-      <svg viewBox="0 0 200 432" role="img" aria-label="${label} view muscle map">
+      <svg viewBox="0 0 200 ${MAP_H}" role="img" aria-label="${label} view muscle map">
         <g class="body-part">${BODY_CENTER}${mirrored(BODY_HALF)}</g>
         ${mirrored(half)}
         ${lines ? `<path class="body-line" d="${lines}"/><path class="body-line" d="${lines}" transform="translate(200 0) scale(-1 1)"/>` : ''}
