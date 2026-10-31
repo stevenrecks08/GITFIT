@@ -1,16 +1,16 @@
 // app.js — starts the app, picks which screen to show, and handles taps/typing.
 //
 // Screens are chosen by the part of the URL after "#":
-//   #/                 → home
-//   #/day/<id>/edit    → edit a day
-//   #/day/<id>         → do a workout for that day
-//   #/settings         → settings
+//   #/                 → home (the week)          [Workouts tab]
+//   #/day/<id>/edit    → edit a day               [Workouts tab]
+//   #/day/<id>         → do a workout for that day [Workouts tab]
+//   #/profile          → profile + settings       [Profile tab]
 // Using the URL means the browser/phone Back gesture works for free.
 
 const appEl = document.getElementById('app');
 const titleEl = document.getElementById('title');
 const backBtn = document.getElementById('back');
-const gearBtn = document.getElementById('gear');
+const tabBarEl = document.getElementById('tabbar');
 const toastEl = document.getElementById('toast');
 
 // Which exercise is open in the edit form (only used on the edit screen).
@@ -21,10 +21,10 @@ let openExerciseId = null;
 function currentRoute() {
   const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
   if (parts[0] === 'day' && parts[1]) {
-    return { view: parts[2] === 'edit' ? 'edit' : 'workout', dayId: parts[1] };
+    return { view: parts[2] === 'edit' ? 'edit' : 'workout', dayId: parts[1], tab: 'workouts' };
   }
-  if (parts[0] === 'settings') return { view: 'settings' };
-  return { view: 'home' };
+  if (parts[0] === 'profile') return { view: 'profile', tab: 'profile' };
+  return { view: 'home', tab: 'workouts' };
 }
 
 function go(hash) {
@@ -37,8 +37,8 @@ function render() {
 
   if (route.view === 'home') {
     screen = Views.home();
-  } else if (route.view === 'settings') {
-    screen = Views.settings();
+  } else if (route.view === 'profile') {
+    screen = Views.profile();
   } else {
     const day = Store.getDay(route.dayId);
     if (!day) return go('#/');
@@ -57,7 +57,7 @@ function render() {
   document.title = screen.title;
   backBtn.hidden = !screen.back;
   backBtn.dataset.href = screen.back || '';
-  gearBtn.hidden = !screen.gear;
+  tabBarEl.innerHTML = tabBarHtml(route.tab);
   appEl.innerHTML = screen.html;
 }
 
@@ -175,9 +175,15 @@ function saveSettingsForm(form) {
   }
 
   Store.updateSettings({
+    name: values.name.trim(),
     heightIn: Units.readHeight({ ft: values.heightFt, in: values.heightIn, cm: values.heightCm }),
     bodyWeightLbs: Units.readWeight(values.bodyWeight),
   });
+
+  // Update the name and avatar at the top without redrawing (which would
+  // take focus away from the box you just tapped into).
+  document.getElementById('profile-name').textContent = profileName();
+  document.querySelector('.avatar').textContent = initials(profileName());
 }
 
 // Saves when you leave a box (or pick an option).

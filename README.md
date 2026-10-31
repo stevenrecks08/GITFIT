@@ -20,7 +20,8 @@ manifest.json     Lets the app be "installed" to a phone home screen
 css/styles.css    All styling. Colors are at the top under :root
 js/storage.js     All saving/loading (localStorage), plus export/import
 js/units.js       Converts weights/heights between saved units (lbs, inches) and shown units
-js/views.js       Builds the HTML for each screen (home, edit day, workout, settings)
+js/tabs.js        The bottom tab bar (Workouts, Profile) — add new tabs here
+js/views.js       Builds the HTML for each screen (home, edit day, workout, profile)
 js/app.js         Picks the screen from the URL and handles taps, typing and forms
 ```
 
@@ -33,7 +34,7 @@ All weights are **saved in lbs** and heights in **inches**, whatever the Units s
 ## Adding a setting
 
 1. Add it with a default to `DEFAULT_SETTINGS` in `storage.js`.
-2. Add a field for it in `Views.settings()` in `views.js` (inside `settings-form`).
+2. Add a field for it in `Views.profile()` in `views.js` (inside `settings-form`).
 3. Read it in `saveSettingsForm()` in `app.js`.
 
 It's then saved automatically and included in backups.

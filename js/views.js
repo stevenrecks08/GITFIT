@@ -1,7 +1,6 @@
 // views.js — builds the HTML for each screen. No saving happens here.
-// Each view returns { title, back, html } and optionally gear: true:
-//   title = text in the top bar, back = where the Back button goes (or null),
-//   gear = show the Settings gear in the top bar.
+// Each view returns { title, back, html }:
+//   title = text in the top bar, back = where the Back button goes (or null).
 // Buttons use data-action="..." and are handled in app.js.
 
 // Makes user-typed text safe to put inside HTML.
@@ -29,6 +28,15 @@ function repRange(min, max) {
 // "Last: 20×10, 20×8, 20×7" or "No history yet"
 function lastSummary(last) {
   return last ? `Last: ${last.sets.map(formatSet).join(', ')}` : 'No history yet';
+}
+
+function profileName() {
+  return Store.data.settings.name.trim() || 'Your name';
+}
+
+// Placeholder avatar text: "Rex Stephenson" → "RS"
+function initials(name) {
+  return name.split(/\s+/).map(word => word[0]).slice(0, 2).join('').toUpperCase();
 }
 
 const Views = {
@@ -77,7 +85,6 @@ const Views = {
     return {
       title: 'GitFit',
       back: null,
-      gear: true,
       html: `
         ${resume}
         <h2>This week</h2>
@@ -257,11 +264,12 @@ const Views = {
     };
   },
 
-  // ---------- Settings ----------
-  // Every field lives in one form; app.js saves the whole form on any change.
-  // To add a setting, add a section here (and see DEFAULT_SETTINGS in storage.js).
-  settings() {
+  // ---------- Profile: avatar + name, then the Settings section ----------
+  // Every setting lives in one form; app.js saves the whole form on any change.
+  // To add a setting, add a field here (and see DEFAULT_SETTINGS in storage.js).
+  profile() {
     const s = Store.data.settings;
+    const name = profileName();
     const metric = Units.isMetric();
     const height = Units.showHeight(s.heightIn);
     const unitOption = (value, label, detail) => `
@@ -283,9 +291,15 @@ const Views = {
       </div>`;
 
     return {
-      title: 'Settings',
-      back: '#/',
+      title: 'Profile',
+      back: null,
       html: `
+        <div class="profile-head">
+          <div class="avatar" aria-hidden="true">${esc(initials(name))}</div>
+          <p class="profile-name" id="profile-name">${esc(name)}</p>
+        </div>
+
+        <h2 class="section-title">Settings</h2>
         <form id="settings-form">
           <h2>Units</h2>
           <div class="choices">
@@ -293,8 +307,12 @@ const Views = {
             ${unitOption('metric', 'Metric', 'kg, cm')}
           </div>
 
-          <h2>Body</h2>
+          <h2>About you</h2>
           <div class="card stack">
+            <div>
+              <label for="name">Name</label>
+              <input id="name" name="name" value="${esc(s.name)}" placeholder="Your name" autocomplete="name">
+            </div>
             <div>
               <label for="height">Height</label>
               ${heightFields}

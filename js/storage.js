@@ -7,7 +7,7 @@
 // Shape of the saved data:
 // {
 //   version: 3,
-//   settings: { units: 'imperial' | 'metric', heightIn, bodyWeightLbs },
+//   settings: { name, units: 'imperial' | 'metric', heightIn, bodyWeightLbs },
 //   days: [                // always one per weekday, Monday first
 //     { id, weekday (0 = Monday … 6 = Sunday), name (type of day, e.g. "Legs"), rest,
 //       exercises: [ { id, name, muscle, sets, repMin, repMax } ] }
@@ -38,9 +38,10 @@ function todayWeekday() {
   return (new Date().getDay() + 6) % 7;
 }
 
-// To add a setting: give it a default here, a field in Views.settings(),
+// To add a setting: give it a default here, a field in Views.profile(),
 // and a line in saveSettingsForm() in app.js.
 const DEFAULT_SETTINGS = {
+  name: 'Rex Stephenson',
   units: 'imperial',
   heightIn: null,
   bodyWeightLbs: null,

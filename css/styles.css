@@ -12,6 +12,7 @@
   --rest: #60a5fa;        /* rest days */
   --radius: 14px;
   --tap: 52px;            /* minimum height for anything you tap */
+  --tabbar-h: 58px;       /* bottom tab bar, not counting the iPhone home-indicator area */
   color-scheme: dark;
 }
 
@@ -56,24 +57,46 @@ html, body {
   font-size: 18px;
 }
 
-.gear-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 48px;
-  height: 48px;
-  margin-left: auto;
-  margin-right: -10px;
-  color: var(--muted);
-}
-.gear-btn[hidden] { display: none; }
-.gear-btn:active { color: var(--text); }
-
+/* Bottom padding leaves room so the last item can scroll above the tab bar */
 main {
   max-width: 640px;
   margin: 0 auto;
-  padding: 16px 16px calc(32px + env(safe-area-inset-bottom));
+  padding: 16px 16px calc(var(--tabbar-h) + 32px + env(safe-area-inset-bottom));
 }
+
+/* ---------- Bottom tab bar ---------- */
+.tabbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10;
+  display: flex;
+  justify-content: center;
+  /* The extra bottom padding keeps the tabs above the iPhone home indicator */
+  padding-bottom: env(safe-area-inset-bottom);
+  background: rgba(15, 17, 21, 0.94);
+  border-top: 1px solid var(--border);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+.tab {
+  flex: 1;
+  max-width: 160px;
+  height: var(--tabbar-h);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.tab.is-active { color: var(--text); }
+.tab.is-active svg { stroke-width: 2.5; }
+.tab:active { opacity: 0.6; }
 
 h2 {
   margin: 28px 0 10px;
@@ -199,7 +222,10 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1p
   font-size: 17px;
   cursor: pointer;
 }
-.choice input { position: absolute; opacity: 0; pointer-events: none; }
+/* The real radio button is hidden inside the card. It must stay tiny:
+   a full-width invisible input would stick out and make the page scroll sideways. */
+.choice { position: relative; }
+.choice input { position: absolute; top: 0; left: 0; width: 1px; height: 1px; min-height: 0; opacity: 0; pointer-events: none; }
 .choice strong { display: block; }
 .choice .muted { display: block; font-size: 14px; margin-top: 2px; }
 .choice:has(input:checked) { border-color: var(--accent); background: #16331f; }
@@ -278,11 +304,46 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1p
 
 .finish-bar { margin-top: 20px; }
 
+/* ---------- Profile ---------- */
+.profile-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0 4px;
+}
+.avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  border: 2px solid var(--border);
+  color: var(--muted);
+  font-size: 34px;
+  font-weight: 700;
+}
+.profile-name { margin: 0; font-size: 24px; font-weight: 700; text-align: center; overflow-wrap: anywhere; }
+
+/* A big section heading (e.g. "Settings") with the small h2 labels inside it */
+h2.section-title {
+  margin: 32px 0 0;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+  font-size: 22px;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text);
+}
+h2.section-title + form > h2:first-child { margin-top: 16px; }
+
 /* ---------- Toast message ---------- */
 .toast {
   position: fixed;
   left: 50%;
-  bottom: calc(24px + env(safe-area-inset-bottom));
+  bottom: calc(var(--tabbar-h) + 16px + env(safe-area-inset-bottom));
   transform: translateX(-50%);
   width: max-content;
   max-width: calc(100% - 32px);
