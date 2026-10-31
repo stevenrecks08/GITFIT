@@ -53,7 +53,7 @@ let openExerciseId = null;
 let logQuery = '';
 let logState = { month: null, day: null };
 
-// What the muscle map on Profile shows: 'growth' or 'sets'.
+// What the muscle map on Profile shows: 'growth', 'sets' or 'level'.
 let mapMode = 'growth';
 
 function currentRoute() {
@@ -376,6 +376,7 @@ function saveSettingsForm(form) {
     name: values.name.trim(),
     heightIn: Units.readHeight({ ft: values.heightFt, in: values.heightIn, cm: values.heightCm }),
     bodyWeightLbs: Units.readWeight(values.bodyWeight),
+    sex: values.sex,
   });
 }
 

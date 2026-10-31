@@ -76,7 +76,14 @@ function mixColor(a, b, t) {
 const GROWTH_SCALE = 10; // ±10% in 6 weeks is full red / full green
 const SETS_SCALE = 16;   // 16+ sets a week is the brightest green
 
+// One color per strength level, Beginner → Elite (LEVELS in standards.js).
+const LEVEL_COLORS = ['#60a5fa', '#4ade80', '#facc15', '#fb923c', '#e879f9'];
+
 const MapColors = {
+  // A color per level. Gray = no logged exercise with a standard.
+  level(value) {
+    return value ? LEVEL_COLORS[value.level] : MAP_EMPTY;
+  },
   // Red (declining) → yellow (flat) → green (strong growth). Gray = not enough data.
   growth(pct) {
     if (pct == null) return MAP_EMPTY;

@@ -444,6 +444,9 @@ input[type="search"] { -webkit-appearance: none; appearance: none; }
 .legend-labels { display: flex; justify-content: space-between; margin-top: 4px; font-size: 12px; color: var(--muted); }
 .legend-empty { display: flex; align-items: center; gap: 6px; margin: 8px 0 0; font-size: 12px; color: var(--muted); }
 .legend-empty i { width: 12px; height: 12px; border-radius: 3px; }
+.legend-levels { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 12px; color: var(--muted); }
+.legend-levels span { display: flex; align-items: center; gap: 5px; }
+.legend-levels i { width: 12px; height: 12px; border-radius: 3px; }
 
 /* Planned sets per muscle group (Workouts tab) */
 .sets-table { display: grid; align-items: center; column-gap: 12px; row-gap: 10px; }

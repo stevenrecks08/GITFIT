@@ -68,6 +68,32 @@ const Stats = {
     return growth;
   },
 
+  // { muscleId: { level: 0–4, exercise: 'Incline Barbell Bench Press' } }
+  // Each exercise with published standards (standards.js) is placed into a level from its
+  // latest estimated max, your body weight and sex. A muscle takes the best level among the
+  // exercises that train it as a primary muscle. Empty without a body weight in Settings.
+  muscleLevels() {
+    const { sex, bodyWeightLbs } = Store.data.settings;
+    const levels = {};
+    if (!bodyWeightLbs) return levels;
+    for (const refId in STANDARDS) {
+      const weighted = Store.exerciseHistory(refId).filter(h => h.best);
+      if (!weighted.length) continue;
+      const max = weighted[weighted.length - 1].best.max;
+      const level = Standards.levelOf(max, Standards.thresholds(refId, sex, bodyWeightLbs));
+      const info = Library.get(refId);
+      for (const m of info.primary) {
+        if (!levels[m] || level > levels[m].level) levels[m] = { level, exercise: info.name };
+      }
+    }
+    return levels;
+  },
+
+  // Whether any exercise with published standards trains this muscle as a primary muscle.
+  hasStandards(muscleId) {
+    return Object.keys(STANDARDS).some(refId => Library.get(refId).primary.includes(muscleId));
+  },
+
   // Planned sets from your week (not logged workouts), for a list of day exercises:
   //   muscles = { muscleId: sets }       each exercise's target sets × 1 (primary) or × 0.5 (secondary)
   //   groups  = { 'Chest': sets, … }    per muscle group; an exercise counts once per group,

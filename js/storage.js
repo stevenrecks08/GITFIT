@@ -7,7 +7,7 @@
 // Shape of the saved data:
 // {
 //   version: 4,
-//   settings: { name, units: 'imperial' | 'metric', heightIn, bodyWeightLbs },
+//   settings: { name, units: 'imperial' | 'metric', heightIn, bodyWeightLbs, sex: 'male' | 'female' },
 //   customExercises: [     // your own exercises, used alongside LIBRARY in library.js
 //     { id: 'custom-…', name, equipment, primary: [muscle ids], secondary: [muscle ids], custom: true }
 //   ],
@@ -50,6 +50,7 @@ const DEFAULT_SETTINGS = {
   units: 'imperial',
   heightIn: null,
   bodyWeightLbs: null,
+  sex: 'male', // for strength standards: 'male' | 'female'
 };
 
 // Before version 4, exercises had one muscle group picked from a short list.
