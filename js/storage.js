@@ -175,7 +175,8 @@ function linkToLibrary(days, customExercises) {
 function normalize(data) {
   const days = buildWeek(Array.isArray(data.days) ? data.days : []);
   const customExercises = Array.isArray(data.customExercises) ? data.customExercises : [];
-  const sessions = Array.isArray(data.sessions) ? data.sessions : [];
+  // Sample workouts (demo: true) came from a temporary demo file; they're dropped.
+  const sessions = (Array.isArray(data.sessions) ? data.sessions : []).filter(s => !s.demo);
 
   // Version 1 had a single target "reps" number; now it's a range.
   for (const day of days) {
