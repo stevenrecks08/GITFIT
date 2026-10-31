@@ -1,0 +1,295 @@
+/* ---------- Theme colors (change these to restyle the whole app) ---------- */
+:root {
+  --bg: #0f1115;
+  --surface: #1a1d24;
+  --surface-2: #242833;
+  --border: #2e3340;
+  --text: #f2f4f8;
+  --muted: #9aa3b2;
+  --accent: #4ade80;      /* main buttons */
+  --accent-text: #06210f;
+  --danger: #f87171;
+  --rest: #60a5fa;        /* rest days */
+  --radius: 14px;
+  --tap: 52px;            /* minimum height for anything you tap */
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 17px;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ---------- Top bar ---------- */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 56px;
+  padding: env(safe-area-inset-top) 16px 0;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+.topbar h1 {
+  margin: 0;
+  font-size: 20px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.back-btn {
+  min-height: 44px;
+  padding: 0 8px 0 0;
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 18px;
+}
+
+.gear-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  margin-left: auto;
+  margin-right: -10px;
+  color: var(--muted);
+}
+.gear-btn[hidden] { display: none; }
+.gear-btn:active { color: var(--text); }
+
+main {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 16px 16px calc(32px + env(safe-area-inset-bottom));
+}
+
+h2 {
+  margin: 28px 0 10px;
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+h2:first-child { margin-top: 4px; }
+
+.muted { color: var(--muted); }
+.empty { color: var(--muted); padding: 12px 0; }
+
+/* ---------- Buttons ---------- */
+button, .btn {
+  font: inherit;
+  cursor: pointer;
+}
+.btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: var(--tap);
+  padding: 0 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--text);
+  font-weight: 600;
+}
+.btn:active { opacity: 0.7; }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.btn-danger  { background: transparent; border-color: var(--danger); color: var(--danger); }
+.btn-small   { width: auto; min-height: 44px; min-width: 44px; padding: 0 12px; font-size: 15px; }
+
+.row { display: flex; gap: 10px; }
+.row > * { flex: 1; }
+.stack > * + * { margin-top: 10px; }
+
+/* ---------- Cards / lists ---------- */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+}
+.card + .card { margin-top: 10px; }
+
+.day-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.day-card .day-open {
+  flex: 1;
+  min-height: 64px;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--text);
+  text-align: left;
+}
+.day-card .day-name { display: block; font-size: 19px; font-weight: 700; }
+.day-card .day-meta { display: block; font-size: 14px; color: var(--muted); margin-top: 2px; }
+.day-card .day-name .tag { vertical-align: 2px; margin-left: 4px; }
+
+/* Rest days: blue dashed outline so they stand apart from workout days */
+.day-card.is-rest { background: transparent; border: 1px dashed var(--rest); }
+.day-card.is-rest .day-open { display: flex; flex-direction: column; justify-content: center; }
+.day-card.is-rest .day-name { color: var(--muted); }
+.day-card.is-rest .rest-word { color: var(--rest); }
+
+.tag.tag-today { background: var(--accent); color: var(--accent-text); font-weight: 700; }
+
+.tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.banner {
+  background: #16331f;
+  border-color: var(--accent);
+}
+
+/* ---------- Forms ---------- */
+label { display: block; font-size: 14px; color: var(--muted); margin-bottom: 6px; }
+
+input, select {
+  width: 100%;
+  min-height: var(--tap);
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 18px; /* 16px+ stops iPhone from zooming in on tap */
+}
+input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* Inputs side by side with small words between them: "8 to 12", "5 ft 10 in" */
+.range-row { align-items: center; gap: 8px; }
+.range-sep { flex: 0 0 auto; color: var(--muted); }
+
+/* Big tappable options (radio buttons styled as cards) */
+.choices { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.choice {
+  display: block;
+  margin: 0;
+  padding: 14px;
+  min-height: 72px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 17px;
+  cursor: pointer;
+}
+.choice input { position: absolute; opacity: 0; pointer-events: none; }
+.choice strong { display: block; }
+.choice .muted { display: block; font-size: 14px; margin-top: 2px; }
+.choice:has(input:checked) { border-color: var(--accent); background: #16331f; }
+.choice:has(input:focus-visible) { outline: 2px solid var(--accent); }
+
+/* ---------- Day editor: exercise rows ---------- */
+.ex-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ex-row .ex-info {
+  flex: 1;
+  min-width: 0;
+  min-height: var(--tap);
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--text);
+  text-align: left;
+}
+.ex-row .ex-name { display: block; font-weight: 600; overflow-wrap: anywhere; }
+.ex-row .ex-meta { display: block; font-size: 14px; color: var(--muted); margin-top: 2px; }
+.ex-row.is-editing { outline: 2px solid var(--accent); }
+
+/* ---------- Workout screen ---------- */
+.workout-ex { padding: 0; scroll-margin-top: 72px; }
+.workout-ex + .workout-ex { margin-top: 8px; }
+.workout-ex.is-open { border-color: var(--accent); }
+
+/* The tappable summary row */
+.ex-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 64px;
+  padding: 10px 14px;
+  background: none;
+  border: none;
+  color: var(--text);
+  text-align: left;
+}
+.ex-toggle-main { flex: 1; min-width: 0; }
+.ex-toggle .ex-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.check {
+  flex: 0 0 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 800;
+  line-height: 28px;
+  text-align: center;
+}
+.check[hidden] { display: none; }
+
+.ex-body { padding: 0 14px 14px; }
+.ex-body > .ex-sub { margin: 0 0 10px; }
+
+.ex-title { display: block; font-size: 18px; font-weight: 700; overflow-wrap: anywhere; }
+.ex-sub { display: block; font-size: 14px; color: var(--muted); margin-top: 4px; }
+
+.set-grid {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+.set-grid .col-head { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.set-num { font-weight: 700; color: var(--muted); text-align: center; }
+.set-grid input { text-align: center; padding: 0 6px; }
+.set-grid input::placeholder { color: #5d6573; }
+
+
+.finish-bar { margin-top: 20px; }
+
+/* ---------- Toast message ---------- */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(24px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100% - 32px);
+  padding: 12px 18px;
+  border-radius: 999px;
+  background: var(--text);
+  color: var(--bg);
+  font-weight: 600;
+  z-index: 20;
+}

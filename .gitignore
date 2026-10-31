@@ -1,0 +1,7 @@
+# Windows clutter
+Thumbs.db
+desktop.ini
+
+# Local editor/tool config
+.claude/launch.json
+.vscode/
