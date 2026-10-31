@@ -57,6 +57,19 @@ html, body {
   font-size: 18px;
 }
 
+.gear-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  margin-left: auto;
+  margin-right: -10px;
+  color: var(--muted);
+}
+.gear-btn[hidden] { display: none; }
+.gear-btn:active { color: var(--text); }
+
 /* Bottom padding leaves room so the last item can scroll above the tab bar */
 main {
   max-width: 640px;
@@ -281,15 +294,20 @@ input[type="search"] { -webkit-appearance: none; appearance: none; }
 .muscle-line { font-size: 14px; color: var(--muted); margin-top: 4px; }
 .muscle-line b { color: var(--text); font-weight: 600; }
 
-/* Muscle checkboxes styled as tappable pills */
-.chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; border: none; min-width: 0; }
-.chips legend { padding: 0; margin-bottom: 8px; font-size: 14px; color: var(--muted); }
-.chips legend .muted { font-size: 13px; }
-.chip { position: relative; margin: 0; }
-.chip input { position: absolute; top: 0; left: 0; width: 1px; height: 1px; min-height: 0; opacity: 0; pointer-events: none; }
-.chip span {
+.lib-more { margin: 0; padding: 10px 14px; font-size: 13px; color: var(--muted); }
+
+/* Custom exercise: type-to-find muscle picker */
+.muscle-picker label .muted { font-size: 13px; }
+.picked-muscles, .muscle-suggestions { display: flex; flex-wrap: wrap; gap: 8px; }
+.picked-muscles { margin-bottom: 8px; }
+.muscle-suggestions:not(:empty) { margin-top: 8px; }
+.muscle-suggestions .empty { padding: 4px 0; }
+.none-picked { font-size: 14px; }
+
+.chip-btn {
   display: inline-flex;
   align-items: center;
+  gap: 6px;
   min-height: 44px;
   padding: 0 14px;
   border: 1px solid var(--border);
@@ -297,12 +315,12 @@ input[type="search"] { -webkit-appearance: none; appearance: none; }
   background: var(--surface-2);
   color: var(--text);
   font-size: 15px;
-  cursor: pointer;
 }
-.chip input:checked + span { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
-.chip input:focus-visible + span { outline: 2px solid var(--accent); }
-/* Secondary muscles count half, so they get a lighter "half" style */
-.chips-secondary .chip input:checked + span { background: #16331f; color: var(--accent); }
+.chip-btn:active { opacity: 0.7; }
+.chip-group { font-size: 12px; color: var(--muted); }
+/* Picked muscles: solid green; secondary ones count half, so they get a lighter "half" style */
+.chip-btn.is-picked { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
+.is-secondary .chip-btn.is-picked { background: #16331f; color: var(--accent); }
 
 /* ---------- Workout screen ---------- */
 .workout-ex { padding: 0; scroll-margin-top: 72px; }
@@ -380,17 +398,8 @@ input[type="search"] { -webkit-appearance: none; appearance: none; }
 }
 .profile-name { margin: 0; font-size: 24px; font-weight: 700; text-align: center; overflow-wrap: anywhere; }
 
-/* A big section heading (e.g. "Settings") with the small h2 labels inside it */
-h2.section-title {
-  margin: 32px 0 0;
-  padding-top: 20px;
-  border-top: 1px solid var(--border);
-  font-size: 22px;
-  text-transform: none;
-  letter-spacing: 0;
-  color: var(--text);
-}
-h2.section-title + form > h2:first-child { margin-top: 16px; }
+.profile-stats { margin: -6px 0 0; font-size: 15px; }
+.note { margin: 0; font-size: 14px; }
 
 /* ---------- Toast message ---------- */
 .toast {

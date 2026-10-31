@@ -1,31 +1,27 @@
-// library.js — the built-in exercise library, plus your custom exercises.
+// library.js — the built-in exercise library, the muscle catalog, and search.
 //
 // Every exercise lists the muscles it works:
 //   primary   → counts as 1 set for that muscle per set done
 //   secondary → counts as 0.5 sets
 // Days in your week point at an exercise here by its id (refId).
 
-// Muscle regions. The id is what's saved; the label is what's shown.
-const MUSCLES = {
-  upperChest: 'Upper chest',
-  midChest: 'Mid chest',
-  lowerChest: 'Lower chest',
-  frontDelts: 'Front delts',
-  sideDelts: 'Side delts',
-  rearDelts: 'Rear delts',
-  lats: 'Lats',
-  upperBack: 'Upper back / traps',
-  lowerBack: 'Lower back',
-  biceps: 'Biceps',
-  triceps: 'Triceps',
-  forearms: 'Forearms',
-  abs: 'Abs',
-  obliques: 'Obliques',
-  quads: 'Quads',
-  hamstrings: 'Hamstrings',
-  glutes: 'Glutes',
-  calves: 'Calves',
-};
+// The muscle catalog, grouped. The id (left) is what's saved; the label is what's shown.
+const MUSCLE_GROUPS = [
+  { name: 'Chest', muscles: { upperChest: 'Upper chest', midChest: 'Mid chest', lowerChest: 'Lower chest' } },
+  { name: 'Shoulders', muscles: { frontDelts: 'Front delts', sideDelts: 'Side delts', rearDelts: 'Rear delts' } },
+  { name: 'Back', muscles: { lats: 'Lats', upperBack: 'Upper back', traps: 'Traps', lowerBack: 'Lower back' } },
+  { name: 'Arms', muscles: { biceps: 'Biceps', brachialis: 'Brachialis', triceps: 'Triceps' } },
+  { name: 'Forearms', muscles: { brachioradialis: 'Brachioradialis', forearmFlexors: 'Forearm flexors', forearmExtensors: 'Forearm extensors' } },
+  { name: 'Core', muscles: { abs: 'Abs', obliques: 'Obliques' } },
+  { name: 'Legs', muscles: { quads: 'Quads', hamstrings: 'Hamstrings', glutes: 'Glutes', adductors: 'Adductors', calves: 'Calves' } },
+];
+
+// Every muscle in one list: { upperChest: 'Upper chest', … }
+const MUSCLES = Object.assign({}, ...MUSCLE_GROUPS.map(g => g.muscles));
+
+// Which group each muscle is in: { upperChest: 'Chest', … }
+const MUSCLE_GROUP_OF = {};
+for (const group of MUSCLE_GROUPS) for (const id in group.muscles) MUSCLE_GROUP_OF[id] = group.name;
 
 const EQUIPMENT = ['Barbell', 'Dumbbell', 'Machine', 'Cable', 'Smith machine', 'Bodyweight', 'Other'];
 
@@ -56,7 +52,7 @@ const LIBRARY = [
 
   // ----- Back -----
   ex('pull-up', 'Pull-Up', 'Bodyweight', ['lats'], ['biceps', 'upperBack'], ['pullup', 'pull ups']),
-  ex('chin-up', 'Chin-Up', 'Bodyweight', ['lats'], ['biceps', 'upperBack'], ['chinup', 'chin ups']),
+  ex('chin-up', 'Chin-Up', 'Bodyweight', ['lats'], ['biceps', 'brachialis', 'upperBack'], ['chinup', 'chin ups']),
   ex('assisted-pull-up', 'Assisted Pull-Up Machine', 'Machine', ['lats'], ['biceps', 'upperBack'], ['assisted pull up', 'assisted chin up']),
   ex('lat-pulldown', 'Lat Pulldown', 'Cable', ['lats'], ['biceps', 'upperBack'], ['pulldown', 'wide grip pulldown']),
   ex('close-grip-lat-pulldown', 'Close-Grip Lat Pulldown', 'Cable', ['lats'], ['biceps', 'upperBack'], ['close grip pulldown', 'v bar pulldown']),
@@ -67,10 +63,10 @@ const LIBRARY = [
   ex('seated-cable-row', 'Seated Cable Row', 'Cable', ['upperBack', 'lats'], ['biceps', 'rearDelts'], ['cable row', 'low row']),
   ex('chest-supported-machine-row', 'Chest-Supported Machine Row', 'Machine', ['upperBack'], ['lats', 'rearDelts', 'biceps'], ['machine row', 'seated machine row']),
   ex('t-bar-row', 'T-Bar Row', 'Barbell', ['upperBack', 'lats'], ['biceps', 'rearDelts', 'lowerBack'], ['tbar row']),
-  ex('dumbbell-shrug', 'Dumbbell Shrug', 'Dumbbell', ['upperBack'], ['forearms'], ['shrug', 'shrugs']),
-  ex('deadlift', 'Deadlift', 'Barbell', ['glutes', 'hamstrings', 'lowerBack'], ['upperBack', 'quads', 'forearms'], ['conventional deadlift']),
+  ex('dumbbell-shrug', 'Dumbbell Shrug', 'Dumbbell', ['traps'], ['forearmFlexors'], ['shrug', 'shrugs']),
+  ex('deadlift', 'Deadlift', 'Barbell', ['glutes', 'hamstrings', 'lowerBack'], ['upperBack', 'traps', 'quads', 'forearmFlexors'], ['conventional deadlift']),
   ex('back-extension', 'Back Extension', 'Bodyweight', ['lowerBack'], ['glutes', 'hamstrings'], ['hyperextension', '45 degree back extension']),
-  ex('face-pull', 'Face Pull', 'Cable', ['rearDelts'], ['upperBack'], ['face pulls']),
+  ex('face-pull', 'Face Pull', 'Cable', ['rearDelts'], ['upperBack', 'traps'], ['face pulls']),
 
   // ----- Shoulders -----
   ex('overhead-press', 'Overhead Press', 'Barbell', ['frontDelts'], ['sideDelts', 'triceps'], ['ohp', 'military press', 'barbell overhead press']),
@@ -79,39 +75,42 @@ const LIBRARY = [
   ex('dumbbell-lateral-raise', 'Dumbbell Lateral Raise', 'Dumbbell', ['sideDelts'], [], ['lateral raise', 'side raise', 'lateral raises']),
   ex('cable-lateral-raise', 'Cable Lateral Raise', 'Cable', ['sideDelts'], [], ['cable side raise']),
   ex('machine-lateral-raise', 'Machine Lateral Raise', 'Machine', ['sideDelts'], [], ['lateral raise machine']),
-  ex('cable-upright-row', 'Cable Upright Row', 'Cable', ['sideDelts'], ['upperBack'], ['upright row']),
+  ex('cable-upright-row', 'Cable Upright Row', 'Cable', ['sideDelts'], ['traps'], ['upright row']),
   ex('dumbbell-front-raise', 'Dumbbell Front Raise', 'Dumbbell', ['frontDelts'], [], ['front raise']),
   ex('reverse-pec-deck', 'Reverse Pec Deck', 'Machine', ['rearDelts'], ['upperBack'], ['rear delt machine', 'reverse fly machine']),
   ex('dumbbell-rear-delt-fly', 'Dumbbell Rear Delt Fly', 'Dumbbell', ['rearDelts'], ['upperBack'], ['rear delt fly', 'bent over reverse fly']),
   ex('cable-rear-delt-fly', 'Cable Rear Delt Fly', 'Cable', ['rearDelts'], ['upperBack'], ['cable reverse fly']),
 
   // ----- Arms -----
-  ex('barbell-curl', 'Barbell Curl', 'Barbell', ['biceps'], ['forearms'], ['ez bar curl']),
-  ex('dumbbell-curl', 'Dumbbell Curl', 'Dumbbell', ['biceps'], ['forearms'], ['curl', 'bicep curl', 'biceps curl', 'db curl']),
-  ex('hammer-curl', 'Hammer Curl', 'Dumbbell', ['biceps'], ['forearms'], ['hammer curls']),
+  ex('barbell-curl', 'Barbell Curl', 'Barbell', ['biceps'], ['brachialis', 'brachioradialis'], ['ez bar curl']),
+  ex('dumbbell-curl', 'Dumbbell Curl', 'Dumbbell', ['biceps'], ['brachialis', 'brachioradialis'], ['curl', 'bicep curl', 'biceps curl', 'db curl']),
+  ex('hammer-curl', 'Hammer Curl', 'Dumbbell', ['brachialis', 'brachioradialis'], ['biceps'], ['hammer curls']),
   ex('incline-dumbbell-curl', 'Incline Dumbbell Curl', 'Dumbbell', ['biceps'], [], ['incline curl']),
-  ex('cable-curl', 'Cable Curl', 'Cable', ['biceps'], ['forearms'], ['cable bicep curl']),
-  ex('machine-preacher-curl', 'Machine Preacher Curl', 'Machine', ['biceps'], [], ['preacher curl', 'machine curl']),
+  ex('cable-curl', 'Cable Curl', 'Cable', ['biceps'], ['brachialis'], ['cable bicep curl']),
+  ex('machine-preacher-curl', 'Machine Preacher Curl', 'Machine', ['biceps'], ['brachialis'], ['preacher curl', 'machine curl']),
+  ex('reverse-curl', 'EZ-Bar Reverse Curl', 'Barbell', ['brachioradialis'], ['brachialis', 'forearmExtensors'], ['reverse curl', 'reverse grip curl']),
   ex('triceps-pushdown', 'Triceps Pushdown', 'Cable', ['triceps'], [], ['tricep pushdown', 'rope pushdown', 'pushdown', 'cable pushdown']),
   ex('overhead-cable-triceps-extension', 'Overhead Cable Triceps Extension', 'Cable', ['triceps'], [], ['overhead triceps extension', 'overhead extension']),
   ex('skull-crusher', 'Skull Crusher', 'Barbell', ['triceps'], [], ['lying triceps extension', 'skullcrusher']),
   ex('close-grip-bench-press', 'Close-Grip Bench Press', 'Barbell', ['triceps'], ['midChest', 'frontDelts'], ['cgbp', 'close grip bench']),
   ex('machine-triceps-dip', 'Machine Triceps Dip', 'Machine', ['triceps'], ['lowerChest', 'frontDelts'], ['seated dip machine', 'tricep dip machine']),
-  ex('dumbbell-wrist-curl', 'Dumbbell Wrist Curl', 'Dumbbell', ['forearms'], [], ['wrist curl']),
+  ex('dumbbell-wrist-curl', 'Dumbbell Wrist Curl', 'Dumbbell', ['forearmFlexors'], [], ['wrist curl']),
+  ex('reverse-wrist-curl', 'Dumbbell Reverse Wrist Curl', 'Dumbbell', ['forearmExtensors'], [], ['reverse wrist curl', 'wrist extension']),
 
   // ----- Legs -----
-  ex('barbell-back-squat', 'Barbell Back Squat', 'Barbell', ['quads', 'glutes'], ['lowerBack'], ['squat', 'back squat', 'squats']),
+  ex('barbell-back-squat', 'Barbell Back Squat', 'Barbell', ['quads', 'glutes'], ['adductors', 'lowerBack'], ['squat', 'back squat', 'squats']),
   ex('hack-squat', 'Hack Squat', 'Machine', ['quads'], ['glutes'], ['machine hack squat']),
-  ex('leg-press', 'Leg Press', 'Machine', ['quads'], ['glutes'], ['45 degree leg press']),
+  ex('leg-press', 'Leg Press', 'Machine', ['quads'], ['glutes', 'adductors'], ['45 degree leg press']),
   ex('smith-machine-squat', 'Smith Machine Squat', 'Smith machine', ['quads'], ['glutes'], ['smith squat']),
-  ex('bulgarian-split-squat', 'Bulgarian Split Squat', 'Dumbbell', ['quads', 'glutes'], ['hamstrings'], ['split squat', 'bss']),
-  ex('walking-lunge', 'Walking Lunge', 'Dumbbell', ['quads', 'glutes'], ['hamstrings'], ['lunge', 'lunges']),
+  ex('bulgarian-split-squat', 'Bulgarian Split Squat', 'Dumbbell', ['quads', 'glutes'], ['adductors', 'hamstrings'], ['split squat', 'bss']),
+  ex('walking-lunge', 'Walking Lunge', 'Dumbbell', ['quads', 'glutes'], ['adductors', 'hamstrings'], ['lunge', 'lunges']),
   ex('leg-extension', 'Leg Extension', 'Machine', ['quads'], [], ['leg extensions', 'quad extension']),
   ex('romanian-deadlift', 'Romanian Deadlift', 'Barbell', ['hamstrings', 'glutes'], ['lowerBack'], ['rdl', 'stiff leg deadlift']),
   ex('lying-leg-curl', 'Lying Leg Curl', 'Machine', ['hamstrings'], [], ['leg curl', 'hamstring curl']),
   ex('seated-leg-curl', 'Seated Leg Curl', 'Machine', ['hamstrings'], [], ['seated hamstring curl']),
   ex('barbell-hip-thrust', 'Barbell Hip Thrust', 'Barbell', ['glutes'], ['hamstrings'], ['hip thrust', 'hip thrusts']),
   ex('hip-abduction-machine', 'Hip Abduction Machine', 'Machine', ['glutes'], [], ['hip abduction', 'abductor']),
+  ex('hip-adduction-machine', 'Hip Adduction Machine', 'Machine', ['adductors'], [], ['hip adduction', 'adductor', 'inner thigh']),
   ex('cable-glute-kickback', 'Cable Glute Kickback', 'Cable', ['glutes'], ['hamstrings'], ['glute kickback', 'kickback']),
   ex('standing-calf-raise', 'Standing Calf Raise', 'Machine', ['calves'], [], ['calf raise', 'calf raises']),
   ex('seated-calf-raise', 'Seated Calf Raise', 'Machine', ['calves'], [], ['seated calf']),
@@ -124,14 +123,42 @@ const LIBRARY = [
   ex('cable-woodchopper', 'Cable Woodchopper', 'Cable', ['obliques'], ['abs'], ['woodchop', 'wood chopper']),
 ];
 
+// How many exercise matches to show at once. Fewer, better matches beat a long list.
+const MAX_RESULTS = 8;
+
+// Every word used in muscle names and groups ("upper", "chest", "back", "delts", …).
+const MUSCLE_WORDS = [...new Set(MUSCLE_GROUPS.flatMap(g =>
+  [g.name, ...Object.values(g.muscles)]).flatMap(text => text.toLowerCase().split(/[^a-z0-9]+/)))];
+
 // Lowercase, letters and numbers only: "Push-Ups!" → "pushups"
 function simplify(text) {
   return String(text || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
+// Splits text into simplified words: "Low-to-High Cable Fly" → ['low', 'to', 'high', 'cable', 'fly']
+function words(text) {
+  return String(text || '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+}
+
 // "Upper chest, Front delts"
 function muscleNames(ids) {
   return ids.map(id => MUSCLES[id] || id).join(', ');
+}
+
+// Scores how well typed words match a set of word lists, best first.
+// Each typed word must be the start of some word in one of the lists, or nothing matches (0).
+// lists: [ [words, points], … ] — earlier, more important lists give more points.
+function matchScore(typed, lists) {
+  let score = 0;
+  for (const t of typed) {
+    let best = 0;
+    for (const [list, points] of lists) {
+      if (list.some(w => w.startsWith(t))) best = Math.max(best, points);
+    }
+    if (!best) return 0;
+    score += best;
+  }
+  return score;
 }
 
 const Library = {
@@ -151,20 +178,56 @@ const Library = {
       || { id: dayExercise.refId, name: 'Unknown exercise', equipment: 'Other', primary: [], secondary: [] };
   },
 
-  // Matches on name, other names, equipment and muscles ("chest", "cable", "rdl").
-  // Every word must appear somewhere; results containing the whole phrase come first,
-  // so "upper chest" lists upper-chest exercises before e.g. a chest-supported row.
+  // Finds the exercises you're most likely typing, best first.
+  // Words can be the start of a word ("inc ben" → Incline Bench Press) and can match
+  // the name, other names, the primary muscles or the equipment — name matches rank highest.
+  // Returns { results, total } where total counts every match, not just the ones shown.
   search(query) {
-    const words = query.toLowerCase().split(/\s+/).filter(Boolean).map(simplify);
+    const typed = words(query);
+    if (!typed.length) return { results: [], total: 0 };
     const phrase = simplify(query);
-    const searchText = e => simplify([e.name, e.equipment, ...(e.aliases || []),
-      ...e.primary.map(id => MUSCLES[id])].join(' '));
-    const ranked = this.all()
-      .map(e => ({ e, text: searchText(e) }))
-      .filter(({ text }) => words.every(w => text.includes(w)))
-      .map(({ e, text }) => ({ e, rank: text.includes(phrase) ? 0 : 1 }));
-    ranked.sort((a, b) => a.rank - b.rank || a.e.name.localeCompare(b.e.name));
-    return ranked.map(r => r.e);
+
+    const scored = [];
+    for (const e of this.all()) {
+      const nameWords = words(e.name);
+      const aliasWords = (e.aliases || []).flatMap(words);
+      const muscleWords = e.primary.flatMap(id => [...words(MUSCLES[id]), ...words(MUSCLE_GROUP_OF[id])]);
+      const equipmentWords = words(e.equipment);
+
+      // Each typed word must match something. Points add up when it matches in
+      // several places, so "chest" scores higher on Machine Chest Press (name + muscle)
+      // than on Barbell Bench Press (muscle only).
+      let score = 0;
+      for (const t of typed) {
+        const inName = nameWords.some(w => w.startsWith(t));
+        const inAlias = aliasWords.some(w => w.startsWith(t));
+        const inMuscles = muscleWords.some(w => w.startsWith(t));
+        const inEquipment = equipmentWords.some(w => w.startsWith(t));
+        if (!inName && !inAlias && !inMuscles && !inEquipment) { score = 0; break; }
+        // A muscle word ("chest", "back") in the name of an exercise that doesn't
+        // train that muscle (Chest-Supported Row, Back Squat) counts for little.
+        const nameCounts = !MUSCLE_WORDS.some(w => w.startsWith(t)) || inMuscles;
+        score += (inName ? (nameCounts ? 3 : 0.5) : 0) + (inAlias ? (nameCounts ? 2 : 0.5) : 0)
+          + (inMuscles ? 2 : 0) + (inEquipment ? 1 : 0);
+      }
+      if (!score) continue;
+      if (simplify(e.name).startsWith(phrase)) score += 3;   // typing the start of the name
+      if ((e.aliases || []).some(a => simplify(a) === phrase)) score += 3; // exact nickname, e.g. "rdl"
+      scored.push({ e, score });
+    }
+
+    scored.sort((a, b) => b.score - a.score || a.e.name.localeCompare(b.e.name));
+    return { results: scored.slice(0, MAX_RESULTS).map(s => s.e), total: scored.length };
+  },
+
+  // Muscles you're likely typing: matches the muscle's name or its group
+  // ("chest" → upper/mid/lower chest, "fore" → the three forearm muscles).
+  // Leaves out ids in `exclude` (already picked). Returns muscle ids in catalog order.
+  searchMuscles(query, exclude = []) {
+    const typed = words(query);
+    if (!typed.length) return [];
+    return Object.keys(MUSCLES).filter(id => !exclude.includes(id) &&
+      matchScore(typed, [[words(MUSCLES[id]), 2], [words(MUSCLE_GROUP_OF[id]), 1]]) > 0);
   },
 
   // Exact name or alias match, ignoring case, punctuation and a plural "s"
@@ -178,7 +241,7 @@ const Library = {
 
   // Short primary-muscle label for tags: "Upper chest", "Quads, Glutes", "Glutes +2"
   primaryLabel(exercise) {
-    const names = exercise.primary.map(id => MUSCLES[id]);
+    const names = exercise.primary.map(id => MUSCLES[id] || id);
     if (!names.length) return 'No muscles set';
     return names.length <= 2 ? names.join(', ') : `${names[0]} +${names.length - 1}`;
   },

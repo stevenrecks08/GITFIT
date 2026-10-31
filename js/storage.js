@@ -27,7 +27,7 @@
 // instead), and ones saved before version 2 have targetReps instead of targetRepMin/Max.
 
 const STORAGE_KEY = 'gitfit-data';
-const DATA_VERSION = 4;
+const DATA_VERSION = 5;
 
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
@@ -43,7 +43,7 @@ function todayWeekday() {
   return (new Date().getDay() + 6) % 7;
 }
 
-// To add a setting: give it a default here, a field in Views.profile(),
+// To add a setting: give it a default here, a field in Views.settings(),
 // and a line in saveSettingsForm() in app.js.
 const DEFAULT_SETTINGS = {
   name: 'Rex Stephenson',
@@ -61,13 +61,23 @@ const OLD_MUSCLE_GROUPS = {
   Shoulders: ['frontDelts'],
   Biceps: ['biceps'],
   Triceps: ['triceps'],
-  Forearms: ['forearms'],
+  Forearms: ['forearmFlexors'],
   Quads: ['quads'],
   Hamstrings: ['hamstrings'],
   Glutes: ['glutes'],
   Calves: ['calves'],
   Core: ['abs'],
 };
+
+// Muscle ids that were renamed or split in version 5 → their replacement.
+// ("Upper back / traps" became separate Upper back and Traps; upperBack keeps its id.)
+const RENAMED_MUSCLES = {
+  forearms: 'forearmFlexors',
+};
+
+function renameMuscles(ids) {
+  return [...new Set((ids || []).map(id => RENAMED_MUSCLES[id] || id))];
+}
 
 function newId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -173,7 +183,13 @@ function normalize(data) {
   for (const session of sessions) {
     for (const entry of session.exercises) {
       if (!entry.refId && refIds[entry.exerciseId]) entry.refId = refIds[entry.exerciseId];
+      if (entry.primary) entry.primary = renameMuscles(entry.primary);
+      if (entry.secondary) entry.secondary = renameMuscles(entry.secondary);
     }
+  }
+  for (const custom of customExercises) {
+    custom.primary = renameMuscles(custom.primary);
+    custom.secondary = renameMuscles(custom.secondary).filter(id => !custom.primary.includes(id));
   }
 
   return {
@@ -230,6 +246,12 @@ const Store = {
     this.data.customExercises.push(exercise);
     this.save();
     return exercise;
+  },
+
+  // Changes a custom exercise everywhere it's used. fields: { name, equipment, primary, secondary }
+  updateCustomExercise(id, fields) {
+    Object.assign(this.data.customExercises.find(e => e.id === id), fields);
+    this.save();
   },
 
   // fields: { refId, sets, repMin, repMax }

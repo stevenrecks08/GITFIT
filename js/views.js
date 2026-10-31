@@ -1,6 +1,7 @@
 // views.js — builds the HTML for each screen. No saving happens here.
-// Each view returns { title, back, html }:
-//   title = text in the top bar, back = where the Back button goes (or null).
+// Each view returns { title, back, html } and optionally gear: true:
+//   title = text in the top bar, back = where the Back button goes (or null),
+//   gear = show the Settings gear in the top bar.
 // Buttons use data-action="..." and are handled in app.js.
 
 // Makes user-typed text safe to put inside HTML.
@@ -183,14 +184,18 @@ const Views = {
   },
 
   // The search results list. Redrawn on its own while you type, so the search box keeps focus.
+  // Nothing is listed until you start typing, then only the best few matches.
   libraryResults(query) {
-    const results = Library.search(query);
+    if (!query.trim()) return '';
+    const { results, total } = Library.search(query);
     if (!results.length) return `<p class="empty">No matches. Create it as a custom exercise.</p>`;
+    const more = total > results.length
+      ? `<p class="lib-more">Showing the best ${results.length} of ${total} — keep typing to narrow it down.</p>` : '';
     return results.map(e => `
       <button type="button" class="lib-item" data-action="pick-exercise" data-id="${e.id}">
         <span class="lib-name">${esc(e.name)} ${e.custom ? '<span class="tag">Custom</span>' : ''}</span>
         <span class="lib-meta">${esc(e.equipment)} · ${esc(Library.primaryLabel(e))}</span>
-      </button>`).join('');
+      </button>`).join('') + more;
   },
 
   // Step 2: sets and reps for the picked exercise.
@@ -208,6 +213,7 @@ const Views = {
           </div>
           <button type="button" class="btn btn-small" data-action="change-exercise">Change</button>
         </div>
+        ${info.custom ? `<button type="button" class="btn" data-action="edit-custom">Edit custom exercise</button>` : ''}
         <div>
           <label for="ex-sets">Sets</label>
           <input id="ex-sets" name="sets" type="number" inputmode="numeric" min="1" max="20" value="${form.sets}" required>
@@ -230,36 +236,56 @@ const Views = {
       </form>`;
   },
 
-  // Or: create a custom exercise and pick its muscles.
-  // (A tappable body diagram can replace the muscle lists later.)
+  // Or: create (or edit) a custom exercise. Muscles are found by typing, like exercises.
+  // (A tappable body diagram can replace the muscle search later.)
   customExerciseForm(picker) {
-    const equipmentOptions = EQUIPMENT.map(e => `<option>${e}</option>`).join('');
-    const muscleChips = group => Object.entries(MUSCLES).map(([id, label]) => `
-      <label class="chip">
-        <input type="checkbox" name="${group}" value="${id}">
-        <span>${label}</span>
-      </label>`).join('');
+    const c = picker.custom;
+    const isEdit = Boolean(c.id);
+    const equipmentOptions = EQUIPMENT.map(e =>
+      `<option ${e === c.equipment ? 'selected' : ''}>${e}</option>`).join('');
+    const musclePicker = (role, title, detail) => `
+      <div class="muscle-picker ${role === 'secondary' ? 'is-secondary' : ''}">
+        <label for="muscle-search-${role}">${title} <span class="muted">— ${detail}</span></label>
+        <div class="picked-muscles" id="picked-${role}">${this.pickedMuscles(role, c[role])}</div>
+        <input type="search" id="muscle-search-${role}" data-muscle-search="${role}" autocomplete="off"
+          placeholder="Type a muscle, e.g. chest">
+        <div class="muscle-suggestions" id="suggest-${role}"></div>
+      </div>`;
     return `
       <form id="custom-form" class="card stack">
         <div>
           <label for="custom-name">Exercise name</label>
-          <input id="custom-name" name="name" value="${esc(picker.query)}" placeholder="e.g. Landmine Press" autocomplete="off" required>
+          <input id="custom-name" name="name" value="${esc(c.name)}" placeholder="e.g. Landmine Press" autocomplete="off" required>
         </div>
         <div>
           <label for="custom-equipment">Equipment</label>
           <select id="custom-equipment" name="equipment">${equipmentOptions}</select>
         </div>
-        <fieldset class="chips">
-          <legend>Primary muscles <span class="muted">— 1 set each</span></legend>
-          ${muscleChips('primary')}
-        </fieldset>
-        <fieldset class="chips chips-secondary">
-          <legend>Secondary muscles <span class="muted">— ½ set each</span></legend>
-          ${muscleChips('secondary')}
-        </fieldset>
-        <button class="btn btn-primary">Save exercise</button>
-        <button type="button" class="btn" data-action="cancel-custom">Back to library</button>
+        ${musclePicker('primary', 'Primary muscles', '1 set each')}
+        ${musclePicker('secondary', 'Secondary muscles', '½ set each')}
+        ${isEdit ? `<p class="muted note">Changes apply on every day that uses this exercise.
+          Past workouts keep the muscles they were logged with.</p>` : ''}
+        <button class="btn btn-primary">${isEdit ? 'Save changes' : 'Save exercise'}</button>
+        <button type="button" class="btn" data-action="cancel-custom">${isEdit ? 'Cancel' : 'Back to library'}</button>
       </form>`;
+  },
+
+  // The muscles already picked, as chips you tap to remove.
+  pickedMuscles(role, ids) {
+    if (!ids.length) return '<span class="muted none-picked">None yet</span>';
+    return ids.map(id => `
+      <button type="button" class="chip-btn is-picked" data-action="remove-muscle" data-role="${role}" data-id="${id}"
+        aria-label="Remove ${MUSCLES[id]}">${MUSCLES[id]} <span aria-hidden="true">×</span></button>`).join('');
+  },
+
+  // Muscles matching what you've typed, as chips you tap to add.
+  muscleSuggestions(role, query, exclude) {
+    if (!query.trim()) return '';
+    const ids = Library.searchMuscles(query, exclude);
+    if (!ids.length) return '<p class="empty">No muscle matches that.</p>';
+    return ids.map(id => `
+      <button type="button" class="chip-btn" data-action="add-muscle" data-role="${role}" data-id="${id}">
+        + ${MUSCLES[id]} <span class="chip-group">${MUSCLE_GROUP_OF[id]}</span></button>`).join('');
   },
 
   // ---------- Workout: compact list, one exercise expanded at a time ----------
@@ -334,12 +360,35 @@ const Views = {
     };
   },
 
-  // ---------- Profile: avatar + name, then the Settings section ----------
-  // Every setting lives in one form; app.js saves the whole form on any change.
-  // To add a setting, add a field here (and see DEFAULT_SETTINGS in storage.js).
+  // ---------- Profile: avatar + name. Settings open from the gear in the top bar. ----------
   profile() {
     const s = Store.data.settings;
     const name = profileName();
+    const height = Units.showHeight(s.heightIn);
+    const stats = [
+      s.heightIn == null ? '' : Units.isMetric() ? `${height.cm} cm` : `${height.ft}′${height.in}″`,
+      s.bodyWeightLbs == null ? '' : `${Units.showWeight(s.bodyWeightLbs)} ${Units.weightUnit()}`,
+    ].filter(Boolean).join(' · ');
+
+    return {
+      title: 'Profile',
+      back: null,
+      gear: true,
+      html: `
+        <div class="profile-head">
+          <div class="avatar" aria-hidden="true">${esc(initials(name))}</div>
+          <p class="profile-name">${esc(name)}</p>
+          ${stats ? `<p class="muted profile-stats">${stats}</p>` : ''}
+        </div>
+      `,
+    };
+  },
+
+  // ---------- Settings (opened from the gear on Profile) ----------
+  // Every setting lives in one form; app.js saves the whole form on any change.
+  // To add a setting, add a field here (and see DEFAULT_SETTINGS in storage.js).
+  settings() {
+    const s = Store.data.settings;
     const metric = Units.isMetric();
     const height = Units.showHeight(s.heightIn);
     const unitOption = (value, label, detail) => `
@@ -361,15 +410,9 @@ const Views = {
       </div>`;
 
     return {
-      title: 'Profile',
-      back: null,
+      title: 'Settings',
+      back: '#/profile',
       html: `
-        <div class="profile-head">
-          <div class="avatar" aria-hidden="true">${esc(initials(name))}</div>
-          <p class="profile-name" id="profile-name">${esc(name)}</p>
-        </div>
-
-        <h2 class="section-title">Settings</h2>
         <form id="settings-form">
           <h2>Units</h2>
           <div class="choices">

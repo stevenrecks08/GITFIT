@@ -4,13 +4,15 @@
 //   #/                 → home (the week)          [Workouts tab]
 //   #/day/<id>/edit    → edit a day               [Workouts tab]
 //   #/day/<id>         → do a workout for that day [Workouts tab]
-//   #/profile          → profile + settings       [Profile tab]
+//   #/profile          → profile                  [Profile tab]
+//   #/settings         → settings (gear on Profile) [Profile tab]
 // Using the URL means the browser/phone Back gesture works for free.
 
 const appEl = document.getElementById('app');
 const titleEl = document.getElementById('title');
 const backBtn = document.getElementById('back');
 const tabBarEl = document.getElementById('tabbar');
+const gearBtn = document.getElementById('gear');
 const toastEl = document.getElementById('toast');
 
 // The add/edit exercise panel on the edit-day screen:
@@ -18,9 +20,21 @@ const toastEl = document.getElementById('toast');
 //   refId      = the library/custom exercise picked
 //   mode       = 'pick' (search library), 'custom' (create custom), 'details' (sets & reps)
 //   query      = text in the search box
+//   custom     = the custom exercise being created: { name, equipment, primary: [], secondary: [] }
 let picker = newPicker();
 function newPicker() {
-  return { exerciseId: null, refId: null, mode: 'pick', query: '' };
+  return { exerciseId: null, refId: null, mode: 'pick', query: '', custom: null };
+}
+
+// Redraws just the muscle chips and suggestions on the custom exercise form,
+// so whatever search box you're typing in keeps focus.
+function refreshMusclePickers() {
+  for (const role of ['primary', 'secondary']) {
+    const picked = picker.custom[role];
+    document.getElementById(`picked-${role}`).innerHTML = Views.pickedMuscles(role, picked);
+    const query = document.getElementById(`muscle-search-${role}`).value;
+    document.getElementById(`suggest-${role}`).innerHTML = Views.muscleSuggestions(role, query, picked);
+  }
 }
 
 // Scrolls the add/edit panel into view (after picking, the form can be far down).
@@ -37,6 +51,7 @@ function currentRoute() {
     return { view: parts[2] === 'edit' ? 'edit' : 'workout', dayId: parts[1], tab: 'workouts' };
   }
   if (parts[0] === 'profile') return { view: 'profile', tab: 'profile' };
+  if (parts[0] === 'settings') return { view: 'settings', tab: 'profile' };
   return { view: 'home', tab: 'workouts' };
 }
 
@@ -52,6 +67,8 @@ function render() {
     screen = Views.home();
   } else if (route.view === 'profile') {
     screen = Views.profile();
+  } else if (route.view === 'settings') {
+    screen = Views.settings();
   } else {
     const day = Store.getDay(route.dayId);
     if (!day) return go('#/');
@@ -70,6 +87,7 @@ function render() {
   document.title = screen.title;
   backBtn.hidden = !screen.back;
   backBtn.dataset.href = screen.back || '';
+  gearBtn.hidden = !screen.gear;
   tabBarEl.innerHTML = tabBarHtml(route.tab);
   appEl.innerHTML = screen.html;
 }
@@ -128,12 +146,39 @@ const actions = {
 
   'new-custom'() {
     picker.mode = 'custom';
+    picker.custom = { id: null, name: picker.query.trim(), equipment: EQUIPMENT[0], primary: [], secondary: [] };
     render();
     showPanel();
   },
 
+  // Open the picked custom exercise in the custom form to change its name/muscles.
+  'edit-custom'() {
+    const e = Library.get(picker.refId);
+    picker.mode = 'custom';
+    picker.custom = { id: e.id, name: e.name, equipment: e.equipment, primary: [...e.primary], secondary: [...e.secondary] };
+    render();
+    showPanel();
+  },
+
+  // Tapped a suggested muscle. A muscle is primary or secondary, not both,
+  // so adding it to one list takes it out of the other.
+  'add-muscle'(id, button) {
+    const role = button.dataset.role;
+    const other = role === 'primary' ? 'secondary' : 'primary';
+    picker.custom[other] = picker.custom[other].filter(m => m !== id);
+    picker.custom[role].push(id);
+    refreshMusclePickers();
+  },
+
+  'remove-muscle'(id, button) {
+    const role = button.dataset.role;
+    picker.custom[role] = picker.custom[role].filter(m => m !== id);
+    refreshMusclePickers();
+  },
+
+  // Leaving the custom form: back to the library, or back to sets & reps when editing.
   'cancel-custom'() {
-    picker.mode = 'pick';
+    picker.mode = picker.custom.id ? 'details' : 'pick';
     render();
   },
 
@@ -204,6 +249,20 @@ appEl.addEventListener('input', event => {
     return;
   }
 
+  // Muscle search on the custom exercise form.
+  if (input.dataset.muscleSearch) {
+    const role = input.dataset.muscleSearch;
+    document.getElementById(`suggest-${role}`).innerHTML =
+      Views.muscleSuggestions(role, input.value, picker.custom[role]);
+    return;
+  }
+
+  // Remember the custom exercise's name, in case the form is redrawn.
+  if (input.id === 'custom-name') {
+    picker.custom.name = input.value;
+    return;
+  }
+
   const field = input.dataset.field;
   if (!field) return;
   const value = field === 'weight' ? Units.readWeight(input.value) : input.value.trim();
@@ -228,11 +287,6 @@ function saveSettingsForm(form) {
     heightIn: Units.readHeight({ ft: values.heightFt, in: values.heightIn, cm: values.heightCm }),
     bodyWeightLbs: Units.readWeight(values.bodyWeight),
   });
-
-  // Update the name and avatar at the top without redrawing (which would
-  // take focus away from the box you just tapped into).
-  document.getElementById('profile-name').textContent = profileName();
-  document.querySelector('.avatar').textContent = initials(profileName());
 }
 
 // Saves when you leave a box (or pick an option).
@@ -256,12 +310,8 @@ appEl.addEventListener('change', async event => {
     render();
   }
 
-  // Custom exercise muscles: a muscle can be primary or secondary, not both,
-  // so ticking it in one list unticks it in the other.
-  if (input.form && input.form.id === 'custom-form' && input.type === 'checkbox' && input.checked) {
-    const other = input.name === 'primary' ? 'secondary' : 'primary';
-    const twin = input.form.querySelector(`input[name="${other}"][value="${input.value}"]`);
-    if (twin) twin.checked = false;
+  if (input.id === 'custom-equipment') {
+    picker.custom.equipment = input.value;
   }
 
   if (input.id === 'import-file') {
@@ -314,19 +364,31 @@ appEl.addEventListener('submit', event => {
 
   // New custom exercise → save it, then go on to sets & reps.
   if (form.id === 'custom-form') {
-    const data = new FormData(form);
-    const primary = data.getAll('primary');
-    if (!primary.length) {
-      toast('Pick at least one primary muscle');
+    // Enter in a muscle search box adds the top suggestion instead of saving.
+    const muscleSearch = document.activeElement?.dataset?.muscleSearch;
+    if (muscleSearch) {
+      document.querySelector(`#suggest-${muscleSearch} [data-action="add-muscle"]`)?.click();
       return;
     }
-    const custom = Store.addCustomExercise({
+
+    const { primary, secondary } = picker.custom;
+    if (!primary.length) {
+      toast('Add at least one primary muscle');
+      document.getElementById('muscle-search-primary').focus();
+      return;
+    }
+    const fields = {
       name: values.name.trim(),
       equipment: values.equipment,
-      primary,
-      secondary: data.getAll('secondary').filter(id => !primary.includes(id)),
-    });
-    picker.refId = custom.id;
+      primary: [...primary],
+      secondary: [...secondary],
+    };
+    if (picker.custom.id) {
+      Store.updateCustomExercise(picker.custom.id, fields);
+      toast(`Saved ${fields.name}`);
+    } else {
+      picker.refId = Store.addCustomExercise(fields).id;
+    }
     picker.mode = 'details';
     render();
     showPanel();

@@ -34,14 +34,16 @@ All weights are **saved in lbs** and heights in **inches**, whatever the Units s
 
 ## Exercises and muscles
 
-Exercises on your days point at an exercise in `library.js` (or one of your custom exercises) by its id. Each library exercise has **primary** muscles (count as 1 set each) and **secondary** muscles (count as 0.5 sets each), using the muscle ids in `MUSCLES`. To add a built-in exercise, add a line to `LIBRARY`.
+Exercises on your days point at an exercise in `library.js` (or one of your custom exercises) by its id. Each library exercise has **primary** muscles (count as 1 set each) and **secondary** muscles (count as 0.5 sets each), using the muscle ids from `MUSCLE_GROUPS` (the full muscle catalog). To add a built-in exercise, add a line to `LIBRARY`.
+
+Exercise search shows nothing until you type, then only the best 8 matches. How matches are ranked is in `Library.search()`.
 
 Every finished workout also stores each exercise's name and muscles, so weekly sets per muscle can be counted from `Store.data.sessions` later.
 
 ## Adding a setting
 
 1. Add it with a default to `DEFAULT_SETTINGS` in `storage.js`.
-2. Add a field for it in `Views.profile()` in `views.js` (inside `settings-form`).
+2. Add a field for it in `Views.settings()` in `views.js` (inside `settings-form`). Settings open from the gear on the Profile tab.
 3. Read it in `saveSettingsForm()` in `app.js`.
 
 It's then saved automatically and included in backups.
