@@ -53,7 +53,7 @@ let openExerciseId = null;
 let logQuery = '';
 let logState = { month: null, day: null };
 
-// What the muscle map on Profile shows: 'growth', 'sets' or 'level'.
+// What the muscle map on Profile shows: 'growth' or 'level'.
 let mapMode = 'growth';
 
 function currentRoute() {
@@ -108,7 +108,13 @@ function render() {
   backBtn.hidden = !screen.back;
   backBtn.dataset.href = screen.back || '';
   gearBtn.hidden = !screen.gear;
+  // The tab bar only shows on each tab's main screen; deeper screens use Back.
+  const here = '#/' + location.hash.replace(/^#\/?/, '');
+  const showTabs = TABS.some(tab => tab.href === here);
+  tabBarEl.hidden = !showTabs;
+  document.body.classList.toggle('no-tabbar', !showTabs);
   tabBarEl.innerHTML = tabBarHtml(route.tab);
+  appEl.classList.remove('is-searching');
   appEl.innerHTML = screen.html;
 }
 
@@ -357,6 +363,17 @@ appEl.addEventListener('input', event => {
   if (!field) return;
   const value = field === 'weight' ? Units.readWeight(input.value) : input.value.trim();
   Store.updateDraftSet(input.dataset.ex, Number(input.dataset.set), field, value);
+});
+
+// Tapping the exercise search moves it to the top of the screen, so the results
+// show below it instead of under the keyboard. The extra space (is-searching) lets
+// the page scroll that far even before there are results.
+appEl.addEventListener('focusin', event => {
+  if (event.target.id !== 'lib-search') return;
+  appEl.classList.add('is-searching');
+  const pin = () => event.target.scrollIntoView({ block: 'start' });
+  pin();
+  setTimeout(pin, 350); // again once the iPhone keyboard has finished opening
 });
 
 // Reads the settings form and saves it.

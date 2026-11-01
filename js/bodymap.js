@@ -74,7 +74,6 @@ function mixColor(a, b, t) {
 }
 
 const GROWTH_SCALE = 10; // ±10% in 6 weeks is full red / full green
-const SETS_SCALE = 16;   // 16+ sets a week is the brightest green
 
 // One color per strength level, Beginner → Elite (LEVELS in standards.js).
 const LEVEL_COLORS = ['#60a5fa', '#4ade80', '#facc15', '#fb923c', '#e879f9'];
@@ -89,11 +88,6 @@ const MapColors = {
     if (pct == null) return MAP_EMPTY;
     const t = Math.max(-1, Math.min(1, pct / GROWTH_SCALE));
     return t < 0 ? mixColor('#facc15', '#f87171', -t) : mixColor('#facc15', '#4ade80', t);
-  },
-  // Gray (none) → dark green (a little) → bright green (a lot).
-  sets(perWeek) {
-    if (!perWeek) return MAP_EMPTY;
-    return mixColor('#173a27', '#4ade80', Math.min(1, perWeek / SETS_SCALE));
   },
 };
 

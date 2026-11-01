@@ -77,6 +77,10 @@ main {
   padding: 16px 16px calc(var(--tabbar-h) + 32px + env(safe-area-inset-bottom));
 }
 
+/* Screens without the tab bar (everything but each tab's main screen) */
+.no-tabbar main { padding-bottom: calc(32px + env(safe-area-inset-bottom)); }
+.tabbar[hidden] { display: none; }
+
 /* ---------- Bottom tab bar ---------- */
 .tabbar {
   position: fixed;
@@ -267,7 +271,14 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1p
 /* ---------- Exercise library (edit-day screen) ---------- */
 input[type="search"] { -webkit-appearance: none; appearance: none; }
 
-.lib-results { margin: 4px -14px -14px; border-top: 1px solid var(--border); }
+.lib-results { margin: 4px -14px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.lib-results:empty { display: none; }
+.lib-results:last-child { margin-bottom: -14px; border-bottom: none; }
+
+/* While typing in the exercise search: the box sits just under the top bar,
+   with room below so the page can scroll that far. */
+#lib-search { scroll-margin-top: calc(56px + env(safe-area-inset-top) + 12px); }
+main.is-searching { padding-bottom: 100vh; }
 .lib-item {
   display: block;
   width: 100%;
@@ -449,8 +460,7 @@ input[type="search"] { -webkit-appearance: none; appearance: none; }
 .legend-levels i { width: 12px; height: 12px; border-radius: 3px; }
 
 /* Planned sets per muscle group (Workouts tab) */
-.sets-table { display: grid; align-items: center; column-gap: 12px; row-gap: 10px; }
-.sets-head { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); text-align: right; }
+.sets-table { display: grid; grid-template-columns: auto 1fr 3.6em; align-items: center; column-gap: 12px; row-gap: 10px; }
 .sets-group { font-weight: 600; }
 .sets-bar { height: 6px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
 .sets-bar i { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
@@ -540,3 +550,4 @@ input[type="search"] { -webkit-appearance: none; appearance: none; }
   font-weight: 600;
   z-index: 20;
 }
+.no-tabbar .toast { bottom: calc(24px + env(safe-area-inset-bottom)); }

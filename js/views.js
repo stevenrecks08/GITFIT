@@ -40,23 +40,17 @@ function initials(name) {
   return name.split(/\s+/).map(word => word[0]).slice(0, 2).join('').toUpperCase();
 }
 
-// Planned sets per muscle group, one number column per entry in `columns`
-// ([{ label, groups: { 'Chest': 9, … } }]). The bar shows the last column against SETS_SCALE.
-function plannedSetsTable(columns) {
-  const names = MUSCLE_GROUPS.map(g => g.name).filter(name => columns.some(c => c.groups[name]));
+const SETS_SCALE = 16; // a full bar = 16+ sets a week
+
+// Planned sets per muscle group for the week ({ 'Chest': 9, … }), each with a bar.
+function plannedSetsTable(groups) {
+  const names = MUSCLE_GROUPS.map(g => g.name).filter(name => groups[name]);
   if (!names.length) return '<p class="empty">No exercises planned yet.</p>';
-  const show = n => (n ? String(Number(n.toFixed(1))) : '–');
-  const last = columns[columns.length - 1];
-  const head = columns.length > 1
-    ? `<span></span><span></span>${columns.map(c => `<span class="sets-head">${c.label}</span>`).join('')}` : '';
   const rows = names.map(name => `
     <span class="sets-group">${name}</span>
-    <span class="sets-bar"><i style="width:${Math.min(100, (last.groups[name] || 0) / SETS_SCALE * 100)}%"></i></span>
-    ${columns.map(c => `<span class="sets-num">${show(c.groups[name])}</span>`).join('')}`).join('');
-  return `
-    <div class="card sets-table" style="grid-template-columns: auto 1fr ${'3.6em '.repeat(columns.length)}">
-      ${head}${rows}
-    </div>`;
+    <span class="sets-bar"><i style="width:${Math.min(100, groups[name] / SETS_SCALE * 100)}%"></i></span>
+    <span class="sets-num">${Number(groups[name].toFixed(1))}</span>`).join('');
+  return `<div class="card sets-table">${rows}</div>`;
 }
 
 // "Oct 30"
@@ -227,7 +221,7 @@ const Views = {
         ${dayCards}
 
         <h2>Planned sets per week</h2>
-        ${plannedSetsTable([{ label: 'Sets', groups: Stats.weekPlannedSets().groups }])}
+        ${plannedSetsTable(Stats.weekPlannedSets().groups)}
       `,
     };
   },
@@ -293,12 +287,6 @@ const Views = {
         <h2>Exercises</h2>
         ${rows}
 
-        <h2>Planned sets</h2>
-        ${plannedSetsTable([
-          { label: 'This day', groups: Stats.plannedSets(day.exercises).groups },
-          { label: 'Week', groups: Stats.weekPlannedSets().groups },
-        ])}
-
         <h2>${editing ? 'Edit exercise' : 'Add exercise'}</h2>
         <div id="exercise-panel">${panel}</div>
       `,
@@ -311,8 +299,8 @@ const Views = {
       <div class="card stack">
         <input type="search" id="lib-search" value="${esc(picker.query)}"
           placeholder="Search name, muscle or equipment" autocomplete="off" aria-label="Search exercises">
-        <button type="button" class="btn" data-action="new-custom">+ Create custom exercise</button>
         <div id="lib-results" class="lib-results">${this.libraryResults(picker.query)}</div>
+        <button type="button" class="btn" data-action="new-custom">+ Create custom exercise</button>
         ${editing ? '<button type="button" class="btn" data-action="cancel-edit">Cancel</button>' : ''}
       </div>`;
   },
@@ -498,7 +486,7 @@ const Views = {
   },
 
   // ---------- Profile: avatar + name. Settings open from the gear in the top bar. ----------
-  // mapMode = which numbers the muscle map shows: 'growth', 'sets' or 'level'
+  // mapMode = which numbers the muscle map shows: 'growth' or 'level'
   profile(mapMode) {
     const s = Store.data.settings;
     const name = profileName();
@@ -526,24 +514,17 @@ const Views = {
 
   // ---------- Muscle map (on Profile) ----------
   muscleMap(mode) {
-    const values = mode === 'sets' ? Stats.weekPlannedSets().muscles
-      : mode === 'level' ? Stats.muscleLevels() : Stats.muscleGrowth();
+    const values = mode === 'level' ? Stats.muscleLevels() : Stats.muscleGrowth();
     const colors = {};
     for (const id in MUSCLES) colors[id] = MapColors[mode](values[id]);
 
-    const modes = { growth: 'Growth', sets: 'Sets', level: 'Level' };
+    const modes = { growth: 'Growth', level: 'Level' };
     const toggle = Object.entries(modes).map(([m, label]) => `
       <button type="button" class="segment ${m === mode ? 'is-active' : ''}" data-action="map-mode" data-id="${m}"
         aria-pressed="${m === mode}">${label}</button>`).join('');
 
     let legend, caption;
-    if (mode === 'sets') {
-      caption = 'Planned sets per week';
-      legend = `
-        <div class="legend-bar" style="background: linear-gradient(90deg, ${MapColors.sets(1)}, ${MapColors.sets(SETS_SCALE)})"></div>
-        <div class="legend-labels"><span>1</span><span>${SETS_SCALE / 2}</span><span>${SETS_SCALE}+ sets/week</span></div>
-        <p class="legend-empty"><i style="background:${MAP_EMPTY}"></i>No planned sets</p>`;
-    } else if (mode === 'level') {
+    if (mode === 'level') {
       caption = Store.data.settings.bodyWeightLbs
         ? `Strength level vs. published standards (${STANDARDS_SOURCE})`
         : 'Add your body weight in Settings to see levels';
@@ -572,7 +553,7 @@ const Views = {
       </div>`;
   },
 
-  // Popup text for a tapped muscle: "Biceps: +8% in 6 weeks", "Calves: 3 sets/week"
+  // Popup text for a tapped muscle: "Biceps: +8% in 6 weeks"
   // or "Upper chest: Intermediate (Incline Barbell Bench Press)"
   musclePopup(id, mode) {
     const name = MUSCLES[id];
@@ -581,10 +562,6 @@ const Views = {
       const value = Stats.muscleLevels()[id];
       if (value) return `${name}: ${LEVELS[value.level]} (${value.exercise})`;
       return Stats.hasStandards(id) ? `${name}: no logged exercise with a standard yet` : `${name}: no exercises with standards`;
-    }
-    if (mode === 'sets') {
-      const perWeek = Number((Stats.weekPlannedSets().muscles[id] || 0).toFixed(1));
-      return `${name}: ${perWeek} ${perWeek === 1 ? 'set' : 'sets'}/week`;
     }
     const pct = Stats.muscleGrowth()[id];
     if (pct == null) return `${name}: not enough data yet`;

@@ -24,7 +24,7 @@ js/units.js       Converts weights/heights between saved units (lbs, inches) and
 js/stats.js       Works out per-muscle numbers (growth, sets per week) from saved workouts
 js/bodymap.js     The front/back muscle map drawing and its colors
 js/standards.js   Published strength standards (strengthlevel.com) used by the map's Level mode
-js/tabs.js        The bottom tab bar (Workouts, Profile) — add new tabs here
+js/tabs.js        The bottom tab bar (Workouts, Profile) — add new tabs here; it shows only on each tab's main screen
 js/views.js       Builds the HTML for each screen (home, edit day, workout, profile)
 js/app.js         Picks the screen from the URL and handles taps, typing and forms
 ```
@@ -54,7 +54,7 @@ It's then saved automatically and included in backups.
 ## Adding features later
 
 - **Log** — Profile → Log searches exercises; each one's page (`Views.exerciseLog()`) shows an estimated 1-rep max graph, a calendar, and a day's sets. Its data comes from `Store.exerciseHistory(refId)`, and the estimate from `estimateMax()` (Epley) in `storage.js`.
-- **Muscle map** — on Profile. *Growth* = average % change in estimated max over 6 weeks for the exercises that train each muscle (needs 3+ weeks logged); *Sets* = planned sets per week from your weekly plan (`Stats.plannedSets()`, also shown per muscle group on the home and edit-day screens). Primary muscles count 1, secondary 0.5. *Level* = each muscle's best level (Beginner → Elite) among its primary exercises that have published standards, from their latest estimated max, your body weight and sex (`Stats.muscleLevels()`). The growth time span is at the top of `Stats` in `stats.js`; the color scales are `GROWTH_SCALE` / `SETS_SCALE` in `bodymap.js`.
+- **Muscle map** — on Profile. *Growth* = average % change in estimated max over 6 weeks for the exercises that train each muscle (needs 3+ weeks logged); Primary muscles count 1, secondary 0.5. *Level* = each muscle's best level (Beginner → Elite) among its primary exercises that have published standards, from their latest estimated max, your body weight and sex (`Stats.muscleLevels()`). The growth time span is at the top of `Stats` in `stats.js`; the color scale is `GROWTH_SCALE` in `bodymap.js`. Planned sets per muscle group from your weekly plan (`Stats.plannedSets()`) show under the week on the Workouts tab.
 - **More history** — every finished workout is in `Store.data.sessions` (oldest first), with date, day name and each exercise's sets.
 - New screens follow the same pattern: a function in `views.js` that returns `{ title, back, html }`, and a route in `app.js`.
 
