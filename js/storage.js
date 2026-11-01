@@ -472,11 +472,47 @@ const Store = {
     return gaps;
   },
 
+  // How far along one exercise of the workout in progress is, for its row's badge:
+  //   { filled: sets with reps, total: sets, complete: every set has reps (and a weight,
+  //     unless it's a bodyweight exercise) }
+  draftProgress(exerciseId) {
+    const draft = this.data.draft;
+    const rows = draft?.entries[exerciseId] || [];
+    const ex = draft && this.getDay(draft.dayId)?.exercises.find(e => e.id === exerciseId);
+    const info = Library.forExercise({ refId: draft?.swaps[exerciseId] || ex?.refId });
+    const hasReps = set => set.reps !== '' && set.reps != null;
+    const filled = rows.filter(hasReps).length;
+    const complete = rows.length > 0 && rows.every(set => hasReps(set) && (set.weight != null || info.equipment === 'Bodyweight'));
+    return { filled, total: rows.length, complete };
+  },
+
   // Undo for a workout just finished: removes its session and puts back the
   // workout in progress exactly as it was (draft = a copy saved before finishing).
   undoFinish(sessionId, draft) {
     this.data.sessions = this.data.sessions.filter(s => s.id !== sessionId);
     this.data.draft = draft;
+    this.save();
+  },
+
+  // ---------- Past workouts ----------
+  // Logs, the muscle map and "last time" are always worked out from sessions, so they
+  // follow these changes by themselves. The streak is re-checked from the workout's week
+  // by the caller (Streak.rejudge).
+
+  getSession(id) {
+    return this.data.sessions.find(s => s.id === id) || null;
+  },
+
+  // Replaces a past workout's exercises (each with its edited sets). Exercises left
+  // with no sets are dropped. Its date, day and plan stay as they were.
+  updateSession(id, exercises) {
+    const session = this.getSession(id);
+    session.exercises = exercises.filter(e => e.sets.length);
+    this.save();
+  },
+
+  deleteSession(id) {
+    this.data.sessions = this.data.sessions.filter(s => s.id !== id);
     this.save();
   },
 

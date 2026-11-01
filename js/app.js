@@ -4,6 +4,8 @@
 //   #/                 → home (the week)          [Workouts tab]
 //   #/day/<id>/edit    → edit a day               [Workouts tab]
 //   #/day/<id>         → do a workout for that day [Workouts tab]
+//   #/history          → past workouts (link at the top of Workouts) [Workouts tab]
+//   #/history/<id>     → fix or delete one past workout [Workouts tab]
 //   #/profile          → profile                  [Profile tab]
 //   #/settings         → settings (gear on Profile) [Profile tab]
 //   (Profile also shows the muscle map; see bodymap.js and stats.js)
@@ -17,6 +19,7 @@ const backBtn = document.getElementById('back');
 const tabBarEl = document.getElementById('tabbar');
 const gearBtn = document.getElementById('gear');
 const toastEl = document.getElementById('toast');
+const historyLink = document.getElementById('history-link');
 
 // The add/edit exercise panel on the edit-day screen:
 //   exerciseId = the day's exercise being edited (null when adding a new one)
@@ -63,10 +66,61 @@ let logState = { month: null, day: null };
 // What the muscle map on Profile shows: 'growth' or 'level'.
 let mapMode = 'growth';
 
+// A past workout being edited (nothing is saved until Save changes):
+//   { sessionId, exercises: [{ entry (the saved exercise, without its sets), rows: [{ weight (lbs or null), reps (text) }] }],
+//     original (rows as they started, to tell if anything changed) }
+let pastEdit = null;
+
+// Every exercise the workout planned, in plan order, with its saved sets plus empty rows up
+// to its planned sets, so a set forgotten at the time can be added. Planned exercises that
+// weren't logged at all show too, all empty.
+function startPastEdit(session) {
+  const byId = new Map(session.exercises.map(e => [e.exerciseId, e]));
+  const list = [];
+  for (const p of session.plan || []) {
+    const saved = byId.get(p.exerciseId);
+    if (saved) {
+      list.push(saved);
+      byId.delete(p.exerciseId);
+    } else {
+      const info = Library.forExercise({ refId: p.refId });
+      list.push({ exerciseId: p.exerciseId, refId: p.refId, name: info.name, primary: info.primary,
+        secondary: info.secondary, targetSets: p.sets, sets: [] });
+    }
+  }
+  list.push(...byId.values()); // older workouts saved without a plan, or anything not in it
+
+  const exercises = list.map(({ sets, ...entry }) => {
+    const rows = sets.map(s => ({ weight: s.weight, reps: String(s.reps) }));
+    while (rows.length < (entry.targetSets || 0)) rows.push({ weight: null, reps: '' });
+    return { entry, rows };
+  });
+  return { sessionId: session.id, exercises, original: JSON.stringify(exercises.map(e => e.rows)) };
+}
+
+function pastEditChanged() {
+  return Boolean(pastEdit) && JSON.stringify(pastEdit.exercises.map(e => e.rows)) !== pastEdit.original;
+}
+
+// Shows a yes/no pop-up (see Views.confirmDialog).
+function showDialog(options) {
+  overlayEl.innerHTML = Views.confirmDialog(options);
+  overlayEl.className = 'overlay is-notice';
+  overlayEl.hidden = false;
+}
+
+function hideDialog() {
+  overlayEl.hidden = true;
+  overlayEl.innerHTML = '';
+}
+
 function currentRoute() {
   const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
   if (parts[0] === 'day' && parts[1]) {
     return { view: parts[2] === 'edit' ? 'edit' : 'workout', dayId: parts[1], tab: 'workouts' };
+  }
+  if (parts[0] === 'history') {
+    return parts[1] ? { view: 'past', sessionId: parts[1], tab: 'workouts' } : { view: 'history', tab: 'workouts' };
   }
   if (parts[0] === 'profile') return { view: 'profile', tab: 'profile' };
   if (parts[0] === 'settings') return { view: 'settings', tab: 'profile' };
@@ -89,6 +143,13 @@ function render() {
 
   if (route.view === 'home') {
     screen = Views.home(openSets);
+  } else if (route.view === 'history') {
+    screen = Views.history();
+  } else if (route.view === 'past') {
+    const session = Store.getSession(route.sessionId);
+    if (!session) return go('#/history');
+    if (!pastEdit || pastEdit.sessionId !== session.id) pastEdit = startPastEdit(session);
+    screen = Views.pastWorkout(session, pastEdit);
   } else if (route.view === 'profile') {
     screen = Views.profile(mapMode);
   } else if (route.view === 'settings') {
@@ -116,6 +177,7 @@ function render() {
   backBtn.hidden = !screen.back;
   backBtn.dataset.href = screen.back || '';
   gearBtn.hidden = !screen.gear;
+  historyLink.hidden = !screen.history;
   // The tab bar only shows on each tab's main screen; deeper screens use Back.
   const here = '#/' + location.hash.replace(/^#\/?/, '');
   const showTabs = TABS.some(tab => tab.href === here);
@@ -390,6 +452,70 @@ const actions = {
     closeOverlay();
   },
 
+  // ---------- Past workouts ----------
+
+  'open-session'(id) {
+    go(`#/history/${id}`);
+  },
+
+  // Saves the edited sets, then re-checks the streak from that workout's week.
+  // (Logs, the muscle map and "last time" are read from the workouts, so they follow on their own.)
+  'past-save'() {
+    const session = Store.getSession(pastEdit.sessionId);
+    const toNumber = v => (v === '' || v == null || isNaN(Number(v)) ? null : Number(v));
+    const exercises = pastEdit.exercises.map(({ entry, rows }) => ({
+      ...entry,
+      sets: rows.map(r => ({ weight: r.weight, reps: toNumber(r.reps) })).filter(s => s.reps !== null),
+    }));
+    if (!exercises.some(e => e.sets.length)) {
+      toast('Every set is empty. Use Delete workout to remove it.');
+      return;
+    }
+    if (pastEditChanged()) {
+      Store.updateSession(session.id, exercises);
+      Streak.rejudge(session.date);
+      toast('Changes saved');
+    }
+    go('#/history');
+  },
+
+  'past-discard'() {
+    go('#/history');
+  },
+
+  'past-delete'() {
+    showDialog({
+      title: 'Delete this workout?',
+      lines: [
+        'It will be removed from your exercise logs, the muscle map and "last time" numbers.',
+        'Your streak will be re-checked from this workout\'s week on, so a week it helped hit may become missed (or use a freeze), and your streak and freezes may change.',
+        'This can\'t be undone.',
+      ],
+      confirm: { label: 'Delete workout', action: 'past-delete-confirm' },
+      cancel: { label: 'Cancel', action: 'dialog-cancel' },
+      danger: true,
+    });
+  },
+
+  'past-delete-confirm'() {
+    const session = Store.getSession(pastEdit.sessionId);
+    hideDialog();
+    Store.deleteSession(session.id);
+    Streak.rejudge(session.date);
+    toast('Workout deleted');
+    go('#/history');
+  },
+
+  // "Leave without saving?" → yes.
+  'past-leave'() {
+    hideDialog();
+    go('#/history');
+  },
+
+  'dialog-cancel'() {
+    hideDialog();
+  },
+
   // Undo on the "Workout saved" toast: back to the workout, as it was.
   'undo-finish'() {
     if (!lastFinish) return;
@@ -512,7 +638,20 @@ document.addEventListener('click', event => {
   actions[button.dataset.action](button.dataset.id, button);
 });
 
-backBtn.addEventListener('click', () => go(backBtn.dataset.href));
+// Back from a past workout with unsaved edits asks first.
+backBtn.addEventListener('click', () => {
+  if (currentRoute().view === 'past' && pastEditChanged()) {
+    showDialog({
+      title: 'Unsaved changes',
+      lines: ['You changed this workout but didn\'t save. Leave and lose those changes?'],
+      confirm: { label: 'Discard changes', action: 'past-leave' },
+      cancel: { label: 'Keep editing', action: 'dialog-cancel' },
+      danger: true,
+    });
+    return;
+  }
+  go(backBtn.dataset.href);
+});
 
 // ---------- Typing ----------
 
@@ -557,6 +696,11 @@ appEl.addEventListener('input', event => {
   const field = input.dataset.field;
   if (!field) return;
   const value = field === 'weight' ? Units.readWeight(input.value) : input.value.trim();
+  // A past workout's sets are only kept in memory until Save changes.
+  if (input.dataset.past != null) {
+    pastEdit.exercises[Number(input.dataset.past)].rows[Number(input.dataset.set)][field] = value;
+    return;
+  }
   Store.updateDraftSet(input.dataset.ex, Number(input.dataset.set), field, value);
 });
 
@@ -705,6 +849,7 @@ window.addEventListener('hashchange', () => {
   openExerciseId = null;
   swap = { exerciseId: null, query: '' };
   logState = { month: null, day: null };
+  pastEdit = null;
   render();
   window.scrollTo(0, 0);
 });

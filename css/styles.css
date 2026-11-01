@@ -87,6 +87,35 @@ html, body {
   color: var(--muted);
 }
 .gear-btn[hidden] { display: none; }
+
+.top-link {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  margin-left: auto;
+  padding: 0 2px 0 12px;
+  color: var(--accent);
+  font-size: 16px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.top-link[hidden] { display: none; }
+
+/* Past workouts list and editing one */
+.past-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  color: var(--text);
+  text-align: left;
+  font: inherit;
+}
+.past-when { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent); }
+.past-date { margin: 0; font-weight: 600; }
+.past-hint { margin: 2px 0 14px; font-size: 14px; }
 .gear-btn:active { color: var(--text); }
 
 /* Bottom padding leaves room so the last item can scroll above the tab bar */
@@ -197,8 +226,8 @@ button, .btn {
   color: var(--text);
   text-align: left;
 }
-.day-card .day-name { display: block; font-size: 19px; font-weight: 700; }
-.day-card .day-meta { display: block; font-size: 14px; color: var(--muted); margin-top: 2px; }
+.day-card .day-name, .past-card .day-name { display: block; font-size: 19px; font-weight: 700; }
+.day-card .day-meta, .past-card .day-meta { display: block; font-size: 14px; color: var(--muted); margin-top: 2px; }
 .day-card .day-name .tag { vertical-align: 2px; margin-left: 4px; }
 
 /* Rest days: blue dashed outline so they stand apart from workout days */
@@ -400,6 +429,19 @@ main.is-searching { padding-bottom: 100vh; }
   text-align: center;
 }
 .check[hidden] { display: none; }
+.set-count {
+  flex: 0 0 auto;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 26px;
+  text-align: center;
+}
 
 .ex-body { padding: 0 14px 14px; }
 .ex-body > .ex-sub { margin: 0 0 10px; }

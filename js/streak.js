@@ -12,7 +12,9 @@
 // Each planned exercise counts at most its planned sets, so extra sets on one exercise
 // don't make up for another. Sets of an exercise swapped for today count for the one it replaced.
 //
-// Each week's result is decided once and never changed:
+// Each week's result is decided once and only changes if a workout is changed later
+// (editing or deleting a past workout re-judges its week and every week after: rejudge(),
+// and Undo right after finishing takes back a hit that workout made: undoHit()):
 //   hit    → streak +1. Decided the moment it happens. Every WEEKS_PER_FREEZE (4) weeks in a row
 //            (streak 4, 8, 12 …) earns a freeze, up to MAX_FREEZES held.
 //   frozen → the week ended with at least FREEZE_LINE (90%) of planned sets, a freeze was held
@@ -98,7 +100,7 @@ const Streak = {
   // Brings the streak up to date: starts tracking once there's a plan, decides every
   // week that has ended, and locks this week as hit as soon as it is.
   // Safe to call any time; returns true if anything changed.
-  update(now = Date.now()) {
+  update(now = Date.now(), { quiet = false } = {}) {
     const streak = Store.data.streak;
     const thisWeek = weekKey(now);
 
@@ -124,7 +126,9 @@ const Streak = {
       streak.weeks.push({ week: key, result, logged, planned });
 
       const done = `${weekRange(key)}: you logged ${logged} of ${planned} sets (${percent(logged, planned)}%).`;
-      if (result === 'frozen') {
+      if (quiet) {
+        // Re-judged after a past workout was edited: no notice.
+      } else if (result === 'frozen') {
         const left = before.freezes - 1;
         streak.notices.push(`${done} A streak freeze was used, so your ${before.current}-week streak is safe. `
           + `${left} freeze${left === 1 ? '' : 's'} left.`);
@@ -150,6 +154,20 @@ const Streak = {
 
   // Undo of a finished workout that hit this week: takes the hit back off,
   // so it can be hit again once the workout is finished for real.
+  // A past workout was edited or deleted: that week and every week after it are judged
+  // again from the workouts as they are now, so the streak and freezes match them.
+  // Re-judged weeks don't show notices. This week only celebrates if it wasn't already hit.
+  rejudge(sessionDate, now = Date.now()) {
+    const streak = Store.data.streak;
+    const from = weekKey(new Date(sessionDate).getTime());
+    const thisWeek = weekKey(now);
+    const wasHit = streak.weeks.some(w => w.week === thisWeek && w.result === 'hit');
+    streak.weeks = streak.weeks.filter(w => w.week < from);
+    this.update(now, { quiet: true });
+    if (wasHit) this.celebrate = null;
+    Store.save();
+  },
+
   undoHit(now = Date.now()) {
     const streak = Store.data.streak;
     streak.weeks = streak.weeks.filter(w => !(w.week === weekKey(now) && w.result === 'hit'));

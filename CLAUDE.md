@@ -3,7 +3,7 @@
 ## What this is
 
 GitFit is a personal gym tracker for one person (Rex), used mainly on an **iPhone in Safari, added to the home screen** as a web app. You plan a weekly split (one day per weekday), log sets during a workout (and can swap an exercise for today only), and see progress:
-- **Workouts tab:** the week, and a planned sets card (groups open to muscles, muscles open to the exercises behind them)
+- **Workouts tab:** the week, a Past workouts link (view, fix or delete finished workouts), and a planned sets card (groups open to muscles, muscles open to the exercises behind them)
 - **Profile tab:** the weekly streak card, the exercise Log (estimated max graph, calendar), and a front/back muscle map (Growth and Level modes)
 
 The user is not a programmer. Explain changes in plain words, keep the code simple and well commented, and test changes in the browser before calling them done.
@@ -69,7 +69,7 @@ Rule of thumb: **storage.js** knows about data, **views.js** knows about HTML, *
   - A week runs Monday 3 am → next Monday 3 am. A workout counts for the week Finish was tapped in, on any day.
   - A week is hit when every planned set is logged (a set with reps), counting finished workouts only. Each planned exercise counts at most its planned sets.
   - Days already logged that week are locked to the plan saved with their first workout that week; days not done yet follow the current plan. Several workouts for the same day add up.
-  - Hit is locked the moment it happens (even if reached by editing the plan). The one exception: Undo on the "Workout saved" toast takes the hit back if that workout made it (`Streak.undoHit()`). Ended weeks are judged once and never changed.
+  - Hit is locked the moment it happens (even if reached by editing the plan). Ended weeks are judged once. The exceptions are workout changes: Undo on the "Workout saved" toast takes back a hit that workout made (`Streak.undoHit()`), and editing or deleting a past workout re-judges its week and every week after it, quietly (no notices; this week only celebrates if it wasn't already hit) — `Streak.rejudge()`. Re-judged ended weeks use each logged day's saved plan, and the current plan for days with no workout that week.
   - Every 4 weeks in a row (streak 4, 8, 12 …) earns 1 freeze (max 2). A week that ends at 90%+ (no rounding) uses a freeze if the streak is above 0, and the streak stays the same. Otherwise the streak goes to 0. Weeks with 0 planned sets don't count.
   - Tracking starts the first full week after a plan with an exercise exists.
   - Swap for today saves the swapped exercise under its own `refId`, with the planned exercise's `exerciseId` and `swappedFrom`, so history stays right and it counts for the streak.

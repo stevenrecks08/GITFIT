@@ -1,7 +1,8 @@
 // views.js — builds the HTML for each screen. No saving happens here.
-// Each view returns { title, back, html } and optionally gear: true:
+// Each view returns { title, back, html } and optionally gear: true or history: true:
 //   title = text in the top bar, back = where the Back button goes (or null),
 //   gear = show the Settings gear in the top bar.
+//   history = show the "Past workouts" link in the top bar.
 // Buttons use data-action="..." and are handled in app.js.
 
 // Makes user-typed text safe to put inside HTML.
@@ -279,6 +280,7 @@ const Views = {
     return {
       title: 'GitFit',
       back: null,
+      history: true,
       html: `
         ${resume}
         <h2>This week</h2>
@@ -504,7 +506,11 @@ const Views = {
       const info = Library.forExercise({ refId: swapped || ex.refId });
       const last = Store.lastFor(ex);
       const isOpen = ex.id === openId;
-      const isDone = !isOpen && Store.draftHasReps(ex.id);
+      // Collapsed rows show ✓ once every set is filled in, "1/3" part way, nothing before the first set.
+      const progress = Store.draftProgress(ex.id);
+      const badge = isOpen || !progress.filled ? ''
+        : progress.complete ? '<span class="check" aria-label="Done">✓</span>'
+        : `<span class="set-count" aria-label="${progress.filled} of ${progress.total} sets done">${progress.filled}/${progress.total}</span>`;
 
       // Collapsed: just the summary row. Expanded: the summary row plus the sets.
       let body = '';
@@ -558,7 +564,7 @@ const Views = {
               <span class="ex-sub">${lastSummary(last)}</span>
             </span>
             <span class="tag">${esc(Library.primaryLabel(info))}</span>
-            <span class="check" ${isDone ? '' : 'hidden'} aria-label="Done">✓</span>
+            ${badge}
           </button>
           ${body}
         </div>`;
@@ -707,6 +713,92 @@ const Views = {
   },
 
   // What happened to the streak while the app was closed (freeze used / streak ended).
+  // ---------- Past workouts: every finished workout, newest first ----------
+  history() {
+    const today = dayKey(new Date());
+    const yesterday = dayKey(new Date(Date.now() - 24 * 60 * 60 * 1000));
+    const when = date => {
+      const key = dayKey(date);
+      return key === today ? 'Today' : key === yesterday ? 'Yesterday' : formatDate(date);
+    };
+    const cards = [...Store.data.sessions].reverse().map(s => {
+      const sets = s.exercises.reduce((n, e) => n + e.sets.length, 0);
+      return `
+        <button class="card past-card" data-action="open-session" data-id="${esc(s.id)}">
+          <span class="past-when">${when(s.date)}</span>
+          <span class="day-name">${esc(s.dayName || 'Workout')}</span>
+          <span class="day-meta">${s.exercises.length} exercise${s.exercises.length === 1 ? '' : 's'} · ${sets} set${sets === 1 ? '' : 's'}</span>
+        </button>`;
+    }).join('');
+    return {
+      title: 'Past workouts',
+      back: '#/',
+      html: cards || '<p class="empty">No finished workouts yet.</p>',
+    };
+  },
+
+  // ---------- One past workout, opened to fix its weights and reps ----------
+  // edit = the changes being made (see pastEdit in app.js): { exercises: [{ entry, rows }] }
+  pastWorkout(session, edit) {
+    const unit = Units.weightUnit();
+    const cards = edit.exercises.map((e, x) => {
+      const rows = e.rows.map((set, i) => `
+        <div class="set-num">${i + 1}</div>
+        <input type="text" inputmode="decimal" value="${Units.showWeight(set.weight)}" placeholder="${unit}"
+          data-past="${x}" data-set="${i}" data-field="weight" aria-label="Set ${i + 1} weight in ${unit}">
+        <input type="text" inputmode="numeric" value="${esc(set.reps)}"
+          data-past="${x}" data-set="${i}" data-field="reps" aria-label="Set ${i + 1} reps">`).join('');
+      const swappedFrom = e.entry.swappedFrom ? Library.forExercise({ refId: e.entry.swappedFrom }).name : '';
+      return `
+        <div class="card workout-ex is-open">
+          <div class="ex-toggle">
+            <span class="ex-num">${x + 1}</span>
+            <span class="ex-toggle-main">
+              <span class="ex-title">${esc(e.entry.name)}</span>
+              ${swappedFrom ? `<span class="ex-sub swap-note">Swapped · planned: ${esc(swappedFrom)}</span>` : ''}
+            </span>
+          </div>
+          <div class="ex-body">
+            <div class="set-grid">
+              <div class="col-head">Set</div>
+              <div class="col-head">Weight (${unit})</div>
+              <div class="col-head">Reps</div>
+              ${rows}
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+
+    return {
+      title: session.dayName || 'Workout',
+      back: '#/history',
+      html: `
+        <p class="past-date">${new Date(session.date).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</p>
+        <p class="muted past-hint">Sets with no reps aren't saved.</p>
+        ${cards}
+        <div class="finish-bar stack">
+          <button class="btn btn-primary" data-action="past-save">Save changes</button>
+          <button class="btn" data-action="past-discard">Discard changes</button>
+          <button class="btn btn-danger" data-action="past-delete">Delete workout</button>
+        </div>
+      `,
+    };
+  },
+
+  // A yes/no pop-up drawn into the overlay.
+  // confirm/cancel = { label, action }; danger = the confirm button is red.
+  confirmDialog({ title, lines, confirm, cancel, danger = false }) {
+    return `
+      <div class="card notice" role="dialog" aria-label="${esc(title)}">
+        <h2>${esc(title)}</h2>
+        ${lines.map(line => `<p>${esc(line)}</p>`).join('')}
+        <div class="stack">
+          <button type="button" class="btn ${danger ? 'btn-danger' : 'btn-primary'}" data-action="${confirm.action}">${esc(confirm.label)}</button>
+          <button type="button" class="btn" data-action="${cancel.action}">${esc(cancel.label)}</button>
+        </div>
+      </div>`;
+  },
+
   // Asked when Finish workout is tapped with sets still empty.
   // gaps = Store.draftGaps(): [{ name, problems: ['Set 3: no reps', …] }]
   finishCheck(gaps) {
