@@ -171,11 +171,48 @@ function countUp(el, to) {
   requestAnimationFrame(tick);
 }
 
-function toast(message) {
+// A short message at the bottom. With button = { label, action }, it also shows a
+// button (e.g. Undo) that runs that action; it stays up for `ms`.
+function toast(message, button = null, ms = 2200) {
+  lastFinish = null; // a new message replaces any Undo
   toastEl.textContent = message;
+  if (button) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'toast-btn';
+    btn.dataset.action = button.action;
+    btn.textContent = button.label;
+    toastEl.append(btn);
+  }
+  toastEl.classList.toggle('has-button', Boolean(button));
   toastEl.hidden = false;
   clearTimeout(toast.timer);
-  toast.timer = setTimeout(() => { toastEl.hidden = true; }, 2200);
+  toast.timer = setTimeout(hideToast, ms);
+}
+
+function hideToast() {
+  clearTimeout(toast.timer);
+  toastEl.hidden = true;
+  toastEl.textContent = '';
+  toastEl.classList.remove('has-button');
+  lastFinish = null; // Undo is only offered while its toast shows
+}
+
+// The workout just finished, kept while its Undo toast shows:
+//   { sessionId, draft (copy from before finishing), hadHit (this week was already hit before) }
+let lastFinish = null;
+
+function finishWorkout() {
+  const draft = JSON.parse(JSON.stringify(Store.data.draft));
+  const hadHit = Streak.summary().week.hit;
+  const session = Store.finishDraft();
+  if (!session) {
+    toast('Fill in at least one set first');
+    return;
+  }
+  toast('Workout saved 💪', { label: 'Undo', action: 'undo-finish' }, 5000);
+  lastFinish = { sessionId: session.id, draft, hadHit };
+  go('#/');
 }
 
 // ---------- Button taps ----------
@@ -329,14 +366,43 @@ const actions = {
     render();
   },
 
+  // Finish workout: if any set is still empty, ask first (Go back / Finish anyway).
   'finish'() {
-    const session = Store.finishDraft();
-    if (!session) {
+    const day = Store.getDay(Store.data.draft.dayId);
+    if (!day.exercises.some(ex => Store.draftHasReps(ex.id))) {
       toast('Fill in at least one set first');
       return;
     }
-    toast('Workout saved 💪');
-    go('#/');
+    const gaps = Store.draftGaps();
+    if (!gaps.length) return finishWorkout();
+    overlayEl.innerHTML = Views.finishCheck(gaps);
+    overlayEl.className = 'overlay is-notice';
+    overlayEl.hidden = false;
+  },
+
+  'finish-anyway'() {
+    overlayEl.hidden = true;
+    overlayEl.innerHTML = '';
+    finishWorkout();
+  },
+
+  'finish-back'() {
+    closeOverlay();
+  },
+
+  // Undo on the "Workout saved" toast: back to the workout, as it was.
+  'undo-finish'() {
+    if (!lastFinish) return;
+    Store.undoFinish(lastFinish.sessionId, lastFinish.draft);
+    if (!lastFinish.hadHit) Streak.undoHit(); // the hit came from this workout
+    if (overlayEl.classList.contains('is-celebration')) {
+      overlayEl.hidden = true;
+      overlayEl.innerHTML = '';
+    }
+    const dayId = lastFinish.draft.dayId;
+    lastFinish = null;
+    hideToast();
+    go(`#/day/${dayId}`);
   },
 
   'discard'() {

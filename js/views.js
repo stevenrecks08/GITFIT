@@ -707,6 +707,25 @@ const Views = {
   },
 
   // What happened to the streak while the app was closed (freeze used / streak ended).
+  // Asked when Finish workout is tapped with sets still empty.
+  // gaps = Store.draftGaps(): [{ name, problems: ['Set 3: no reps', …] }]
+  finishCheck(gaps) {
+    return `
+      <div class="card notice finish-check" role="dialog" aria-label="Finish workout?">
+        <h2>Some sets are empty</h2>
+        <p class="muted">Sets with no reps won't be saved.</p>
+        ${gaps.map(g => `
+          <div class="gap">
+            <strong>${esc(g.name)}</strong>
+            <ul>${g.problems.map(p => `<li>${esc(p)}</li>`).join('')}</ul>
+          </div>`).join('')}
+        <div class="stack">
+          <button type="button" class="btn btn-primary" data-action="finish-back">Go back</button>
+          <button type="button" class="btn" data-action="finish-anyway">Finish anyway</button>
+        </div>
+      </div>`;
+  },
+
   streakNotice(lines) {
     return `
       <div class="card notice" role="dialog" aria-label="Streak update">

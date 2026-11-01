@@ -451,6 +451,35 @@ const Store = {
     return session;
   },
 
+  // What's still empty in the workout in progress, shown before finishing:
+  //   [{ name: 'Barbell Bench Press', problems: ['Set 3: no reps', 'Set 2: no weight'] }]
+  // A set with no reps won't be saved. A missing weight is only flagged on
+  // non-bodyweight exercises (bodyweight sets are meant to have no weight).
+  draftGaps() {
+    const draft = this.data.draft;
+    const day = draft && this.getDay(draft.dayId);
+    if (!day) return [];
+    const gaps = [];
+    for (const ex of day.exercises) {
+      const info = Library.forExercise({ refId: draft.swaps[ex.id] || ex.refId });
+      const problems = [];
+      (draft.entries[ex.id] || []).forEach((set, i) => {
+        if (set.reps === '' || set.reps == null) problems.push(`Set ${i + 1}: no reps`);
+        else if (set.weight == null && info.equipment !== 'Bodyweight') problems.push(`Set ${i + 1}: no weight`);
+      });
+      if (problems.length) gaps.push({ name: info.name, problems });
+    }
+    return gaps;
+  },
+
+  // Undo for a workout just finished: removes its session and puts back the
+  // workout in progress exactly as it was (draft = a copy saved before finishing).
+  undoFinish(sessionId, draft) {
+    this.data.sessions = this.data.sessions.filter(s => s.id !== sessionId);
+    this.data.draft = draft;
+    this.save();
+  },
+
   // ---------- Settings ----------
 
   updateSettings(fields) {

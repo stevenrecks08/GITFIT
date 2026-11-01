@@ -148,6 +148,15 @@ const Streak = {
     return changed;
   },
 
+  // Undo of a finished workout that hit this week: takes the hit back off,
+  // so it can be hit again once the workout is finished for real.
+  undoHit(now = Date.now()) {
+    const streak = Store.data.streak;
+    streak.weeks = streak.weeks.filter(w => !(w.week === weekKey(now) && w.result === 'hit'));
+    this.celebrate = null;
+    Store.save();
+  },
+
   // Everything the Profile shows:
   //   started (false until the first tracked week), start (its key), totals,
   //   week = this week's { planned, logged, hit },
