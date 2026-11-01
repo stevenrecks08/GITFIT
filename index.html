@@ -7,7 +7,9 @@
 
   <!-- Lets the app run full-screen when added to the iPhone home screen -->
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- "black" = a solid status bar with the page starting below it. ("black-translucent" put the
+       header under the status bar, where iOS blurs whatever is beneath it.) -->
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="GitFit">
   <link rel="manifest" href="manifest.json">
 
@@ -15,6 +17,9 @@
   <title>GitFit</title>
 </head>
 <body>
+  <!-- Solid strip behind the iPhone status bar; only has height if the page is drawn under it -->
+  <div class="status-cap" aria-hidden="true"></div>
+
   <header class="topbar">
     <button id="back" class="back-btn" hidden>&lsaquo; Back</button>
     <h1 id="title">GitFit</h1>

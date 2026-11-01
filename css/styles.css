@@ -13,6 +13,7 @@
   --radius: 14px;
   --tap: 52px;            /* minimum height for anything you tap */
   --tabbar-h: 58px;       /* bottom tab bar, not counting the iPhone home-indicator area */
+  --topbar-h: 50px;       /* top bar, below the iPhone status bar */
   color-scheme: dark;
 }
 
@@ -29,15 +30,27 @@ html, body {
 }
 
 /* ---------- Top bar ---------- */
+/* The status bar area: a solid fill (no blur), exactly as tall as the safe area.
+   The top bar starts below it, so nothing ever sits under the status bar. */
+.status-cap {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 30;
+  height: env(safe-area-inset-top);
+  background: var(--bg);
+}
 .topbar {
   position: sticky;
-  top: 0;
+  top: env(safe-area-inset-top);
   z-index: 10;
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 56px;
-  padding: env(safe-area-inset-top) 16px 0;
+  height: var(--topbar-h);
+  margin-top: env(safe-area-inset-top);
+  padding: 0 16px;
   background: var(--bg);
   border-bottom: 1px solid var(--border);
 }
@@ -277,7 +290,7 @@ input[type="search"] { -webkit-appearance: none; appearance: none; }
 
 /* While typing in the exercise search: the box sits just under the top bar,
    with room below so the page can scroll that far. */
-#lib-search { scroll-margin-top: calc(56px + env(safe-area-inset-top) + 12px); }
+#lib-search { scroll-margin-top: calc(var(--topbar-h) + env(safe-area-inset-top) + 12px); }
 main.is-searching { padding-bottom: 100vh; }
 .lib-item {
   display: block;
