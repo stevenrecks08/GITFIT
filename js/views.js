@@ -796,11 +796,23 @@ const Views = {
     const weighted = history.filter(h => h.best);
     const latest = weighted[weighted.length - 1];
     const points = weighted.map(h => ({ time: new Date(h.date).getTime(), value: Number(Units.showWeight(h.best.max)) }));
+    // Actual max: the heaviest weight ever logged for a single rep (the first day it was lifted).
+    let single = null;
+    for (const h of history) {
+      for (const set of h.sets) {
+        if (set.reps === 1 && set.weight && (!single || set.weight > single.weight)) single = { weight: set.weight, date: h.date };
+      }
+    }
     const maxSection = `
       <div class="card">
         <p class="log-label">Current estimated max</p>
         <p class="log-max ${latest ? '' : 'is-blank'}">${latest ? `${Units.showWeight(latest.best.max)} <span>${unit}</span>` : '—'}</p>
         <p class="log-sub">${latest ? `Best set on ${shortDate(latest.date)}: ${formatSet(latest.best.set)}` : '&nbsp;'}</p>
+        <div class="log-actual">
+          <p class="log-label">Actual 1-rep max</p>
+          <p class="log-max is-small ${single ? '' : 'is-blank'}">${single ? `${Units.showWeight(single.weight)} <span>${unit}</span>` : '—'}</p>
+          <p class="log-sub">${single ? `Lifted for 1 rep on ${shortDate(single.date)}` : 'Log a set of 1 rep to fill this in'}</p>
+        </div>
         ${maxChart(points, history.length ? 'No sets with weight yet' : 'No history yet')}
         <p class="log-formula">Estimated with the Epley formula: weight × (1 + reps ÷ 30)</p>
       </div>`;
