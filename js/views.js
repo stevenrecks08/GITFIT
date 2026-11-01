@@ -247,7 +247,7 @@ function weekdayPicker(name, selected) {
 
 // The training day / rest day switch on each day of the week, like an iPhone settings switch:
 // on (green, dumbbell in the knob) = training day, off (gray, moon in the knob) = rest day.
-// Tapping it asks first (the day-menu pop-up in app.js).
+// Tapping it flips it straight away (only asks if a workout in progress would be lost; see day-menu in app.js).
 const KNOB_ICONS = {
   train: '<path d="M6.5 6.5v11M17.5 6.5v11M3.5 9.5v5M20.5 9.5v5M6.5 12h11"/>',
   rest: '<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>',

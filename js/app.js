@@ -330,32 +330,38 @@ const actions = {
     go(`#/new/${id}`);
   },
 
-  // Tapped a day's switch: make it a rest day, or a training day again (asks first).
+  // Tapped a day's switch: flips it between training day and rest day straight away.
+  // It only asks first if that would throw away a workout in progress from that day.
   'day-menu'(id) {
     const weekday = Number(id);
-    const day = WEEKDAYS[weekday];
-    const rest = Store.isRestDay(weekday);
-    const lines = [rest
-      ? `Make ${day} a training day? Its workouts can be started again and count for your streak.`
-      : `Make ${day} a rest day? Its workouts stay on it, grayed out, and don't count for your streak until you switch it back.`];
-    if (Streak.hasPassed(weekday)) {
-      lines.push(`${day} has already passed, so this week's streak keeps counting it as it was on ${day}. The change counts from next week.`);
+    const draftWorkout = Store.data.draft && Store.getWorkout(Store.data.draft.workoutId);
+    if (!Store.isRestDay(weekday) && draftWorkout?.weekday === weekday) {
+      showDialog({
+        title: `Make ${WEEKDAYS[weekday]} a rest day?`,
+        lines: [`Your unfinished ${draftWorkout.name} workout is on ${WEEKDAYS[weekday]}, and it will be discarded.`],
+        confirm: { label: 'Make it a rest day', action: 'toggle-rest', id: weekday },
+        cancel: { label: 'Cancel', action: 'dialog-cancel' },
+        danger: true,
+      });
+      return;
     }
-    showDialog({
-      title: day,
-      lines,
-      confirm: { label: rest ? 'Make it a training day' : 'Make it a rest day', action: 'toggle-rest', id: weekday },
-      cancel: { label: 'Cancel', action: 'dialog-cancel' },
-    });
+    actions['toggle-rest'](weekday);
   },
 
   'toggle-rest'(id) {
     const weekday = Number(id);
+    const day = WEEKDAYS[weekday];
     hideDialog();
     Store.setRestDay(weekday, !Store.isRestDay(weekday));
+    const rest = Store.isRestDay(weekday);
+    // A passed day stays as it was for this week's streak, so say so.
+    toast(Streak.hasPassed(weekday)
+      ? `${day} has passed: this week's streak keeps it as it was. Counts from next week.`
+      : rest ? `${day} is a rest day` : `${day} is a training day`);
     // Slide the switch first, then redraw the week once it has moved.
     const toggle = document.querySelector(`.day-toggle[data-id="${weekday}"]`);
-    toggle?.classList.toggle('is-on', !Store.isRestDay(weekday));
+    toggle?.classList.toggle('is-on', !rest);
+    toggle?.setAttribute('aria-checked', String(!rest));
     setTimeout(render, reduceMotion.matches ? 0 : 200);
   },
 
