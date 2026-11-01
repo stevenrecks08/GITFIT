@@ -330,7 +330,7 @@ const actions = {
     go(`#/new/${id}`);
   },
 
-  // Tapped a day's name: make it a rest day, or a training day again.
+  // Tapped a day's switch: make it a rest day, or a training day again (asks first).
   'day-menu'(id) {
     const weekday = Number(id);
     const day = WEEKDAYS[weekday];
@@ -353,7 +353,10 @@ const actions = {
     const weekday = Number(id);
     hideDialog();
     Store.setRestDay(weekday, !Store.isRestDay(weekday));
-    render();
+    // Slide the switch first, then redraw the week once it has moved.
+    const toggle = document.querySelector(`.day-toggle[data-id="${weekday}"]`);
+    toggle?.classList.toggle('is-on', !Store.isRestDay(weekday));
+    setTimeout(render, reduceMotion.matches ? 0 : 200);
   },
 
   // Tapped one of the workout's exercises: open it for editing at the sets & reps step.

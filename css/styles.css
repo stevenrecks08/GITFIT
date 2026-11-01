@@ -230,16 +230,42 @@ button, .btn {
   display: flex;
   align-items: center;
   gap: 8px;
-  width: 100%;
-  min-height: 44px;
+  min-height: 48px;
   padding: 0 2px;
-  background: none;
-  border: none;
-  color: var(--text);
-  text-align: left;
 }
 .day-head-name { font-size: 17px; font-weight: 700; }
-.day-head-more { margin-left: auto; color: var(--muted); font-size: 20px; letter-spacing: 1px; }
+
+/* Training day / rest day switch (iPhone settings style). The knob slides with transform. */
+.day-toggle {
+  position: relative;
+  flex: 0 0 auto;
+  width: 54px;
+  height: 32px;
+  margin-left: auto;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--border);
+  transition: background-color 0.2s;
+}
+.day-toggle.is-on { background: var(--accent); box-shadow: none; }
+.day-toggle-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #fff;
+  color: var(--rest);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  transition: transform 0.2s ease;
+}
+.day-toggle.is-on .day-toggle-knob { transform: translateX(22px); color: var(--accent-text); }
 .day-empty { margin: 0 2px; padding: 12px 14px; border: 1px dashed var(--border); border-radius: var(--radius); color: var(--muted); font-size: 14px; }
 
 .workout-card {
@@ -297,11 +323,12 @@ body.is-dragging { -webkit-user-select: none; user-select: none; }
   height: 58px;
   border: none;
   border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
   background: var(--accent);
   color: var(--accent-text);
-  font-size: 34px;
-  font-weight: 500;
-  line-height: 1;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
 }
 .fab:active { transform: scale(0.94); }
@@ -731,7 +758,7 @@ main.is-searching { padding-bottom: 100vh; }
 .sets-none { margin: 0 0 6px 26px; font-size: 14px; color: var(--muted); }
 
 @media (prefers-reduced-motion: reduce) {
-  .collapse, .chev { transition: none; }
+  .collapse, .chev, .day-toggle, .day-toggle-knob { transition: none; }
 }
 
 /* ---------- Exercise log ---------- */

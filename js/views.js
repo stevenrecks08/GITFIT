@@ -245,11 +245,29 @@ function weekdayPicker(name, selected) {
     </div>`;
 }
 
+// The training day / rest day switch on each day of the week, like an iPhone settings switch:
+// on (green, dumbbell in the knob) = training day, off (gray, moon in the knob) = rest day.
+// Tapping it asks first (the day-menu pop-up in app.js).
+const KNOB_ICONS = {
+  train: '<path d="M6.5 6.5v11M17.5 6.5v11M3.5 9.5v5M20.5 9.5v5M6.5 12h11"/>',
+  rest: '<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>',
+};
+function dayToggle(weekday, dayName, rest) {
+  return `
+    <button type="button" class="day-toggle ${rest ? '' : 'is-on'}" role="switch" aria-checked="${!rest}"
+      aria-label="${dayName} is a training day" data-action="day-menu" data-id="${weekday}">
+      <span class="day-toggle-knob">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2"
+          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${KNOB_ICONS[rest ? 'rest' : 'train']}</svg>
+      </span>
+    </button>`;
+}
+
 const Views = {
 
   // ---------- Home: the week, Monday to Sunday, with each day's workouts ----------
   // openSets = which planned-sets rows are expanded: { groups: Set, muscles: Set }
-  // Tap a day's name to make it a rest day (or not); tap a workout to start it (any day);
+  // Tap a day's switch to make it a rest day (or not); tap a workout to start it (any day);
   // hold a workout and drag it to move it to another day (see the drag code in app.js).
   home(openSets) {
     const { draft } = Store.data;
@@ -281,12 +299,12 @@ const Views = {
       }).join('');
       return `
         <section class="day-block ${rest ? 'is-rest' : ''}" data-weekday="${weekday}">
-          <button class="day-head" data-action="day-menu" data-id="${weekday}">
+          <div class="day-head">
             <span class="day-head-name">${dayName}</span>
             ${weekday === today ? '<span class="tag tag-today">Today</span>' : ''}
             ${rest ? '<span class="rest-word">Rest day</span>' : ''}
-            <span class="day-head-more" aria-hidden="true">⋯</span>
-          </button>
+            ${dayToggle(weekday, dayName, rest)}
+          </div>
           ${cards || `<p class="day-empty">${rest ? 'Recovery day' : 'Nothing planned'}</p>`}
         </section>`;
     }).join('');
@@ -306,7 +324,10 @@ const Views = {
         <h2>Planned sets per week</h2>
         ${plannedSetsTable(Stats.weekPlannedSets(), openSets)}
 
-        <button type="button" class="fab" data-action="new-workout" aria-label="New workout">+</button>
+        <button type="button" class="fab" data-action="new-workout" aria-label="New workout">
+          <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.6"
+            stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
       `,
     };
   },
