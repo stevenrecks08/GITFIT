@@ -118,7 +118,7 @@ html, body {
 .past-week + .past-week { margin-top: 26px; }
 .past-week-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin: 4px 0 10px; }
 .past-week-head h2 { margin: 0; font-size: 13px; }
-.past-week-total { font-size: 13px; color: var(--muted); opacity: 0.75; white-space: nowrap; }
+.past-week-total { font-size: 13px; color: var(--muted); white-space: nowrap; }
 .past-date { margin: 0; font-weight: 600; }
 .past-hint { margin: 2px 0 14px; font-size: 14px; }
 .gear-btn:active { color: var(--text); }
@@ -229,8 +229,8 @@ button, .btn {
 .banner + .week-intro { margin-top: 24px; }
 .week-title { display: flex; align-items: baseline; gap: 10px; }
 .week-title h2 { margin: 0; font-size: 13px; }
-.week-range { font-size: 13px; color: var(--muted); opacity: 0.75; }
-.week-hint { margin: 4px 0 0; font-size: 13px; color: var(--muted); opacity: 0.75; line-height: 1.4; }
+.week-range { font-size: 13px; color: var(--muted); }
+.week-hint { margin: 4px 0 0; font-size: 13px; color: var(--muted); line-height: 1.4; }
 
 .day-block {
   margin: 0 -10px 22px;
@@ -262,12 +262,12 @@ button, .btn {
   padding: 0;
   border: none;
   border-radius: 999px;
-  background: #2a2f3a;
+  background: #3a404d;
   transition: background-color 0.2s;
 }
 /* A bigger invisible tap area than the switch itself */
 .day-toggle::before { content: ''; position: absolute; inset: -11px -8px; }
-.day-toggle.is-on { background: #2c6b45; }
+.day-toggle.is-on { background: #3fbf6e; }
 .day-toggle-knob {
   position: absolute;
   top: 2px;
@@ -278,12 +278,12 @@ button, .btn {
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: #8a92a1;
-  color: #2a2f3a;
+  background: #d3d8e0;
+  color: #3a404d;
   transition: transform 0.2s ease, background-color 0.2s;
 }
 .day-toggle-knob svg { width: 11px; height: 11px; }
-.day-toggle.is-on .day-toggle-knob { transform: translateX(16px); background: #d7f5e2; color: #1d4a30; }
+.day-toggle.is-on .day-toggle-knob { transform: translateX(16px); background: #fff; color: #1a5c34; }
 
 /* An empty training day: just a small, quiet "+ Add workout" */
 .day-add {
@@ -292,11 +292,10 @@ button, .btn {
   background: none;
   border: none;
   color: var(--muted);
-  opacity: 0.6;
   font-size: 13px;
   font-weight: 500;
 }
-.day-add:active { opacity: 1; }
+.day-add:active { color: var(--text); }
 
 /* Workout cards: solid card, bold title, dim line under it, thin green strip on the left */
 .workout-card {
@@ -305,6 +304,7 @@ button, .btn {
   align-items: center;
   gap: 10px;
   padding: 12px 12px 12px 18px;
+  background: #1e222a; /* a touch lighter than other cards */
   overflow: hidden;
   /* Holding a card picks it up to drag; don't select text or show the iPhone callout menu. */
   -webkit-user-select: none;
@@ -347,18 +347,16 @@ button, .btn {
   border-radius: 50%;
   background: none;
   color: var(--muted);
-  opacity: 0.7;
 }
-.icon-btn:active { opacity: 1; background: var(--surface-2); }
+.icon-btn:active { color: var(--text); background: var(--surface-2); }
 
-/* Finished this week: a green "✓ Done" and a slightly dimmed card */
+/* Finished this week: a green "✓ Done" (the card stays full brightness) */
 .done-mark { color: var(--accent); font-weight: 600; }
-.workout-card.is-done { opacity: 0.7; }
 
 /* Rest days: dimmed, shorter, with just the small "Rest day" label. Their workouts stay,
    grayed out, and can't be started. */
 .rest-word { color: var(--rest); font-size: 13px; font-weight: 600; }
-.day-block.is-rest { opacity: 0.55; margin-bottom: 14px; padding-bottom: 0; }
+.day-block.is-rest { opacity: 0.75; margin-bottom: 14px; padding-bottom: 0; }
 .day-block.is-rest .day-head { min-height: 30px; margin-bottom: 0; }
 .day-block.is-rest .day-head-name { color: var(--muted); }
 .day-block.is-rest .workout-card { margin-bottom: 8px; background: transparent; border-style: dashed; }

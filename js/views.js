@@ -302,13 +302,13 @@ const Views = {
       const cards = workouts.map(w => {
         const last = Store.lastSessionFor(w.id);
         const count = w.exercises.length;
-        // Finished this week → a green "✓ Done" and a slightly dimmed card; otherwise when it was last done.
+        // Finished this week → a green "✓ Done"; otherwise when it was last done.
         const doneThisWeek = last && weekKey(new Date(last.date).getTime()) === thisWeek;
         const when = doneThisWeek ? ' · <span class="done-mark">✓ Done</span>'
           : last ? ` · last ${formatDate(last.date)}` : '';
         // On a rest day the workout stays, grayed out, and can't be started.
         return `
-          <div class="card workout-card ${doneThisWeek ? 'is-done' : ''}" data-workout="${w.id}">
+          <div class="card workout-card" data-workout="${w.id}">
             <button class="workout-open" data-action="open-workout" data-id="${w.id}" ${rest ? 'disabled' : ''}>
               <span class="workout-name">${esc(w.name)}</span>
               <span class="day-meta">${count} exercise${count === 1 ? '' : 's'}${when}</span>
