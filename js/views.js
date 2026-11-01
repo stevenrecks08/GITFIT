@@ -239,8 +239,8 @@ const Views = {
         ${kindOption('workout', 'Workout', 'Train this day')}
         ${kindOption('rest', 'Rest day', 'No workout')}
       </div>`;
-    // Changes already save as you go; this just closes the screen so it feels saved.
-    const saveDayButton = `<button type="button" class="btn btn-primary save-day" data-action="save-day">Save changes</button>`;
+    // Changes already save as you go (Back saves too); Done just closes the screen.
+    const saveDayButton = `<button type="button" class="btn btn-primary save-day" data-action="save-day">Done</button>`;
 
     if (day.rest) {
       return {

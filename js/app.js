@@ -150,12 +150,11 @@ const actions = {
     showPanel();
   },
 
-  // Everything on the edit screen is saved as you change it, so this mostly just goes back.
+  // Done on the edit screen. Everything is saved as you change it, so this mostly just goes back.
   // The type-of-day box saves when you leave it; save it here too in case you're still in it.
   'save-day'() {
     const name = document.getElementById('day-name');
     if (name) Store.renameDay(currentRoute().dayId, name.value.trim());
-    toast('Changes saved');
     go('#/');
   },
 
