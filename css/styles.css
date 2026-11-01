@@ -281,6 +281,22 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1p
 .ex-row .ex-meta { display: block; font-size: 14px; color: var(--muted); margin-top: 2px; }
 .ex-row.is-editing { outline: 2px solid var(--accent); }
 
+/* Order number on the left of each exercise (edit day and workout) */
+.ex-num {
+  flex: 0 0 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.ex-row .ex-num { margin-right: 6px; }
+
 /* ---------- Exercise library (edit-day screen) ---------- */
 input[type="search"] { -webkit-appearance: none; appearance: none; }
 

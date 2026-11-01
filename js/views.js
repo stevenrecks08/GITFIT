@@ -260,6 +260,7 @@ const Views = {
       const info = Library.forExercise(ex);
       return `
         <div class="card ex-row ${ex.id === picker.exerciseId ? 'is-editing' : ''}">
+          <span class="ex-num">${i + 1}</span>
           <button class="ex-info" data-action="edit-exercise" data-id="${ex.id}">
             <span class="ex-name">${esc(info.name)}</span>
             <span class="ex-meta">${ex.sets} × ${repRange(ex.repMin, ex.repMax)} · ${esc(Library.primaryLabel(info))}</span>
@@ -432,7 +433,7 @@ const Views = {
     }
 
     const unit = Units.weightUnit();
-    const cards = day.exercises.map(ex => {
+    const cards = day.exercises.map((ex, i) => {
       const info = Library.forExercise(ex);
       const last = Store.lastResult(ex);
       const isOpen = ex.id === openId;
@@ -466,6 +467,7 @@ const Views = {
       return `
         <div class="card workout-ex ${isOpen ? 'is-open' : ''}" id="ex-${ex.id}">
           <button class="ex-toggle" data-action="toggle-exercise" data-id="${ex.id}" aria-expanded="${isOpen}">
+            <span class="ex-num">${i + 1}</span>
             <span class="ex-toggle-main">
               <span class="ex-title">${esc(info.name)}</span>
               <span class="ex-sub">${lastSummary(last)}</span>
