@@ -563,6 +563,14 @@ const Views = {
       ? (week.hit ? 'This week is done 🔥' : 'Log every planned set to hit this week')
       : start ? 'This week is practice' : 'Add exercises to a day on the Workouts tab';
 
+    // How many sets the freeze line (90%) is this week. Only shown when a freeze could
+    // actually save the week: tracking, streak above 0, a freeze held, week not hit yet.
+    // (The tiny subtraction stops 72 × 0.9 = 64.80000001 from rounding up wrong.)
+    const freezeSets = Math.ceil(week.planned * FREEZE_LINE - 1e-9);
+    const freezeHint = !started || week.hit || !week.planned || !totals.freezes || !totals.current ? ''
+      : week.logged >= freezeSets ? 'Freeze line reached. Finish the rest to hit the week.'
+      : `Log ${freezeSets} of ${week.planned} to keep your streak with a freeze.`;
+
     const icons = { hit: '✓', frozen: '❄︎', missed: '✕', empty: '–', current: '', untracked: '' };
     const names = { hit: 'hit', frozen: 'saved by a freeze', missed: 'missed', empty: 'nothing planned',
       current: 'in progress', untracked: 'not tracked' };
@@ -592,6 +600,7 @@ const Views = {
           aria-label="${week.logged} of ${week.planned} planned sets logged">
           <i style="width:${fill}%"></i>
         </div>
+        ${freezeHint ? `<p class="freeze-hint">❄&#xFE0E; ${freezeHint}</p>` : ''}
 
         <div class="streak-stats">
           <span>Best <strong>${totals.best}</strong></span>
