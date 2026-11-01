@@ -78,8 +78,8 @@ const LIBRARY = [
   ex('cable-upright-row', 'Cable Upright Row', 'Cable', ['sideDelts'], ['traps'], ['upright row']),
   ex('dumbbell-front-raise', 'Dumbbell Front Raise', 'Dumbbell', ['frontDelts'], [], ['front raise']),
   ex('reverse-pec-deck', 'Reverse Pec Deck', 'Machine', ['rearDelts'], ['upperBack'], ['rear delt machine', 'reverse fly machine']),
-  ex('dumbbell-rear-delt-fly', 'Dumbbell Rear Delt Fly', 'Dumbbell', ['rearDelts'], ['upperBack'], ['rear delt fly', 'bent over reverse fly']),
-  ex('cable-rear-delt-fly', 'Cable Rear Delt Fly', 'Cable', ['rearDelts'], [], ['cable reverse fly']),
+  ex('dumbbell-rear-delt-fly', 'Dumbbell Rear Delt Fly', 'Dumbbell', ['rearDelts'], ['traps'], ['rear delt fly', 'bent over reverse fly']),
+  ex('cable-rear-delt-fly', 'Cable Rear Delt Fly', 'Cable', ['rearDelts'], ['traps'], ['cable reverse fly']),
 
   // ----- Arms -----
   ex('barbell-curl', 'Barbell Curl', 'Barbell', ['biceps'], ['brachialis', 'brachioradialis'], ['ez bar curl']),
