@@ -551,11 +551,55 @@ main.is-searching { padding-bottom: 100vh; }
 .legend-levels i { width: 12px; height: 12px; border-radius: 3px; }
 
 /* Planned sets per muscle group (Workouts tab) */
-.sets-table { display: grid; grid-template-columns: auto 1fr 3.6em; align-items: center; column-gap: 12px; row-gap: 10px; }
-.sets-group { font-weight: 600; }
+/* Group rows open to muscle rows, muscle rows open to the exercises behind them */
+.sets-table { padding: 6px 14px; }
+.sets-row {
+  display: grid;
+  grid-template-columns: 16px 140px 1fr 2.6em; /* px, so group and muscle bars line up */
+  align-items: center;
+  column-gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--text);
+  text-align: left;
+}
+.sets-row:active { opacity: 0.6; }
+.sets-row.is-group .sets-label { font-weight: 600; }
+.sets-row.is-muscle { min-height: 44px; font-size: 15px; }
+.sets-row.is-muscle .sets-label { padding-left: 10px; color: var(--muted); }
+.sets-block.is-open > .sets-row.is-muscle .sets-label { color: var(--text); }
+.sets-label { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .sets-bar { height: 6px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
 .sets-bar i { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
+.is-muscle .sets-bar { height: 5px; }
+.is-muscle .sets-bar i { background: #2f9e5a; }
 .sets-num { text-align: right; font-variant-numeric: tabular-nums; }
+
+.chev { width: 16px; height: 16px; fill: none; stroke: var(--muted); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; transition: transform 0.25s ease; }
+.is-muscle .chev { width: 13px; height: 13px; justify-self: end; }
+.sets-block.is-open > .sets-row .chev { transform: rotate(90deg); }
+
+/* Smooth open/close: the row's height slides between 0 and its content's height */
+.collapse { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.25s ease; }
+.collapse-inner { min-height: 0; overflow: hidden; }
+.sets-block.is-open > .collapse { grid-template-rows: 1fr; }
+.sets-table > .sets-block + .sets-block { border-top: 1px solid var(--border); }
+.sets-table > .sets-block.is-open > .collapse > .collapse-inner { padding-bottom: 6px; }
+
+.sets-sources { margin: 0 0 6px 26px; padding: 8px 12px; list-style: none; border-radius: 10px; background: var(--surface-2); font-size: 14px; }
+.sets-sources li { display: flex; align-items: baseline; gap: 8px; padding: 3px 0; }
+.src-name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.src-role { font-size: 12px; color: var(--muted); }
+.src-role.is-primary { color: var(--accent); }
+.src-num { min-width: 2.2em; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+.sets-none { margin: 0 0 6px 26px; font-size: 14px; color: var(--muted); }
+
+@media (prefers-reduced-motion: reduce) {
+  .collapse, .chev { transition: none; }
+}
 
 /* ---------- Exercise log ---------- */
 .log-name { margin: 4px 0 2px; font-size: 22px; overflow-wrap: anywhere; }

@@ -51,15 +51,60 @@ const FLAME_SVG = `
       .9 1 1.7 1.6 1.7 2a3.9 3.9 0 0 1-3.9 3.9z"/>
   </svg>`;
 
-// Planned sets per muscle group for the week ({ 'Chest': 9, … }), each with a bar.
-function plannedSetsTable(groups) {
-  const names = MUSCLE_GROUPS.map(g => g.name).filter(name => groups[name]);
-  if (!names.length) return '<p class="empty">No exercises planned yet.</p>';
-  const rows = names.map(name => `
-    <span class="sets-group">${name}</span>
-    <span class="sets-bar"><i style="width:${Math.min(100, groups[name] / SETS_SCALE * 100)}%"></i></span>
-    <span class="sets-num">${Number(groups[name].toFixed(1))}</span>`).join('');
-  return `<div class="card sets-table">${rows}</div>`;
+// "4.5", "3", "0"
+function setsText(sets) {
+  return String(Number(sets.toFixed(1)));
+}
+
+const CHEVRON = `<svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>`;
+
+// One bar row: chevron, name, bar (filled to fraction 0–1), number.
+function setsRow(action, id, isOpen, label, fraction, sets, extraClass = '') {
+  return `
+    <button type="button" class="sets-row ${extraClass}" data-action="${action}" data-id="${id}" aria-expanded="${isOpen}">
+      ${CHEVRON}
+      <span class="sets-label">${label}</span>
+      <span class="sets-bar"><i style="width:${Math.min(100, fraction * 100)}%"></i></span>
+      <span class="sets-num">${setsText(sets)}</span>
+    </button>`;
+}
+
+// Planned sets per muscle group for the week, each with a bar. Tapping a group shows
+// its muscles; tapping a muscle shows the exercises behind its number.
+//   planned = Stats.weekPlannedSets()   open = { groups: Set of names, muscles: Set of ids }
+// Group bars fill at SETS_SCALE sets. Muscle bars share one scale across every group
+// (the most-trained muscle fills its bar), so any two muscles can be compared.
+function plannedSetsTable(planned, open) {
+  const { groups, muscles, sources } = planned;
+  const shown = MUSCLE_GROUPS.filter(g => groups[g.name]);
+  if (!shown.length) return '<p class="empty">No exercises planned yet.</p>';
+  const muscleScale = Math.max(...Object.values(muscles));
+
+  const blocks = shown.map(group => {
+    const groupOpen = open.groups.has(group.name);
+    const muscleBlocks = Object.entries(group.muscles).map(([id, name]) => {
+      const sets = muscles[id] || 0;
+      const muscleOpen = open.muscles.has(id);
+      const list = sources[id] || [];
+      const detail = list.length
+        ? `<ul class="sets-sources">${list.map(s => `
+            <li><span class="src-name">${esc(s.name)}</span>
+              <span class="src-role is-${s.role}">${s.role}</span>
+              <span class="src-num">${setsText(s.sets)}</span></li>`).join('')}</ul>`
+        : '<p class="sets-none">No planned exercise trains this.</p>';
+      return `
+        <div class="sets-block ${muscleOpen ? 'is-open' : ''}" data-block="${id}">
+          ${setsRow('toggle-muscle', id, muscleOpen, name, sets / muscleScale, sets, 'is-muscle')}
+          <div class="collapse"><div class="collapse-inner">${detail}</div></div>
+        </div>`;
+    }).join('');
+    return `
+      <div class="sets-block ${groupOpen ? 'is-open' : ''}" data-block="${group.name}">
+        ${setsRow('toggle-group', group.name, groupOpen, group.name, groups[group.name] / SETS_SCALE, groups[group.name], 'is-group')}
+        <div class="collapse"><div class="collapse-inner">${muscleBlocks}</div></div>
+      </div>`;
+  }).join('');
+  return `<div class="card sets-table">${blocks}</div>`;
 }
 
 // "Oct 30"
@@ -181,7 +226,8 @@ function logDayCard(entries, key) {
 const Views = {
 
   // ---------- Home: the week, Monday to Sunday ----------
-  home() {
+  // openSets = which planned-sets rows are expanded: { groups: Set, muscles: Set }
+  home(openSets) {
     const { draft } = Store.data;
     const draftDay = draft && Store.getDay(draft.dayId);
     const today = todayWeekday();
@@ -230,7 +276,7 @@ const Views = {
         ${dayCards}
 
         <h2>Planned sets per week</h2>
-        ${plannedSetsTable(Stats.weekPlannedSets().groups)}
+        ${plannedSetsTable(Stats.weekPlannedSets(), openSets)}
       `,
     };
   },

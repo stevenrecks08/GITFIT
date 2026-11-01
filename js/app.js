@@ -48,6 +48,10 @@ function showPanel() {
 // Which exercise is expanded on the workout screen (null = all collapsed).
 let openExerciseId = null;
 
+// Planned sets card on the Workouts tab: which groups and muscles are expanded.
+// Kept while the app is open, so going into a day and back leaves them as they were.
+const openSets = { groups: new Set(), muscles: new Set() };
+
 // Swap for today on the workout screen: whose exercise search is open, and what's typed.
 let swap = { exerciseId: null, query: '' };
 
@@ -84,7 +88,7 @@ function render() {
   let screen;
 
   if (route.view === 'home') {
-    screen = Views.home();
+    screen = Views.home(openSets);
   } else if (route.view === 'profile') {
     screen = Views.profile(mapMode);
   } else if (route.view === 'settings') {
@@ -286,6 +290,16 @@ const actions = {
     document.getElementById(`ex-${id}`).scrollIntoView({ block: 'nearest' });
   },
 
+  // Planned sets card: tap a group to show its muscles, a muscle to show its exercises.
+  // Only the row's class changes (no redraw), so CSS can slide it open smoothly.
+  'toggle-group'(name, button) {
+    toggleSetsBlock(openSets.groups, name, button);
+  },
+
+  'toggle-muscle'(id, button) {
+    toggleSetsBlock(openSets.muscles, id, button);
+  },
+
   // Swap for today: open the exercise search under this exercise.
   'swap-open'(id) {
     swap = { exerciseId: id, query: '' };
@@ -409,6 +423,14 @@ const actions = {
     render();
   },
 };
+
+// Opens or closes one row of the planned sets card and remembers it.
+function toggleSetsBlock(openSet, id, button) {
+  const isOpen = !openSet.has(id);
+  if (isOpen) openSet.add(id); else openSet.delete(id);
+  button.setAttribute('aria-expanded', isOpen);
+  button.closest('.sets-block').classList.toggle('is-open', isOpen);
+}
 
 function closeMusclePopup() {
   const pop = document.getElementById('map-pop');
