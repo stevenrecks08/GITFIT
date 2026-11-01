@@ -114,6 +114,11 @@ html, body {
   font: inherit;
 }
 .past-when { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent); }
+/* One group per week, with its totals on the right of the header */
+.past-week + .past-week { margin-top: 26px; }
+.past-week-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin: 4px 0 10px; }
+.past-week-head h2 { margin: 0; font-size: 13px; }
+.past-week-total { font-size: 13px; color: var(--muted); opacity: 0.75; white-space: nowrap; }
 .past-date { margin: 0; font-weight: 600; }
 .past-hint { margin: 2px 0 14px; font-size: 14px; }
 .gear-btn:active { color: var(--text); }
@@ -328,7 +333,27 @@ button, .btn {
 }
 .workout-name { display: block; font-size: 18px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .workout-open .day-meta { display: block; font-size: 13px; color: var(--muted); margin-top: 3px; }
-.workout-card .btn-small { min-height: 38px; background: transparent; color: var(--muted); }
+/* The small pencil (edit) button: quiet, with a full-size tap area */
+.icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  margin-right: -6px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--muted);
+  opacity: 0.7;
+}
+.icon-btn:active { opacity: 1; background: var(--surface-2); }
+
+/* Finished this week: a green "✓ Done" and a slightly dimmed card */
+.done-mark { color: var(--accent); font-weight: 600; }
+.workout-card.is-done { opacity: 0.7; }
 
 /* Rest days: dimmed, shorter, with just the small "Rest day" label. Their workouts stay,
    grayed out, and can't be started. */

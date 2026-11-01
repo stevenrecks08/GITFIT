@@ -263,6 +263,10 @@ function dayToggle(weekday, dayName, rest) {
     </button>`;
 }
 
+// The small pencil on each workout card (opens its edit screen).
+const PENCIL_SVG = `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"
+  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>`;
+
 // This week's dates, Monday → Sunday: "Nov 2 – 8", or "Oct 26 – Nov 1" across two months.
 // (The week starts at 3 am Monday, the same as the streak.)
 function weekDates(now = Date.now()) {
@@ -284,6 +288,7 @@ const Views = {
     const { draft } = Store.data;
     const draftWorkout = draft && Store.getWorkout(draft.workoutId);
     const today = todayWeekday();
+    const thisWeek = weekKey(Date.now());
 
     const resume = draftWorkout ? `
       <div class="card banner stack">
@@ -297,15 +302,18 @@ const Views = {
       const cards = workouts.map(w => {
         const last = Store.lastSessionFor(w.id);
         const count = w.exercises.length;
-        const meta = `${count} exercise${count === 1 ? '' : 's'}` + (last ? ` · last ${formatDate(last.date)}` : '');
+        // Finished this week → a green "✓ Done" and a slightly dimmed card; otherwise when it was last done.
+        const doneThisWeek = last && weekKey(new Date(last.date).getTime()) === thisWeek;
+        const when = doneThisWeek ? ' · <span class="done-mark">✓ Done</span>'
+          : last ? ` · last ${formatDate(last.date)}` : '';
         // On a rest day the workout stays, grayed out, and can't be started.
         return `
-          <div class="card workout-card" data-workout="${w.id}">
+          <div class="card workout-card ${doneThisWeek ? 'is-done' : ''}" data-workout="${w.id}">
             <button class="workout-open" data-action="open-workout" data-id="${w.id}" ${rest ? 'disabled' : ''}>
               <span class="workout-name">${esc(w.name)}</span>
-              <span class="day-meta">${meta}</span>
+              <span class="day-meta">${count} exercise${count === 1 ? '' : 's'}${when}</span>
             </button>
-            <button class="btn btn-small" data-action="edit-workout" data-id="${w.id}">Edit</button>
+            <button type="button" class="icon-btn" data-action="edit-workout" data-id="${w.id}" aria-label="Edit ${esc(w.name)}">${PENCIL_SVG}</button>
           </div>`;
       }).join('');
       // An empty training day gets a small "+ Add workout"; an empty rest day is just its header.
@@ -791,19 +799,44 @@ const Views = {
       const key = dayKey(date);
       return key === today ? 'Today' : key === yesterday ? 'Yesterday' : formatDate(date);
     };
-    const cards = [...Store.data.sessions].reverse().map(s => {
-      const sets = s.exercises.reduce((n, e) => n + e.sets.length, 0);
-      return `
+    const setCount = s => s.exercises.reduce((n, e) => n + e.sets.length, 0);
+    const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+    // Newest first, grouped by week (Monday 3 am → Monday 3 am, the same weeks as the streak):
+    // "This week", "Last week", then date ranges like "Oct 19 – 25", each with its totals.
+    const thisWeek = weekKey(Date.now());
+    const lastWeek = addWeeks(thisWeek, -1);
+    const weeks = [];
+    for (const s of [...Store.data.sessions].reverse()) {
+      const key = weekKey(new Date(s.date).getTime());
+      if (weeks[weeks.length - 1]?.key !== key) weeks.push({ key, sessions: [] });
+      weeks[weeks.length - 1].sessions.push(s);
+    }
+
+    const html = weeks.map(({ key, sessions }) => {
+      const label = key === thisWeek ? 'This week' : key === lastWeek ? 'Last week'
+        : weekDates(new Date(sessions[0].date).getTime());
+      const sets = sessions.reduce((n, s) => n + setCount(s), 0);
+      const cards = sessions.map(s => `
         <button class="card past-card" data-action="open-session" data-id="${esc(s.id)}">
           <span class="past-when">${when(s.date)}</span>
           <span class="day-name">${esc(s.workoutName || 'Workout')}</span>
-          <span class="day-meta">${s.exercises.length} exercise${s.exercises.length === 1 ? '' : 's'} · ${sets} set${sets === 1 ? '' : 's'}</span>
-        </button>`;
+          <span class="day-meta">${plural(s.exercises.length, 'exercise')} · ${plural(setCount(s), 'set')}</span>
+        </button>`).join('');
+      return `
+        <div class="past-week">
+          <div class="past-week-head">
+            <h2>${label}</h2>
+            <span class="past-week-total">${plural(sessions.length, 'workout')} · ${plural(sets, 'set')}</span>
+          </div>
+          ${cards}
+        </div>`;
     }).join('');
+
     return {
       title: 'Past workouts',
       back: '#/',
-      html: cards || '<p class="empty">No finished workouts yet.</p>',
+      html: html || '<p class="empty">No finished workouts yet.</p>',
     };
   },
 
