@@ -125,8 +125,8 @@ const Stats = {
     return { muscles, groups, sources };
   },
 
-  // Planned sets for the whole week (rest days have no exercises).
+  // Planned sets for the whole week (workouts on rest days don't count).
   weekPlannedSets() {
-    return this.plannedSets(Store.data.days.filter(d => !d.rest).flatMap(d => d.exercises));
+    return this.plannedSets(Store.plannedWorkouts().flatMap(w => w.exercises));
   },
 };

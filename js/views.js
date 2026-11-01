@@ -233,48 +233,62 @@ function logDayCard(entries, key) {
     </div>`;
 }
 
+// Seven tappable day chips (Mon … Sun) as radio buttons named `name`, with `selected` checked.
+function weekdayPicker(name, selected) {
+  return `
+    <div class="weekday-pick" role="radiogroup">
+      ${WEEKDAYS.map((day, i) => `
+        <label class="weekday-chip">
+          <input type="radio" name="${name}" value="${i}" ${i === selected ? 'checked' : ''}>
+          <span>${day.slice(0, 3)}</span>
+        </label>`).join('')}
+    </div>`;
+}
+
 const Views = {
 
-  // ---------- Home: the week, Monday to Sunday ----------
+  // ---------- Home: the week, Monday to Sunday, with each day's workouts ----------
   // openSets = which planned-sets rows are expanded: { groups: Set, muscles: Set }
+  // Tap a day's name to make it a rest day (or not); tap a workout to start it (any day);
+  // hold a workout and drag it to move it to another day (see the drag code in app.js).
   home(openSets) {
     const { draft } = Store.data;
-    const draftDay = draft && Store.getDay(draft.dayId);
+    const draftWorkout = draft && Store.getWorkout(draft.workoutId);
     const today = todayWeekday();
 
-    const resume = draftDay ? `
+    const resume = draftWorkout ? `
       <div class="card banner stack">
-        <div><strong>Workout in progress:</strong> ${esc(dayLabel(draftDay))}</div>
-        <button class="btn btn-primary" data-action="open-day" data-id="${draftDay.id}">Resume</button>
+        <div><strong>Workout in progress:</strong> ${esc(draftWorkout.name)}</div>
+        <button class="btn btn-primary" data-action="open-workout" data-id="${draftWorkout.id}">Resume</button>
       </div>` : '';
 
-    const dayCards = Store.week().map(day => {
-      const todayTag = day.weekday === today ? '<span class="tag tag-today">Today</span>' : '';
-
-      // Rest days can't be started, so the name isn't a button.
-      if (day.rest) {
+    const days = WEEKDAYS.map((dayName, weekday) => {
+      const rest = Store.isRestDay(weekday);
+      const workouts = Store.workoutsOn(weekday);
+      const cards = workouts.map(w => {
+        const last = Store.lastSessionFor(w.id);
+        const count = w.exercises.length;
+        const meta = `${count} exercise${count === 1 ? '' : 's'}` + (last ? ` · last ${formatDate(last.date)}` : '');
+        // On a rest day the workout stays, grayed out, and can't be started.
         return `
-          <div class="card day-card is-rest">
-            <div class="day-open">
-              <span class="day-name">${WEEKDAYS[day.weekday]} – <span class="rest-word">Rest</span> ${todayTag}</span>
-              <span class="day-meta">Recovery day — no workout</span>
-            </div>
-            <button class="btn btn-small" data-action="edit-day" data-id="${day.id}">Edit</button>
+          <div class="card workout-card" data-workout="${w.id}">
+            <button class="workout-open" data-action="open-workout" data-id="${w.id}" ${rest ? 'disabled' : ''}>
+              <span class="workout-name">${esc(w.name)}</span>
+              <span class="day-meta">${meta}</span>
+            </button>
+            <button class="btn btn-small" data-action="edit-workout" data-id="${w.id}">Edit</button>
           </div>`;
-      }
-
-      const last = Store.lastSessionForDay(day.id);
-      const count = day.exercises.length;
-      const meta = !day.name && !count ? 'Not set up yet — tap Edit'
-        : `${count} exercise${count === 1 ? '' : 's'}` + (last ? ` · last ${formatDate(last.date)}` : '');
+      }).join('');
       return `
-        <div class="card day-card">
-          <button class="day-open" data-action="open-day" data-id="${day.id}">
-            <span class="day-name">${esc(dayLabel(day))} ${todayTag}</span>
-            <span class="day-meta">${meta}</span>
+        <section class="day-block ${rest ? 'is-rest' : ''}" data-weekday="${weekday}">
+          <button class="day-head" data-action="day-menu" data-id="${weekday}">
+            <span class="day-head-name">${dayName}</span>
+            ${weekday === today ? '<span class="tag tag-today">Today</span>' : ''}
+            ${rest ? '<span class="rest-word">Rest day</span>' : ''}
+            <span class="day-head-more" aria-hidden="true">⋯</span>
           </button>
-          <button class="btn btn-small" data-action="edit-day" data-id="${day.id}">Edit</button>
-        </div>`;
+          ${cards || `<p class="day-empty">${rest ? 'Recovery day' : 'Nothing planned'}</p>`}
+        </section>`;
     }).join('');
 
     return {
@@ -284,45 +298,55 @@ const Views = {
       html: `
         ${resume}
         <h2>This week</h2>
-        ${dayCards}
+        ${Store.data.workouts.length
+          ? '<p class="muted week-hint">Tap a workout to start it. Hold and drag it to move it to another day.</p>'
+          : '<p class="muted week-hint">Tap + to create your first workout.</p>'}
+        <div class="week">${days}</div>
 
         <h2>Planned sets per week</h2>
         ${plannedSetsTable(Stats.weekPlannedSets(), openSets)}
+
+        <button type="button" class="fab" data-action="new-workout" aria-label="New workout">+</button>
       `,
     };
   },
 
-  // ---------- Edit a day: rest or workout, type of day, exercise list ----------
+  // ---------- New workout (the + button), or a copy of one ----------
+  // form = { name, weekday, copyFrom (workout id, or null) }
+  newWorkout(form) {
+    const source = form.copyFrom && Store.getWorkout(form.copyFrom);
+    const count = source ? source.exercises.length : 0;
+    return {
+      title: source ? 'Copy workout' : 'New workout',
+      back: source ? `#/workout/${source.id}/edit` : '#/',
+      html: `
+        <form id="new-workout-form" class="stack" autocomplete="off">
+          <h2>Title</h2>
+          <input id="new-workout-name" name="name" value="${esc(form.name)}" placeholder="e.g. Push, Legs, Upper (arm focus)" required>
+          <h2>Day</h2>
+          ${weekdayPicker('new-workout-day', form.weekday)}
+          ${source ? `<p class="muted">Copies all ${count} exercise${count === 1 ? '' : 's'} from ${esc(source.name)}. The copy is its own workout: changing one won't change the other.</p>` : ''}
+          <button type="submit" class="btn btn-primary">${source ? 'Create copy' : 'Create workout'}</button>
+        </form>`,
+    };
+  },
+
+  // ---------- Edit a workout: title, day, exercise list, copy, delete ----------
   // picker = what the add/edit exercise panel shows (see app.js)
-  editDay(day, picker) {
-    const kindOption = (value, label, detail) => `
-      <label class="choice">
-        <input type="radio" name="day-kind" value="${value}" ${(value === 'rest') === day.rest ? 'checked' : ''}>
-        <span><strong>${label}</strong><span class="muted">${detail}</span></span>
-      </label>`;
-    const kindChoices = `
-      <div class="choices">
-        ${kindOption('workout', 'Workout', 'Train this day')}
-        ${kindOption('rest', 'Rest day', 'No workout')}
-      </div>`;
-    // Changes already save as you go (Back saves too); Done just closes the screen.
-    const saveDayButton = `<button type="button" class="btn btn-primary save-day" data-action="save-day">Done</button>`;
+  editWorkout(workout, picker) {
+    const editing = workout.exercises.find(e => e.id === picker.exerciseId);
 
-    if (day.rest) {
-      return {
-        title: `Edit ${WEEKDAYS[day.weekday]}`,
-        back: '#/',
-        html: `
-          ${kindChoices}
-          <p class="empty">${WEEKDAYS[day.weekday]} is a rest day.
-            ${day.exercises.length ? 'Its exercises are kept — switch back to Workout to see them.' : ''}</p>
-          ${saveDayButton}`,
-      };
-    }
+    // A missed workout on a day that has passed still counts this week as it was.
+    const lockedOn = Streak.lockedDay(workout.id);
+    const lockNote = lockedOn ? `
+      <div class="card lock-note">
+        <strong>${lockedOn} has passed</strong>
+        <p>You haven't done this workout yet this week, so this week's streak still counts its sets as they were on ${lockedOn}.
+          Changing or deleting it now won't remove them; changes count from next week.
+          If you still want to do it this week, do it first (you can tap it on any day), then change it.</p>
+      </div>` : '';
 
-    const editing = day.exercises.find(e => e.id === picker.exerciseId);
-
-    const rows = day.exercises.length ? day.exercises.map((ex, i) => {
+    const rows = workout.exercises.length ? workout.exercises.map((ex, i) => {
       const info = Library.forExercise(ex);
       return `
         <div class="card ex-row ${ex.id === picker.exerciseId ? 'is-editing' : ''}">
@@ -334,7 +358,7 @@ const Views = {
           <button class="btn btn-small" data-action="move-exercise" data-id="${ex.id}" data-dir="-1"
             aria-label="Move up" ${i === 0 ? 'disabled' : ''}>↑</button>
           <button class="btn btn-small" data-action="move-exercise" data-id="${ex.id}" data-dir="1"
-            aria-label="Move down" ${i === day.exercises.length - 1 ? 'disabled' : ''}>↓</button>
+            aria-label="Move down" ${i === workout.exercises.length - 1 ? 'disabled' : ''}>↓</button>
         </div>`;
     }).join('')
       : `<p class="empty">No exercises yet.</p>`;
@@ -346,13 +370,15 @@ const Views = {
     else panel = this.exercisePicker(picker, editing);
 
     return {
-      title: `Edit ${WEEKDAYS[day.weekday]}`,
+      title: `Edit ${workout.name}`,
       back: '#/',
       html: `
-        ${kindChoices}
+        ${lockNote}
+        <h2>Title</h2>
+        <input id="workout-name" value="${esc(workout.name)}" placeholder="e.g. Push, Legs, Upper (arm focus)" autocomplete="off">
 
-        <h2>Type of day</h2>
-        <input id="day-name" value="${esc(day.name)}" placeholder="e.g. Legs, Push, Upper (arm focus)" autocomplete="off">
+        <h2>Day</h2>
+        ${weekdayPicker('workout-day', workout.weekday)}
 
         <h2>Exercises</h2>
         ${rows}
@@ -360,7 +386,11 @@ const Views = {
         <h2>${editing ? 'Edit exercise' : 'Add exercise'}</h2>
         <div id="exercise-panel">${panel}</div>
 
-        ${saveDayButton}
+        <div class="finish-bar stack">
+          <button type="button" class="btn btn-primary" data-action="save-workout">Done</button>
+          <button type="button" class="btn" data-action="copy-workout" data-id="${workout.id}">Copy workout</button>
+          <button type="button" class="btn btn-danger" data-action="delete-workout" data-id="${workout.id}">Delete workout</button>
+        </div>
       `,
     };
   },
@@ -425,7 +455,7 @@ const Views = {
               value="${form.repMax}" aria-label="Maximum reps" required>
           </div>
         </div>
-        <button class="btn btn-primary">${editing ? 'Save changes' : 'Add to day'}</button>
+        <button class="btn btn-primary">${editing ? 'Save changes' : 'Add to workout'}</button>
         <div class="row">
           <button type="button" class="btn" data-action="cancel-edit">Cancel</button>
           ${editing ? `<button type="button" class="btn btn-danger" data-action="delete-exercise" data-id="${editing.id}">Delete</button>` : ''}
@@ -460,7 +490,7 @@ const Views = {
         </div>
         ${musclePicker('primary', 'Primary muscles', '1 set each')}
         ${musclePicker('secondary', 'Secondary muscles', '½ set each')}
-        ${isEdit ? `<p class="muted note">Changes apply on every day that uses this exercise.
+        ${isEdit ? `<p class="muted note">Changes apply in every workout that uses this exercise.
           Past workouts keep the muscles they were logged with.</p>` : ''}
         <button class="btn btn-primary">${isEdit ? 'Save changes' : 'Save exercise'}</button>
         <button type="button" class="btn" data-action="cancel-custom">${isEdit ? 'Cancel' : 'Back to library'}</button>
@@ -487,20 +517,20 @@ const Views = {
 
   // ---------- Workout: compact list, one exercise expanded at a time ----------
   // swap = the Swap for today search: { exerciseId (whose search is open, or null), query }
-  workout(day, draft, openId, swap) {
-    const title = day.name || WEEKDAYS[day.weekday];
-    if (!day.exercises.length) {
+  workout(workout, draft, openId, swap) {
+    const title = workout.name;
+    if (!workout.exercises.length) {
       return {
         title,
         back: '#/',
         html: `
-          <p class="empty">This day has no exercises yet.</p>
-          <button class="btn btn-primary" data-action="edit-day" data-id="${day.id}">Add exercises</button>`,
+          <p class="empty">This workout has no exercises yet.</p>
+          <button class="btn btn-primary" data-action="edit-workout" data-id="${workout.id}">Add exercises</button>`,
       };
     }
 
     const unit = Units.weightUnit();
-    const cards = day.exercises.map((ex, i) => {
+    const cards = workout.exercises.map((ex, i) => {
       // A swapped exercise shows as itself, with its own history.
       const swapped = Store.swappedRef(ex.id);
       const info = Library.forExercise({ refId: swapped || ex.refId });
@@ -622,7 +652,7 @@ const Views = {
       : start ? `Streak starts ${startLabel}` : 'Plan a workout to start a streak';
     const sub = started
       ? (week.hit ? 'This week is done 🔥' : 'Log every planned set to hit this week')
-      : start ? 'This week is practice' : 'Add exercises to a day on the Workouts tab';
+      : start ? 'This week is practice' : 'Create a workout on the Workouts tab';
 
     // How many sets the freeze line (90%) is this week. Only shown when a freeze could
     // actually save the week: tracking, streak above 0, a freeze held, week not hit yet.
@@ -726,7 +756,7 @@ const Views = {
       return `
         <button class="card past-card" data-action="open-session" data-id="${esc(s.id)}">
           <span class="past-when">${when(s.date)}</span>
-          <span class="day-name">${esc(s.dayName || 'Workout')}</span>
+          <span class="day-name">${esc(s.workoutName || 'Workout')}</span>
           <span class="day-meta">${s.exercises.length} exercise${s.exercises.length === 1 ? '' : 's'} · ${sets} set${sets === 1 ? '' : 's'}</span>
         </button>`;
     }).join('');
@@ -770,7 +800,7 @@ const Views = {
     }).join('');
 
     return {
-      title: session.dayName || 'Workout',
+      title: session.workoutName || 'Workout',
       back: '#/history',
       html: `
         <p class="past-date">${new Date(session.date).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</p>
@@ -786,14 +816,14 @@ const Views = {
   },
 
   // A yes/no pop-up drawn into the overlay.
-  // confirm/cancel = { label, action }; danger = the confirm button is red.
+  // confirm/cancel = { label, action, id (optional, passed to the action) }; danger = the confirm button is red.
   confirmDialog({ title, lines, confirm, cancel, danger = false }) {
     return `
       <div class="card notice" role="dialog" aria-label="${esc(title)}">
         <h2>${esc(title)}</h2>
         ${lines.map(line => `<p>${esc(line)}</p>`).join('')}
         <div class="stack">
-          <button type="button" class="btn ${danger ? 'btn-danger' : 'btn-primary'}" data-action="${confirm.action}">${esc(confirm.label)}</button>
+          <button type="button" class="btn ${danger ? 'btn-danger' : 'btn-primary'}" data-action="${confirm.action}" data-id="${esc(confirm.id ?? '')}">${esc(confirm.label)}</button>
           <button type="button" class="btn" data-action="${cancel.action}">${esc(cancel.label)}</button>
         </div>
       </div>`;

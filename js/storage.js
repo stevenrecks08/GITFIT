@@ -6,47 +6,47 @@
 //
 // Shape of the saved data:
 // {
-//   version: 6,
+//   version: 7,
 //   settings: { name, units: 'imperial' | 'metric', heightIn, bodyWeightLbs, sex: 'male' | 'female' },
 //   customExercises: [     // your own exercises, used alongside LIBRARY in library.js
 //     { id: 'custom-…', name, equipment, primary: [muscle ids], secondary: [muscle ids], custom: true }
 //   ],
-//   days: [                // always one per weekday, Monday first
-//     { id, weekday (0 = Monday … 6 = Sunday), name (type of day, e.g. "Legs"), rest,
+//   workouts: [            // your planned workouts; each sits on one weekday, any number per day
+//     { id, name (e.g. "Push"), weekday (0 = Monday … 6 = Sunday),
 //       exercises: [ { id, refId (library or custom exercise id), sets, repMin, repMax } ] }
 //   ],
+//   days: [                // always 7, Monday first: whether each weekday is a rest day
+//     { weekday, rest }    // a rest day's workouts stay on it, grayed out, and don't count
+//   ],
 //   sessions: [            // one per finished workout, oldest first
-//     { id, dayId, dayName, date (ISO string, when Finish was tapped),
-//       plan: [ { exerciseId, refId, sets } ],  // the day's plan when it was logged (locks it for the streak)
-//       exercises: [ { exerciseId (the planned day exercise it covers), refId, name, primary, secondary,
+//     { id, workoutId, workoutName, date (ISO string, when Finish was tapped),
+//       plan: [ { exerciseId, refId, sets } ],  // the workout's plan when it was logged (locks it for the streak)
+//       exercises: [ { exerciseId (the planned workout exercise it covers), refId, name, primary, secondary,
 //                      swappedFrom (the planned refId; only on exercises swapped for today),
 //                      targetSets, targetRepMin, targetRepMax,
 //                      sets: [ { weight, reps } ] } ] }
 //   ],
-//   draft: null or { dayId, startedAt, entries: { [exerciseId]: [ { weight, reps } ] },
+//   draft: null or { workoutId, startedAt, entries: { [exerciseId]: [ { weight, reps } ] },
 //                    swaps: { [exerciseId]: refId } },  // exercises swapped for today only
 //   streak: {              // the weekly streak; see streak.js
 //     start: 'YYYY-MM-DD' (Monday of the first tracked week) or null until there's a plan,
 //     weeks: [ { week: 'YYYY-MM-DD' (its Monday), result: 'hit' | 'frozen' | 'missed' | 'empty',
-//                logged, planned } ],  // oldest first; once added, never changed
+//                logged, planned } ],  // oldest first; changes only when a past workout is changed
+//     locks: { [week]: { [weekday]: { rest, workouts: [ { workoutId, plan } ] } } },  // each day as it was
+//                          // when it passed (3 am the next morning), last 12 weeks; see streak.js
 //     notices: [ text ]    // shown once, next time the app opens (freeze used / streak ended)
 //   }
 // }
 // Older sessions may be missing primary/secondary (they have a single "muscle" text
 // instead), ones saved before version 2 have targetReps instead of targetRepMin/Max,
 // and ones saved before version 6 have no plan.
+// Before version 7 each weekday held its own exercises ("days" with a name and exercises);
+// each became a workout on that weekday, keeping its id, and sessions had dayId/dayName.
 
 const STORAGE_KEY = 'gitfit-data';
-const DATA_VERSION = 6;
+const DATA_VERSION = 7;
 
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-
-// "Monday – Legs", "Wednesday – Rest", or just "Thursday" if not set up yet.
-function dayLabel(day) {
-  const weekday = WEEKDAYS[day.weekday] || 'Extra day';
-  if (day.rest) return `${weekday} – Rest`;
-  return day.name ? `${weekday} – ${day.name}` : weekday;
-}
 
 // Today's weekday with Monday = 0 (JavaScript's getDay() starts at Sunday = 0).
 function todayWeekday() {
@@ -181,16 +181,28 @@ function linkToLibrary(days, customExercises) {
   }
 }
 
+// Version 7: each set-up weekday (one with a name or exercises) becomes a workout on that
+// weekday, keeping the day's id so its sessions and draft still point at it.
+// Days beyond 7 (very old data) were never shown and are left out.
+function daysToWorkouts(oldDays) {
+  return buildWeek(oldDays)
+    .filter(day => day.weekday != null && (day.name || day.exercises.length))
+    .map(day => ({ id: day.id, name: day.name || WEEKDAYS[day.weekday], weekday: day.weekday, exercises: day.exercises }));
+}
+
 // Fills in anything missing and upgrades older data so it still works.
 function normalize(data) {
-  const days = buildWeek(Array.isArray(data.days) ? data.days : []);
+  const oldDays = Array.isArray(data.days) ? data.days : [];
+  const isOld = !Array.isArray(data.workouts);
+  const workouts = isOld ? daysToWorkouts(oldDays) : data.workouts;
+  const days = WEEKDAYS.map((_, weekday) => ({ weekday, rest: Boolean(oldDays.find(d => d.weekday === weekday)?.rest) }));
   const customExercises = Array.isArray(data.customExercises) ? data.customExercises : [];
   // Sample workouts (demo: true) came from a temporary demo file; they're dropped.
   const sessions = (Array.isArray(data.sessions) ? data.sessions : []).filter(s => !s.demo);
 
   // Version 1 had a single target "reps" number; now it's a range.
-  for (const day of days) {
-    for (const ex of day.exercises) {
+  for (const workout of workouts) {
+    for (const ex of workout.exercises) {
       if (ex.repMin == null) {
         ex.repMin = ex.reps ?? 10;
         ex.repMax = ex.reps ?? 10;
@@ -199,12 +211,30 @@ function normalize(data) {
     }
   }
 
-  linkToLibrary(days, customExercises);
+  linkToLibrary(workouts, customExercises);
 
-  // Give old logged exercises the refId of the day exercise they came from,
+  // Version 7: sessions point at a workout (the old day's id) and keep just its name.
+  // An old name like "Monday – Push" becomes "Push".
+  for (const session of sessions) {
+    if (session.workoutId) continue;
+    session.workoutId = session.dayId;
+    const split = splitWeekdayName(session.dayName || '');
+    const rest = split ? split.rest.trim() : (session.dayName || '').trim();
+    session.workoutName = rest && rest !== 'Rest' ? rest
+      : workouts.find(w => w.id === session.dayId)?.name || 'Workout';
+    delete session.dayId;
+    delete session.dayName;
+  }
+  const draft = data.draft ? { swaps: {}, ...data.draft } : null;
+  if (draft && draft.dayId) {
+    draft.workoutId = draft.dayId;
+    delete draft.dayId;
+  }
+
+  // Give old logged exercises the refId of the workout exercise they came from,
   // so future history/volume features can tell which exercise they were.
   const refIds = {};
-  for (const day of days) for (const ex of day.exercises) refIds[ex.id] = ex.refId;
+  for (const workout of workouts) for (const ex of workout.exercises) refIds[ex.id] = ex.refId;
   for (const session of sessions) {
     for (const entry of session.exercises) {
       if (!entry.refId && refIds[entry.exerciseId]) entry.refId = refIds[entry.exerciseId];
@@ -221,11 +251,12 @@ function normalize(data) {
     version: DATA_VERSION,
     settings: { ...DEFAULT_SETTINGS, ...data.settings },
     customExercises,
+    workouts,
     days,
     sessions,
-    // Version 6 added swaps to the draft, and the streak.
-    draft: data.draft ? { swaps: {}, ...data.draft } : null,
-    streak: { start: null, weeks: [], notices: [], ...data.streak },
+    // Version 6 added swaps to the draft, and the streak. Version 7 added streak locks.
+    draft,
+    streak: { start: null, weeks: [], notices: [], locks: {}, ...data.streak },
   };
 }
 
@@ -241,27 +272,63 @@ const Store = {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(this.data));
   },
 
-  // ---------- Days ----------
+  // ---------- Workouts and days ----------
 
-  getDay(dayId) {
-    return this.data.days.find(d => d.id === dayId);
+  getWorkout(id) {
+    return this.data.workouts.find(w => w.id === id) || null;
   },
 
-  // The seven days, Monday first.
-  week() {
-    return this.data.days.filter(d => d.weekday != null);
+  // A weekday's workouts, in the order they were put there.
+  workoutsOn(weekday) {
+    return this.data.workouts.filter(w => w.weekday === weekday);
   },
 
-  // name is the type of day, e.g. "Legs". Can be empty.
-  renameDay(dayId, name) {
-    this.getDay(dayId).name = name;
+  isRestDay(weekday) {
+    return this.data.days[weekday].rest;
+  },
+
+  // Workouts on non-rest days: the ones that make up the week's plan.
+  plannedWorkouts() {
+    return this.data.workouts.filter(w => !this.isRestDay(w.weekday));
+  },
+
+  // A rest day keeps its workouts (grayed out); switching back brings them back.
+  // A workout in progress from that day is dropped, since it can't be done now.
+  setRestDay(weekday, rest) {
+    this.data.days[weekday].rest = rest;
+    const draftWorkout = this.data.draft && this.getWorkout(this.data.draft.workoutId);
+    if (rest && draftWorkout && draftWorkout.weekday === weekday) this.data.draft = null;
     this.save();
   },
 
-  // Exercises are kept when a day becomes a rest day, so switching back restores them.
-  setRestDay(dayId, rest) {
-    this.getDay(dayId).rest = rest;
-    if (rest && this.data.draft && this.data.draft.dayId === dayId) this.data.draft = null;
+  // A new workout. exercises (optional, for Copy workout) are copied with new ids,
+  // so the copy can be changed without touching the original.
+  addWorkout(name, weekday, exercises = []) {
+    const workout = { id: newId(), name, weekday, exercises: exercises.map(ex => ({ ...ex, id: newId() })) };
+    this.data.workouts.push(workout);
+    this.save();
+    return workout;
+  },
+
+  renameWorkout(id, name) {
+    this.getWorkout(id).name = name;
+    this.save();
+  },
+
+  // Puts a workout on another weekday, after any workouts already there.
+  moveWorkout(id, weekday) {
+    const workout = this.getWorkout(id);
+    if (workout.weekday === weekday) return;
+    this.data.workouts = this.data.workouts.filter(w => w !== workout);
+    workout.weekday = weekday;
+    this.data.workouts.push(workout);
+    this.save();
+  },
+
+  // Its finished sessions stay in history (they keep their own name and sets).
+  deleteWorkout(id) {
+    this.data.workouts = this.data.workouts.filter(w => w.id !== id);
+    if (this.data.draft && this.data.draft.workoutId === id) this.data.draft = null;
     this.save();
   },
 
@@ -282,28 +349,28 @@ const Store = {
   },
 
   // fields: { refId, sets, repMin, repMax }
-  addExercise(dayId, fields) {
+  addExercise(workoutId, fields) {
     const exercise = { id: newId(), ...fields };
-    this.getDay(dayId).exercises.push(exercise);
+    this.getWorkout(workoutId).exercises.push(exercise);
     this.save();
     return exercise;
   },
 
-  updateExercise(dayId, exerciseId, fields) {
-    const exercise = this.getDay(dayId).exercises.find(e => e.id === exerciseId);
+  updateExercise(workoutId, exerciseId, fields) {
+    const exercise = this.getWorkout(workoutId).exercises.find(e => e.id === exerciseId);
     Object.assign(exercise, fields);
     this.save();
   },
 
-  deleteExercise(dayId, exerciseId) {
-    const day = this.getDay(dayId);
-    day.exercises = day.exercises.filter(e => e.id !== exerciseId);
+  deleteExercise(workoutId, exerciseId) {
+    const workout = this.getWorkout(workoutId);
+    workout.exercises = workout.exercises.filter(e => e.id !== exerciseId);
     this.save();
   },
 
   // direction: -1 moves up, +1 moves down
-  moveExercise(dayId, exerciseId, direction) {
-    const list = this.getDay(dayId).exercises;
+  moveExercise(workoutId, exerciseId, direction) {
+    const list = this.getWorkout(workoutId).exercises;
     const from = list.findIndex(e => e.id === exerciseId);
     const to = from + direction;
     if (to < 0 || to >= list.length) return;
@@ -313,23 +380,27 @@ const Store = {
 
   // ---------- Sessions (finished workouts) ----------
 
-  // Most recent logged sets for a day's exercise, or null if never done.
+  // Most recent logged sets for a workout's exercise, or null if never done.
   // Matching the refId too means that if you switch the exercise to a different
-  // one, you don't see the old exercise's numbers.
+  // one, you don't see the old exercise's numbers. An exercise never logged in this
+  // workout (e.g. in a new copy of a workout) falls back to the last time that exercise
+  // was done in any workout.
   // Returns { date, sets: [ { weight, reps } ] }
-  lastResult(dayExercise) {
+  lastResult(workoutExercise) {
     for (let i = this.data.sessions.length - 1; i >= 0; i--) {
       const session = this.data.sessions[i];
       const entry = session.exercises.find(e =>
-        e.exerciseId === dayExercise.id && (!e.refId || e.refId === dayExercise.refId));
+        e.exerciseId === workoutExercise.id && (!e.refId || e.refId === workoutExercise.refId));
       if (entry && entry.sets.length) return { date: session.date, sets: entry.sets };
     }
-    return null;
+    const history = this.exerciseHistory(workoutExercise.refId);
+    const last = history[history.length - 1];
+    return last ? { date: last.date, sets: last.sets } : null;
   },
 
-  lastSessionForDay(dayId) {
+  lastSessionFor(workoutId) {
     for (let i = this.data.sessions.length - 1; i >= 0; i--) {
-      if (this.data.sessions[i].dayId === dayId) return this.data.sessions[i];
+      if (this.data.sessions[i].workoutId === workoutId) return this.data.sessions[i];
     }
     return null;
   },
@@ -338,15 +409,15 @@ const Store = {
   // Saved on every keystroke so nothing is lost if the phone locks
   // or the app gets closed mid-workout.
 
-  // Makes sure there's a draft for this day with exactly one row per target set.
+  // Makes sure there's a draft for this workout with exactly one row per target set.
   // Each set's weight (lbs, or null) starts as last time's weight; reps start empty.
-  ensureDraft(day) {
+  ensureDraft(workout) {
     let draft = this.data.draft;
-    if (!draft || draft.dayId !== day.id) {
-      draft = { dayId: day.id, startedAt: new Date().toISOString(), entries: {}, swaps: {} };
+    if (!draft || draft.workoutId !== workout.id) {
+      draft = { workoutId: workout.id, startedAt: new Date().toISOString(), entries: {}, swaps: {} };
       this.data.draft = draft;
     }
-    for (const ex of day.exercises) {
+    for (const ex of workout.exercises) {
       const lastSets = this.lastFor(ex)?.sets || [];
       const rows = draft.entries[ex.id] || [];
       // Keeps rows already typed in; adds or trims if the set count was edited.
@@ -387,13 +458,13 @@ const Store = {
   // Does a different exercise in place of a planned one, for this workout only
   // (the weekly plan doesn't change). Its sets start over, prefilled from its own last time.
   // Swapping back to the planned exercise undoes the swap.
-  swapExercise(day, exerciseId, refId) {
-    const ex = day.exercises.find(e => e.id === exerciseId);
+  swapExercise(workout, exerciseId, refId) {
+    const ex = workout.exercises.find(e => e.id === exerciseId);
     const swaps = this.data.draft.swaps;
     if (refId === ex.refId) delete swaps[exerciseId];
     else swaps[exerciseId] = refId;
     delete this.data.draft.entries[exerciseId];
-    this.ensureDraft(day);
+    this.ensureDraft(workout);
   },
 
   discardDraft() {
@@ -406,11 +477,11 @@ const Store = {
   // Returns the session, or null if nothing was filled in.
   finishDraft() {
     const draft = this.data.draft;
-    const day = this.getDay(draft.dayId);
+    const workout = this.getWorkout(draft.workoutId);
     const toNumber = v => (v === '' || v == null || isNaN(Number(v)) ? null : Number(v));
 
     const exercises = [];
-    for (const ex of day.exercises) {
+    for (const ex of workout.exercises) {
       const sets = (draft.entries[ex.id] || [])
         .map(s => ({ weight: toNumber(s.weight), reps: toNumber(s.reps) }))
         .filter(s => s.reps !== null);
@@ -439,10 +510,10 @@ const Store = {
 
     const session = {
       id: newId(),
-      dayId: day.id,
-      dayName: dayLabel(day),
+      workoutId: workout.id,
+      workoutName: workout.name,
       date: new Date().toISOString(),
-      plan: day.exercises.map(e => ({ exerciseId: e.id, refId: e.refId, sets: e.sets })),
+      plan: workout.exercises.map(e => ({ exerciseId: e.id, refId: e.refId, sets: e.sets })),
       exercises,
     };
     this.data.sessions.push(session);
@@ -457,10 +528,10 @@ const Store = {
   // non-bodyweight exercises (bodyweight sets are meant to have no weight).
   draftGaps() {
     const draft = this.data.draft;
-    const day = draft && this.getDay(draft.dayId);
-    if (!day) return [];
+    const workout = draft && this.getWorkout(draft.workoutId);
+    if (!workout) return [];
     const gaps = [];
-    for (const ex of day.exercises) {
+    for (const ex of workout.exercises) {
       const info = Library.forExercise({ refId: draft.swaps[ex.id] || ex.refId });
       const problems = [];
       (draft.entries[ex.id] || []).forEach((set, i) => {
@@ -478,7 +549,7 @@ const Store = {
   draftProgress(exerciseId) {
     const draft = this.data.draft;
     const rows = draft?.entries[exerciseId] || [];
-    const ex = draft && this.getDay(draft.dayId)?.exercises.find(e => e.id === exerciseId);
+    const ex = draft && this.getWorkout(draft.workoutId)?.exercises.find(e => e.id === exerciseId);
     const info = Library.forExercise({ refId: draft?.swaps[exerciseId] || ex?.refId });
     const hasReps = set => set.reps !== '' && set.reps != null;
     const filled = rows.filter(hasReps).length;

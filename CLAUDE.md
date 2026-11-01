@@ -2,8 +2,8 @@
 
 ## What this is
 
-GitFit is a personal gym tracker for one person (Rex), used mainly on an **iPhone in Safari, added to the home screen** as a web app. You plan a weekly split (one day per weekday), log sets during a workout (and can swap an exercise for today only), and see progress:
-- **Workouts tab:** the week, a Past workouts link (view, fix or delete finished workouts), and a planned sets card (groups open to muscles, muscles open to the exercises behind them)
+GitFit is a personal gym tracker for one person (Rex), used mainly on an **iPhone in Safari, added to the home screen** as a web app. You create workouts (title + exercises), each assigned to a weekday (any number per day), log sets during a workout (and can swap an exercise for today only), and see progress:
+- **Workouts tab:** the week Monday → Sunday (the same 7-day week, not a flip-through calendar) with each day's workouts; a + button (bottom right) to create a workout; tap a workout to start it on any day; hold and drag it to another day; tap a day's name to make it a rest day (its workouts gray out and can't be started); Edit has title, day chips, exercises, Copy workout and Delete workout. Also a Past workouts link (view, fix or delete finished workouts) and a planned sets card (groups open to muscles, muscles open to the exercises behind them). Unplanned (one-off) workouts are a planned future feature, not built yet.
 - **Profile tab:** the weekly streak card, the exercise Log (estimated max graph, calendar), and a front/back muscle map (Growth and Level modes)
 
 The user is not a programmer. Explain changes in plain words, keep the code simple and well commented, and test changes in the browser before calling them done.
@@ -32,7 +32,7 @@ js/streak.js      Weekly streak rules: week results, freezes, Profile summary
 js/bodymap.js     Muscle map drawing and colors
 js/tabs.js        Bottom tab bar (Workouts, Profile); shows only on each tab's main screen
 js/views.js       Builds each screen's HTML; each returns { title, back, html }
-js/app.js         Routing by URL hash (#/, #/day/<id>, #/profile, #/settings, #/log, …) and event handling
+js/app.js         Routing by URL hash (#/, #/new, #/workout/<id>, #/history, #/profile, #/settings, #/log, …), event handling, and the drag code
 README.md         User-facing guide; keep it up to date when you change structure or behavior
 ```
 
@@ -43,7 +43,7 @@ Rule of thumb: **storage.js** knows about data, **views.js** knows about HTML, *
 ## How data is saved
 
 - Everything is one JSON object in the browser's `localStorage` under the key **`gitfit-data`** (`STORAGE_KEY` in `storage.js`). It lives only on that device and that browser — the phone's data and the computer's data are separate.
-- The data shape is documented in the comment at the top of `storage.js`: `version`, `settings`, `customExercises`, `days` (always 7, Monday = 0), `sessions` (finished workouts, oldest first, each with the day's `plan` when logged), `draft` (workout in progress, saved on every keystroke, with any `swaps` for today), `streak` (start week, locked week results, pending notices).
+- The data shape is documented in the comment at the top of `storage.js`: `version`, `settings`, `customExercises`, `workouts` (id, name, weekday, exercises), `days` (always 7, Monday = 0, just `rest`), `sessions` (finished workouts, oldest first, with `workoutId`, `workoutName` and the workout's `plan` when logged), `draft` (workout in progress, saved on every keystroke, with any `swaps` for today), `streak` (start week, week results, day `locks`, pending notices). Version 7 turned each old weekday (name + exercises) into a workout on that weekday with the same id, and sessions' `dayId`/`dayName` into `workoutId`/`workoutName` (the "Monday – " part removed).
 - Only `storage.js` reads or writes `localStorage`. Other files go through `Store`.
 - **Changing the data shape**: bump `DATA_VERSION` and add an upgrade step in `normalize()` so older saved data (and old backup files) still load. Never drop or rename saved fields without migrating them. Update the shape comment at the top of `storage.js`.
 - Muscle ids and exercise ids (`refId`) are saved in user data. **Never rename or remove an existing id** without a migration (see `RENAMED_MUSCLES` for how a rename was handled). Adding new ones is fine.
@@ -68,8 +68,9 @@ Rule of thumb: **storage.js** knows about data, **views.js** knows about HTML, *
 - **Weekly streak** (`streak.js`, rules in its top comment):
   - A week runs Monday 3 am → next Monday 3 am. A workout counts for the week Finish was tapped in, on any day.
   - A week is hit when every planned set is logged (a set with reps), counting finished workouts only. Each planned exercise counts at most its planned sets.
-  - Days already logged that week are locked to the plan saved with their first workout that week; days not done yet follow the current plan. Several workouts for the same day add up.
-  - Hit is locked the moment it happens (even if reached by editing the plan). Ended weeks are judged once. The exceptions are workout changes: Undo on the "Workout saved" toast takes back a hit that workout made (`Streak.undoHit()`), and editing or deleting a past workout re-judges its week and every week after it, quietly (no notices; this week only celebrates if it wasn't already hit) — `Streak.rejudge()`. Re-judged ended weeks use each logged day's saved plan, and the current plan for days with no workout that week.
+  - Planned = every workout on a non-rest day, each counted once (moving a workout between days never changes the total). A workout already logged that week is locked to the plan saved with its first session that week. Several sessions of the same workout add up.
+  - **Passed days lock** (`streak.locks`, `Streak.lockDays()`): at 3 am after each day, that day's rest setting and its workouts' plans are saved for the week. Afterwards, editing, deleting, moving away or resting that day's (missed) workouts doesn't remove their sets from that week, and un-resting a day that was a rest day when it passed doesn't add them. A workout moved or created onto an already-passed day does count. The edit screen shows a note on a missed, locked workout (`Streak.lockedDay()`), and the day menu and delete pop-up say so too. Locks are kept 12 weeks.
+  - Hit is locked the moment it happens (even if reached by editing the plan). Ended weeks are judged once. The exceptions are workout changes: Undo on the "Workout saved" toast takes back a hit that workout made (`Streak.undoHit()`), and editing or deleting a past workout re-judges its week and every week after it, quietly (no notices; this week only celebrates if it wasn't already hit) — `Streak.rejudge()`. Re-judged ended weeks use their locks and saved plans, falling back to the current plan where there are none.
   - Every 4 weeks in a row (streak 4, 8, 12 …) earns 1 freeze (max 2). A week that ends at 90%+ (no rounding) uses a freeze if the streak is above 0, and the streak stays the same. Otherwise the streak goes to 0. Weeks with 0 planned sets don't count.
   - Tracking starts the first full week after a plan with an exercise exists.
   - Swap for today saves the swapped exercise under its own `refId`, with the planned exercise's `exerciseId` and `swappedFrom`, so history stays right and it counts for the streak.

@@ -2,8 +2,10 @@
 //
 // Screens are chosen by the part of the URL after "#":
 //   #/                 → home (the week)          [Workouts tab]
-//   #/day/<id>/edit    → edit a day               [Workouts tab]
-//   #/day/<id>         → do a workout for that day [Workouts tab]
+//   #/new              → new workout (the + button) [Workouts tab]
+//   #/new/<id>         → copy of a workout          [Workouts tab]
+//   #/workout/<id>/edit → edit a workout            [Workouts tab]
+//   #/workout/<id>     → do a workout (any day)     [Workouts tab]
 //   #/history          → past workouts (link at the top of Workouts) [Workouts tab]
 //   #/history/<id>     → fix or delete one past workout [Workouts tab]
 //   #/profile          → profile                  [Profile tab]
@@ -21,8 +23,12 @@ const gearBtn = document.getElementById('gear');
 const toastEl = document.getElementById('toast');
 const historyLink = document.getElementById('history-link');
 
-// The add/edit exercise panel on the edit-day screen:
-//   exerciseId = the day's exercise being edited (null when adding a new one)
+// The New workout / Copy workout form: { name, weekday, copyFrom (workout id or null) }.
+// null until that screen opens; kept while it's open so a redraw doesn't lose what's typed.
+let newForm = null;
+
+// The add/edit exercise panel on the edit-workout screen:
+//   exerciseId = the workout's exercise being edited (null when adding a new one)
 //   refId      = the library/custom exercise picked
 //   mode       = 'pick' (search library), 'custom' (create custom), 'details' (sets & reps)
 //   query      = text in the search box
@@ -102,6 +108,15 @@ function pastEditChanged() {
   return Boolean(pastEdit) && JSON.stringify(pastEdit.exercises.map(e => e.rows)) !== pastEdit.original;
 }
 
+// Saves the title box on the edit-workout screen (an empty title keeps the old one).
+function saveWorkoutName() {
+  const input = document.getElementById('workout-name');
+  const name = input?.value.trim();
+  if (!name) return;
+  Store.renameWorkout(currentRoute().workoutId, name);
+  titleEl.textContent = `Edit ${name}`;
+}
+
 // Shows a yes/no pop-up (see Views.confirmDialog).
 function showDialog(options) {
   overlayEl.innerHTML = Views.confirmDialog(options);
@@ -116,9 +131,10 @@ function hideDialog() {
 
 function currentRoute() {
   const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
-  if (parts[0] === 'day' && parts[1]) {
-    return { view: parts[2] === 'edit' ? 'edit' : 'workout', dayId: parts[1], tab: 'workouts' };
+  if (parts[0] === 'workout' && parts[1]) {
+    return { view: parts[2] === 'edit' ? 'edit' : 'workout', workoutId: parts[1], tab: 'workouts' };
   }
+  if (parts[0] === 'new') return { view: 'new', copyFrom: parts[1] || null, tab: 'workouts' };
   if (parts[0] === 'history') {
     return parts[1] ? { view: 'past', sessionId: parts[1], tab: 'workouts' } : { view: 'history', tab: 'workouts' };
   }
@@ -158,17 +174,25 @@ function render() {
     screen = Views.logSearch(logQuery);
   } else if (route.view === 'exercise-log') {
     screen = Views.exerciseLog(route.refId, logState);
+  } else if (route.view === 'new') {
+    if (!newForm) {
+      const source = route.copyFrom && Store.getWorkout(route.copyFrom);
+      newForm = source
+        ? { name: source.name, weekday: source.weekday, copyFrom: source.id }
+        : { name: '', weekday: todayWeekday(), copyFrom: null };
+    }
+    screen = Views.newWorkout(newForm);
   } else {
-    const day = Store.getDay(route.dayId);
-    if (!day) return go('#/');
+    const workout = Store.getWorkout(route.workoutId);
+    if (!workout) return go('#/');
     if (route.view === 'edit') {
-      screen = Views.editDay(day, picker);
-    } else if (day.rest) {
-      return go('#/'); // rest days have no workout
+      screen = Views.editWorkout(workout, picker);
+    } else if (Store.isRestDay(workout.weekday) && Store.data.draft?.workoutId !== workout.id) {
+      return go('#/'); // a workout on a rest day can't be started
     } else {
       // Only start a draft once there's something to log.
-      const draft = day.exercises.length ? Store.ensureDraft(day) : null;
-      screen = Views.workout(day, draft, openExerciseId, swap);
+      const draft = workout.exercises.length ? Store.ensureDraft(workout) : null;
+      screen = Views.workout(workout, draft, openExerciseId, swap);
     }
   }
 
@@ -280,33 +304,92 @@ function finishWorkout() {
 // ---------- Button taps ----------
 
 const actions = {
-  'open-day'(id) {
+  // Tapped a workout on the week: start it (or resume it), whatever day it is today.
+  'open-workout'(id) {
+    if (dragJustEnded()) return;
     const draft = Store.data.draft;
-    if (draft && draft.dayId !== id) {
-      const other = Store.getDay(draft.dayId);
-      if (!confirm(`You have an unfinished "${other ? dayLabel(other) : 'workout'}". Discard it and start this one?`)) return;
+    if (draft && draft.workoutId !== id) {
+      const other = Store.getWorkout(draft.workoutId);
+      if (!confirm(`You have an unfinished "${other ? other.name : 'workout'}". Discard it and start this one?`)) return;
       Store.discardDraft();
     }
-    go(`#/day/${id}`);
+    go(`#/workout/${id}`);
   },
 
-  'edit-day'(id) {
-    go(`#/day/${id}/edit`);
+  'edit-workout'(id) {
+    if (dragJustEnded()) return;
+    go(`#/workout/${id}/edit`);
   },
 
-  // Tapped one of the day's exercises: open it for editing at the sets & reps step.
+  // The + button on the week.
+  'new-workout'() {
+    go('#/new');
+  },
+
+  'copy-workout'(id) {
+    go(`#/new/${id}`);
+  },
+
+  // Tapped a day's name: make it a rest day, or a training day again.
+  'day-menu'(id) {
+    const weekday = Number(id);
+    const day = WEEKDAYS[weekday];
+    const rest = Store.isRestDay(weekday);
+    const lines = [rest
+      ? `Make ${day} a training day? Its workouts can be started again and count for your streak.`
+      : `Make ${day} a rest day? Its workouts stay on it, grayed out, and don't count for your streak until you switch it back.`];
+    if (Streak.hasPassed(weekday)) {
+      lines.push(`${day} has already passed, so this week's streak keeps counting it as it was on ${day}. The change counts from next week.`);
+    }
+    showDialog({
+      title: day,
+      lines,
+      confirm: { label: rest ? 'Make it a training day' : 'Make it a rest day', action: 'toggle-rest', id: weekday },
+      cancel: { label: 'Cancel', action: 'dialog-cancel' },
+    });
+  },
+
+  'toggle-rest'(id) {
+    const weekday = Number(id);
+    hideDialog();
+    Store.setRestDay(weekday, !Store.isRestDay(weekday));
+    render();
+  },
+
+  // Tapped one of the workout's exercises: open it for editing at the sets & reps step.
   'edit-exercise'(id) {
-    const ex = Store.getDay(currentRoute().dayId).exercises.find(e => e.id === id);
+    const ex = Store.getWorkout(currentRoute().workoutId).exercises.find(e => e.id === id);
     picker = { exerciseId: id, refId: ex.refId, mode: 'details', query: '' };
     render();
     showPanel();
   },
 
   // Done on the edit screen. Everything is saved as you change it, so this mostly just goes back.
-  // The type-of-day box saves when you leave it; save it here too in case you're still in it.
-  'save-day'() {
-    const name = document.getElementById('day-name');
-    if (name) Store.renameDay(currentRoute().dayId, name.value.trim());
+  // The title box saves when you leave it; save it here too in case you're still in it.
+  'save-workout'() {
+    saveWorkoutName();
+    go('#/');
+  },
+
+  'delete-workout'(id) {
+    const workout = Store.getWorkout(id);
+    const lockedOn = Streak.lockedDay(id);
+    const lines = [`${workout.name} will be removed from your week. Workouts you've already finished with it stay in Past workouts and your logs.`];
+    if (lockedOn) lines.push(`${lockedOn} has passed and you haven't done it yet this week, so its sets still count in this week's streak.`);
+    showDialog({
+      title: `Delete ${workout.name}?`,
+      lines,
+      confirm: { label: 'Delete workout', action: 'delete-workout-confirm', id },
+      cancel: { label: 'Cancel', action: 'dialog-cancel' },
+      danger: true,
+    });
+  },
+
+  'delete-workout-confirm'(id) {
+    const name = Store.getWorkout(id).name;
+    hideDialog();
+    Store.deleteWorkout(id);
+    toast(`Deleted ${name}`);
     go('#/');
   },
 
@@ -369,13 +452,13 @@ const actions = {
   },
 
   'move-exercise'(id, button) {
-    Store.moveExercise(currentRoute().dayId, id, Number(button.dataset.dir));
+    Store.moveExercise(currentRoute().workoutId, id, Number(button.dataset.dir));
     render();
   },
 
   'delete-exercise'(id) {
     if (!confirm('Delete this exercise from the day? (Past workouts stay saved.)')) return;
-    Store.deleteExercise(currentRoute().dayId, id);
+    Store.deleteExercise(currentRoute().workoutId, id);
     picker = newPicker();
     render();
   },
@@ -414,8 +497,8 @@ const actions = {
   // Tapped an exercise in the swap search: do it instead of the planned one, this workout only.
   // Any sets already typed for this exercise are cleared.
   'swap-pick'(refId) {
-    const day = Store.getDay(currentRoute().dayId);
-    Store.swapExercise(day, swap.exerciseId, refId);
+    const workout = Store.getWorkout(currentRoute().workoutId);
+    Store.swapExercise(workout, swap.exerciseId, refId);
     toast(`Swapped for today: ${Library.forExercise({ refId }).name}`);
     swap = { exerciseId: null, query: '' };
     render();
@@ -423,15 +506,15 @@ const actions = {
 
   // Back to the planned exercise.
   'swap-undo'(id) {
-    const day = Store.getDay(currentRoute().dayId);
-    Store.swapExercise(day, id, day.exercises.find(e => e.id === id).refId);
+    const workout = Store.getWorkout(currentRoute().workoutId);
+    Store.swapExercise(workout, id, workout.exercises.find(e => e.id === id).refId);
     render();
   },
 
   // Finish workout: if any set is still empty, ask first (Go back / Finish anyway).
   'finish'() {
-    const day = Store.getDay(Store.data.draft.dayId);
-    if (!day.exercises.some(ex => Store.draftHasReps(ex.id))) {
+    const workout = Store.getWorkout(Store.data.draft.workoutId);
+    if (!workout.exercises.some(ex => Store.draftHasReps(ex.id))) {
       toast('Fill in at least one set first');
       return;
     }
@@ -525,10 +608,10 @@ const actions = {
       overlayEl.hidden = true;
       overlayEl.innerHTML = '';
     }
-    const dayId = lastFinish.draft.dayId;
+    const workoutId = lastFinish.draft.workoutId;
     lastFinish = null;
     hideToast();
-    go(`#/day/${dayId}`);
+    go(`#/workout/${workoutId}`);
   },
 
   'discard'() {
@@ -653,6 +736,108 @@ backBtn.addEventListener('click', () => {
   go(backBtn.dataset.href);
 });
 
+// ---------- Dragging a workout to another day (Workouts tab) ----------
+// Press and hold a workout (HOLD_MS) to pick it up, then drag it onto another day and let go.
+// Moving your finger before then scrolls the page as usual. A copy of the card follows
+// your finger (moved with transform only, so it stays smooth on iPhone) and the day under
+// it lights up. Near the top or bottom of the screen the page scrolls.
+const HOLD_MS = 350;
+const EDGE_PX = 90;
+let drag = null; // { id, card, ghost, startX, startY, x, y, offsetX, offsetY, active, timer, overDay }
+let dragEndedAt = 0;
+
+// True just after a drag, so letting go doesn't also count as a tap on the workout.
+function dragJustEnded() {
+  return Date.now() - dragEndedAt < 400;
+}
+
+appEl.addEventListener('pointerdown', event => {
+  const card = event.target.closest('.workout-card');
+  if (!card || event.button > 0) return;
+  drag = { id: card.dataset.workout, card, startX: event.clientX, startY: event.clientY,
+    x: event.clientX, y: event.clientY, active: false, overDay: null };
+  drag.timer = setTimeout(pickUp, HOLD_MS);
+});
+
+function pickUp() {
+  const rect = drag.card.getBoundingClientRect();
+  drag.active = true;
+  drag.offsetX = drag.startX - rect.left;
+  drag.offsetY = drag.startY - rect.top;
+  drag.ghost = drag.card.cloneNode(true);
+  drag.ghost.classList.add('drag-ghost');
+  drag.ghost.style.width = `${rect.width}px`;
+  document.body.append(drag.ghost);
+  drag.card.classList.add('is-dragging');
+  document.body.classList.add('is-dragging');
+  navigator.vibrate?.(15); // a small buzz where supported
+  moveGhost();
+  requestAnimationFrame(edgeScroll);
+}
+
+function moveGhost() {
+  drag.ghost.style.transform = `translate(${drag.x - drag.offsetX}px, ${drag.y - drag.offsetY}px) scale(1.03)`;
+  // The day under the finger (the ghost ignores taps, so it doesn't get in the way).
+  const day = document.elementFromPoint(drag.x, drag.y)?.closest('.day-block');
+  if (day !== drag.overDay) {
+    drag.overDay?.classList.remove('is-drop-target');
+    day?.classList.add('is-drop-target');
+    drag.overDay = day;
+  }
+}
+
+// Keeps scrolling while the finger is held near the top or bottom edge.
+function edgeScroll() {
+  if (!drag?.active) return;
+  const speed = drag.y < EDGE_PX ? -8 : drag.y > innerHeight - EDGE_PX ? 8 : 0;
+  if (speed) {
+    window.scrollBy(0, speed);
+    moveGhost();
+  }
+  requestAnimationFrame(edgeScroll);
+}
+
+function endDrag(drop) {
+  if (!drag) return;
+  clearTimeout(drag.timer);
+  if (drag.active) {
+    dragEndedAt = Date.now();
+    drag.ghost.remove();
+    drag.card.classList.remove('is-dragging');
+    drag.overDay?.classList.remove('is-drop-target');
+    document.body.classList.remove('is-dragging');
+    const weekday = drop && drag.overDay ? Number(drag.overDay.dataset.weekday) : null;
+    const workout = Store.getWorkout(drag.id);
+    if (weekday != null && workout && workout.weekday !== weekday) {
+      Store.moveWorkout(drag.id, weekday);
+      toast(`Moved ${workout.name} to ${WEEKDAYS[weekday]}`);
+      render();
+    }
+  }
+  drag = null;
+}
+
+window.addEventListener('pointermove', event => {
+  if (!drag) return;
+  drag.x = event.clientX;
+  drag.y = event.clientY;
+  if (drag.active) moveGhost();
+  else if (Math.hypot(drag.x - drag.startX, drag.y - drag.startY) > 8) endDrag(false); // it's a scroll
+});
+window.addEventListener('pointerup', () => endDrag(true));
+window.addEventListener('pointercancel', () => endDrag(false));
+
+// Holding a workout picks it up; don't also open the long-press menu.
+appEl.addEventListener('contextmenu', event => {
+  if (event.target.closest('.workout-card')) event.preventDefault();
+});
+
+// Once a workout is picked up, the page mustn't scroll under the finger
+// (iPhone Safari needs this on touchmove, and it must not be passive).
+window.addEventListener('touchmove', event => {
+  if (drag?.active) event.preventDefault();
+}, { passive: false });
+
 // ---------- Typing ----------
 
 // Workout inputs: save each keystroke into the draft.
@@ -690,6 +875,11 @@ appEl.addEventListener('input', event => {
   // Remember the custom exercise's name, in case the form is redrawn.
   if (input.id === 'custom-name') {
     picker.custom.name = input.value;
+    return;
+  }
+
+  if (input.id === 'new-workout-name') {
+    newForm.name = input.value;
     return;
   }
 
@@ -745,17 +935,16 @@ appEl.addEventListener('change', async event => {
     return;
   }
 
-  // Type of day ("Legs"). Leaving it empty is allowed.
-  if (input.id === 'day-name') {
-    Store.renameDay(currentRoute().dayId, input.value.trim());
+  // Workout title on the edit screen (an empty title keeps the old one).
+  if (input.id === 'workout-name') saveWorkoutName();
+
+  // Day chips on the edit screen: moves the workout to that day.
+  if (input.name === 'workout-day') {
+    Store.moveWorkout(currentRoute().workoutId, Number(input.value));
   }
 
-  // Workout / Rest day choice on the edit screen.
-  if (input.name === 'day-kind') {
-    Store.setRestDay(currentRoute().dayId, input.value === 'rest');
-    picker = newPicker();
-    render();
-  }
+  // Day chips on the New workout form.
+  if (input.name === 'new-workout-day') newForm.weekday = Number(input.value);
 
   if (input.id === 'custom-equipment') {
     picker.custom.equipment = input.value;
@@ -786,7 +975,21 @@ appEl.addEventListener('submit', event => {
   const form = event.target;
   const values = Object.fromEntries(new FormData(form));
 
-  // Sets & reps for the picked exercise → add it to the day (or save changes).
+  // New workout (or a copy) → create it, then open it to add or change exercises.
+  if (form.id === 'new-workout-form') {
+    const name = values.name.trim();
+    if (!name) {
+      toast('Give the workout a title');
+      return;
+    }
+    const source = newForm.copyFrom && Store.getWorkout(newForm.copyFrom);
+    const workout = Store.addWorkout(name, newForm.weekday, source ? source.exercises : []);
+    toast(source ? `Copied to ${WEEKDAYS[workout.weekday]}` : `Created ${name}`);
+    go(`#/workout/${workout.id}/edit`);
+    return;
+  }
+
+  // Sets & reps for the picked exercise → add it to the workout (or save changes).
   if (form.id === 'exercise-form') {
     const repA = Math.max(1, parseInt(values.repMin, 10) || 1);
     const repB = Math.max(1, parseInt(values.repMax, 10) || repA);
@@ -796,13 +999,13 @@ appEl.addEventListener('submit', event => {
       repMin: Math.min(repA, repB), // swapped if typed backwards
       repMax: Math.max(repA, repB),
     };
-    const dayId = currentRoute().dayId;
+    const workoutId = currentRoute().workoutId;
     const name = Library.forExercise(fields).name;
     if (picker.exerciseId) {
-      Store.updateExercise(dayId, picker.exerciseId, fields);
+      Store.updateExercise(workoutId, picker.exerciseId, fields);
       toast(`Saved ${name}`);
     } else {
-      Store.addExercise(dayId, fields);
+      Store.addExercise(workoutId, fields);
       toast(`Added ${name}`);
     }
     picker = newPicker();
@@ -849,6 +1052,7 @@ window.addEventListener('hashchange', () => {
   openExerciseId = null;
   swap = { exerciseId: null, query: '' };
   logState = { month: null, day: null };
+  newForm = null;
   pastEdit = null;
   render();
   window.scrollTo(0, 0);
