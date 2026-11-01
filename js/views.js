@@ -245,24 +245,6 @@ function weekdayPicker(name, selected) {
     </div>`;
 }
 
-// The training day / rest day switch on each day of the week, like an iPhone settings switch:
-// on (green, dumbbell in the knob) = training day, off (gray, moon in the knob) = rest day.
-// Tapping it flips it straight away (only asks if a workout in progress would be lost; see day-menu in app.js).
-const KNOB_ICONS = {
-  train: '<path d="M6.5 6.5v11M17.5 6.5v11M3.5 9.5v5M20.5 9.5v5M6.5 12h11"/>',
-  rest: '<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>',
-};
-function dayToggle(weekday, dayName, rest) {
-  return `
-    <button type="button" class="day-toggle ${rest ? '' : 'is-on'}" role="switch" aria-checked="${!rest}"
-      aria-label="${dayName} is a training day" data-action="day-menu" data-id="${weekday}">
-      <span class="day-toggle-knob">
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2"
-          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${KNOB_ICONS[rest ? 'rest' : 'train']}</svg>
-      </span>
-    </button>`;
-}
-
 // The small pencil on each workout card (opens its edit screen).
 const PENCIL_SVG = `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"
   stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>`;
@@ -282,7 +264,7 @@ const Views = {
 
   // ---------- Home: the week, Monday to Sunday, with each day's workouts ----------
   // openSets = which planned-sets rows are expanded: { groups: Set, muscles: Set }
-  // Tap a day's switch to make it a rest day (or not); tap a workout to start it (any day);
+  // A day with no workouts is a rest day automatically; tap a workout to start it (any day);
   // hold a workout and drag it to move it to another day (see the drag code in app.js).
   home(openSets) {
     const { draft } = Store.data;
@@ -306,26 +288,24 @@ const Views = {
         const doneThisWeek = last && weekKey(new Date(last.date).getTime()) === thisWeek;
         const when = doneThisWeek ? ' · <span class="done-mark">✓ Done</span>'
           : last ? ` · last ${formatDate(last.date)}` : '';
-        // On a rest day the workout stays, grayed out, and can't be started.
         return `
           <div class="card workout-card" data-workout="${w.id}">
-            <button class="workout-open" data-action="open-workout" data-id="${w.id}" ${rest ? 'disabled' : ''}>
+            <button class="workout-open" data-action="open-workout" data-id="${w.id}">
               <span class="workout-name">${esc(w.name)}</span>
               <span class="day-meta">${count} exercise${count === 1 ? '' : 's'}${when}</span>
             </button>
             <button type="button" class="icon-btn" data-action="edit-workout" data-id="${w.id}" aria-label="Edit ${esc(w.name)}">${PENCIL_SVG}</button>
           </div>`;
       }).join('');
-      // An empty training day gets a small "+ Add workout"; an empty rest day is just its header.
-      const empty = rest ? '' : `
-        <button type="button" class="day-add" data-action="new-workout-on" data-id="${weekday}">+ Add workout</button>`;
+      // An empty day is a rest day: its label, and a small link to add a workout (making it a training day).
+      const empty = `
+        <button type="button" class="day-add" data-action="new-workout-on" data-id="${weekday}">+ Add a workout to train this day</button>`;
       return `
         <section class="day-block ${rest ? 'is-rest' : ''} ${weekday === today ? 'is-today' : ''}" data-weekday="${weekday}">
           <div class="day-head">
             <span class="day-head-name">${dayName}</span>
             ${weekday === today ? '<span class="tag tag-today">Today</span>' : ''}
             ${rest ? '<span class="rest-word">Rest day</span>' : ''}
-            ${dayToggle(weekday, dayName, rest)}
           </div>
           ${cards || empty}
         </section>`;

@@ -15,8 +15,8 @@
 //     { id, name (e.g. "Push"), weekday (0 = Monday … 6 = Sunday),
 //       exercises: [ { id, refId (library or custom exercise id), sets, repMin, repMax } ] }
 //   ],
-//   days: [                // always 7, Monday first: whether each weekday is a rest day
-//     { weekday, rest }    // a rest day's workouts stay on it, grayed out, and don't count
+//   days: [                // always 7, Monday first. No longer used: a day with no workouts is
+//     { weekday, rest }    // a rest day automatically. Kept so older data and backups still match.
 //   ],
 //   sessions: [            // one per finished workout, oldest first
 //     { id, workoutId, workoutName, date (ISO string, when Finish was tapped),
@@ -283,22 +283,14 @@ const Store = {
     return this.data.workouts.filter(w => w.weekday === weekday);
   },
 
+  // A day with no workouts is a rest day; adding a workout makes it a training day.
   isRestDay(weekday) {
-    return this.data.days[weekday].rest;
+    return !this.workoutsOn(weekday).length;
   },
 
-  // Workouts on non-rest days: the ones that make up the week's plan.
+  // The workouts that make up the week's plan (every workout, since each is on a day).
   plannedWorkouts() {
-    return this.data.workouts.filter(w => !this.isRestDay(w.weekday));
-  },
-
-  // A rest day keeps its workouts (grayed out); switching back brings them back.
-  // A workout in progress from that day is dropped, since it can't be done now.
-  setRestDay(weekday, rest) {
-    this.data.days[weekday].rest = rest;
-    const draftWorkout = this.data.draft && this.getWorkout(this.data.draft.workoutId);
-    if (rest && draftWorkout && draftWorkout.weekday === weekday) this.data.draft = null;
-    this.save();
+    return this.data.workouts;
   },
 
   // A new workout. exercises (optional, for Copy workout) are copied with new ids,

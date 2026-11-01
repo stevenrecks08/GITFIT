@@ -191,8 +191,6 @@ function render() {
     if (!workout) return go('#/');
     if (route.view === 'edit') {
       screen = Views.editWorkout(workout, picker);
-    } else if (Store.isRestDay(workout.weekday) && Store.data.draft?.workoutId !== workout.id) {
-      return go('#/'); // a workout on a rest day can't be started
     } else {
       // Only start a draft once there's something to log.
       const draft = workout.exercises.length ? Store.ensureDraft(workout) : null;
@@ -353,41 +351,6 @@ const actions = {
 
   'copy-workout'(id) {
     go(`#/new/${id}`);
-  },
-
-  // Tapped a day's switch: flips it between training day and rest day straight away.
-  // It only asks first if that would throw away a workout in progress from that day.
-  'day-menu'(id) {
-    const weekday = Number(id);
-    const draftWorkout = Store.data.draft && Store.getWorkout(Store.data.draft.workoutId);
-    if (!Store.isRestDay(weekday) && draftWorkout?.weekday === weekday) {
-      showDialog({
-        title: `Make ${WEEKDAYS[weekday]} a rest day?`,
-        lines: [`Your unfinished ${draftWorkout.name} workout is on ${WEEKDAYS[weekday]}, and it will be discarded.`],
-        confirm: { label: 'Make it a rest day', action: 'toggle-rest', id: weekday },
-        cancel: { label: 'Cancel', action: 'dialog-cancel' },
-        danger: true,
-      });
-      return;
-    }
-    actions['toggle-rest'](weekday);
-  },
-
-  'toggle-rest'(id) {
-    const weekday = Number(id);
-    const day = WEEKDAYS[weekday];
-    hideDialog();
-    Store.setRestDay(weekday, !Store.isRestDay(weekday));
-    const rest = Store.isRestDay(weekday);
-    // A passed day stays as it was for this week's streak, so say so.
-    toast(Streak.hasPassed(weekday)
-      ? `${day} has passed: this week's streak keeps it as it was. Counts from next week.`
-      : rest ? `${day} is a rest day` : `${day} is a training day`);
-    // Slide the switch first, then redraw the week once it has moved.
-    const toggle = document.querySelector(`.day-toggle[data-id="${weekday}"]`);
-    toggle?.classList.toggle('is-on', !rest);
-    toggle?.setAttribute('aria-checked', String(!rest));
-    setTimeout(render, reduceMotion.matches ? 0 : 200);
   },
 
   // Tapped one of the workout's exercises: open it for editing at the sets & reps step.

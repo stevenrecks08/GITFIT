@@ -6,13 +6,12 @@
 //
 // A week is "hit" when every planned set of every planned workout that week is logged
 // (a set is logged when it has reps). What's planned that week:
-//   - each workout on a day that isn't a rest day (each workout counts once)
+//   - every workout on the week (each counts once; a day with no workouts is a rest day and plans nothing)
 //   - a workout already finished this week → its plan as it was when it was first logged
 //     this week (saved with the workout), so later plan edits don't change it
 //   - a day that has passed (at 3 am the next morning) is locked as it was then (streak.locks):
-//     its workouts and their plans still count even if they're edited, deleted, moved away or
-//     the day is made a rest day; and if it was a rest day then, making it a training day later
-//     doesn't add it. A workout moved or added onto a day that has already passed still counts.
+//     its workouts and their plans still count even if they're edited, deleted or moved away.
+//     A workout moved or added onto a day that has already passed still counts.
 //   - otherwise (today and later days) → the current plan
 // Each planned exercise counts at most its planned sets, so extra sets on one exercise
 // don't make up for another. Sets of an exercise swapped for today count for the one it replaced.
@@ -147,12 +146,6 @@ const Streak = {
       if (!lock.rest && lock.workouts.some(w => w.workoutId === workoutId)) return WEEKDAYS[weekday];
     }
     return null;
-  },
-
-  // Whether a weekday has already passed in a tracked week (so it's locked for this week).
-  hasPassed(weekday, now = Date.now()) {
-    const start = Store.data.streak.start;
-    return Boolean(start) && weekKey(now) >= start && weekday < daysPassed(now);
   },
 
   // Current streak, best streak and freezes held, from the week results so far.
