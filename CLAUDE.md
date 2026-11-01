@@ -2,9 +2,18 @@
 
 ## What this is
 
-GitFit is a personal gym tracker for one person (Rex), used mainly on an **iPhone in Safari, added to the home screen** as a web app. You plan a weekly split (one day per weekday), log sets during a workout, and see progress: an exercise log with estimated max graph and calendar, and a front/back muscle map (Growth and Level modes).
+GitFit is a personal gym tracker for one person (Rex), used mainly on an **iPhone in Safari, added to the home screen** as a web app. You plan a weekly split (one day per weekday), log sets during a workout (and can swap an exercise for today only), and see progress:
+- **Workouts tab:** the week, and a planned sets card (groups open to muscles, muscles open to the exercises behind them)
+- **Profile tab:** the weekly streak card, the exercise Log (estimated max graph, calendar), and a front/back muscle map (Growth and Level modes)
 
 The user is not a programmer. Explain changes in plain words, keep the code simple and well commented, and test changes in the browser before calling them done.
+
+## How the user likes to work
+
+- For a new feature, the user often writes a spec and asks you to **read the code, explain the plan in plain words and ask about anything unclear before building**. Don't write code until they say go. Ask only about real gaps, give a recommended answer for each, and re-explain a question in simpler words (with an example) if they don't follow it.
+- When a request would change an agreed rule (e.g. how freezes are earned), confirm the rule change first instead of guessing.
+- Keep the UI clean: small polish requests are common (removing a marker, hiding a button once it's no longer needed).
+- After finishing, say what changed, how it was tested, and that it's committed but not pushed.
 
 ## Tech and file structure
 
@@ -65,6 +74,9 @@ Rule of thumb: **storage.js** knows about data, **views.js** knows about HTML, *
   - Tracking starts the first full week after a plan with an exercise exists.
   - Swap for today saves the swapped exercise under its own `refId`, with the planned exercise's `exerciseId` and `swappedFrom`, so history stays right and it counts for the streak.
   - Current, best and freezes are always recomputed from `streak.weeks`; never store them separately.
+  - `Streak.update()` runs at the start of every `render()` and when the app comes back from the background. A new hit sets `Streak.celebrate`; ended weeks that used a freeze or broke a streak add to `streak.notices`. `showOverlay()` in `app.js` shows them.
+  - Profile shows the flame (gray until this week is hit), "Sets this week", a freeze-line hint (only when a freeze could save the week), best, freezes held, weeks to the next freeze, and a strip of the last 8 weeks + this one. The user asked for no 90% marker on the bar.
+- **Planned sets card** (Workouts tab): uses `Stats.plannedSets()`, the only planned-sets calculation (the muscle map's old Sets mode was removed). A muscle counts every exercise (1 primary, 0.5 secondary). A group counts each exercise once, at its biggest share in that group, so a group can be less than its muscles added up. Group bars fill at 16 sets; muscle bars share one scale (the top muscle fills its bar). Open/closed rows are kept in memory (`openSets` in `app.js`) and toggled with a class, not a redraw, so they slide smoothly.
 - **Test data must never be written into the code.** No demo/sample workouts, fake sessions, or seeded user data in any committed file (an earlier `js/demo-data.js` was removed for this reason; `normalize()` still drops any session marked `demo: true`). Test by entering data in the app on the computer, or with a temporary console snippet that isn't committed. Defaults like an empty week are fine.
 - **The computer is the dev version; GitHub Pages is the live version.** The live app is https://stevenrecks08.github.io/GITFIT/ (repo `stevenrecks08/GITFIT`, branch `main`). Whatever is pushed to `main` goes live on the phone.
 - **Commit automatically after every finished change, without asking.** Use a short, clear commit message.
@@ -74,8 +86,15 @@ Rule of thumb: **storage.js** knows about data, **views.js** knows about HTML, *
 ## Avoiding breakage
 
 - Test in a browser on the computer: open `index.html` (or a local server), use phone-size device emulation, and check the screens you touched. Check the browser console for errors.
+  - Claude's browser pane shows `file://` pages as static snapshots (no scripts), so serve the folder over `http://localhost` instead. There's no Python or Node on this PC; a small PowerShell `HttpListener` script works. `.claude/launch.json` is git-ignored and may point to a script from an old session — recreate it if it's missing.
+  - The pane's `localhost` data is separate from the user's Chrome (`file://`) data, so you can't see the user's own plan there. Ask them to export a backup if a check needs their real data.
+  - When a test snippet changes `Store.data`, back up `localStorage.getItem('gitfit-data')` first and restore it after, or switch `Store.save` off while previewing. Many functions take a `now` time (e.g. `Streak.update(now)`) so weeks can be faked.
+  - The red `manifest.json` CORS errors when opening `index.html` from a file are harmless; it loads fine on GitHub Pages.
+  - For the user to preview things themselves, give a temporary console snippet (not in the project) with simple `preview.…()` commands and a `preview.done()` that reloads. Remind them Chrome needs `allow pasting` typed once.
 - Design for iPhone Safari: touch targets, the `inputmode="decimal"` keyboards, safe areas / status bar (see the comments in `index.html` about `black` vs `black-translucent`), and numbers typed with a comma (`parseNumber()` handles `62,5`).
 - New screens: a function in `views.js` returning `{ title, back, html }` plus a route in `app.js`. New tabs: `TABS` in `tabs.js`. New settings: default in `DEFAULT_SETTINGS`, a field in `Views.settings()`, and a line in `saveSettingsForm()` in `app.js`.
 - New built-in exercises: add a line to `LIBRARY` in `library.js` using existing muscle ids; add standards in `standards.js` only from the published source.
 - Keep code style consistent with the existing files: plain functions and objects, comments explaining "why" in plain English.
-- Git is at `C:\Program Files\Git\cmd\git.exe`. Pushing needs a GitHub sign-in prompt, so when the user asks for a push, run `git push` in their Terminal panel rather than a background shell.
+- Git is at `C:\Program Files\Git\cmd\git.exe`. Pushing needs a GitHub sign-in prompt, so when the user asks for a push, run `git push` in their Terminal panel rather than a background shell. After pushing, tell them GitHub Pages takes a minute or two and to fully close and reopen the home-screen app if it still looks old.
+- Animations: only `transform`/`opacity` (smooth on iPhone Safari), no libraries, and turn them off under `prefers-reduced-motion`.
+- Files use LF line endings; git's "LF will be replaced by CRLF" warnings are normal.
