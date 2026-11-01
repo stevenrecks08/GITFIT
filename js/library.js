@@ -245,4 +245,21 @@ const Library = {
     if (!names.length) return 'No muscles set';
     return names.length <= 2 ? names.join(', ') : `${names[0]} +${names.length - 1}`;
   },
+
+  // The muscle group (Chest, Shoulders, Back, Arms, Forearms, Core or Legs) an exercise
+  // belongs to, for makeup sets and swaps in the streak: the group most of its primary
+  // muscles are in. On a tie, the first primary muscle listed decides
+  // (Deadlift: glutes + hamstrings + lower back → Legs; Hammer Curl: brachialis + brachioradialis → Arms).
+  // null if it has no primary muscles.
+  groupOf(exercise) {
+    const counts = {};
+    let best = null;
+    for (const id of exercise.primary || []) {
+      const group = MUSCLE_GROUP_OF[id];
+      if (!group) continue;
+      counts[group] = (counts[group] || 0) + 1;
+      if (!best || counts[group] > counts[best]) best = group;
+    }
+    return best;
+  },
 };

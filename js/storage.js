@@ -6,7 +6,7 @@
 //
 // Shape of the saved data:
 // {
-//   version: 7,
+//   version: 8,
 //   settings: { name, units: 'imperial' | 'metric', heightIn, bodyWeightLbs, sex: 'male' | 'female' },
 //   customExercises: [     // your own exercises, used alongside LIBRARY in library.js
 //     { id: 'custom-…', name, equipment, primary: [muscle ids], secondary: [muscle ids], custom: true }
@@ -20,14 +20,17 @@
 //   ],
 //   sessions: [            // one per finished workout, oldest first
 //     { id, workoutId, workoutName, date (ISO string, when Finish was tapped),
+//       quick (true on a quick workout: a one-off, not in the plan; workoutId is null and plan is []),
 //       plan: [ { exerciseId, refId, sets } ],  // the workout's plan when it was logged (locks it for the streak)
 //       exercises: [ { exerciseId (the planned workout exercise it covers), refId, name, primary, secondary,
 //                      swappedFrom (the planned refId; only on exercises swapped for today),
-//                      targetSets, targetRepMin, targetRepMax,
+//                      targetSets, targetRepMin, targetRepMax,   // (not on quick workouts)
 //                      sets: [ { weight, reps } ] } ] }
 //   ],
 //   draft: null or { workoutId, startedAt, entries: { [exerciseId]: [ { weight, reps } ] },
 //                    swaps: { [exerciseId]: refId } },  // exercises swapped for today only
+//          or, for a quick workout: { quick: true, workoutId: null, name, startedAt,
+//                    exercises: [ { id, refId } ] (in the order added), entries, swaps: {} }
 //   streak: {              // the weekly streak; see streak.js
 //     start: 'YYYY-MM-DD' (Monday of the first tracked week) or null until there's a plan,
 //     weeks: [ { week: 'YYYY-MM-DD' (its Monday), result: 'hit' | 'frozen' | 'missed' | 'empty',
@@ -42,9 +45,10 @@
 // and ones saved before version 6 have no plan.
 // Before version 7 each weekday held its own exercises ("days" with a name and exercises);
 // each became a workout on that weekday, keeping its id, and sessions had dayId/dayName.
+// Version 8 added quick workouts (quick sessions and quick drafts); older data has none.
 
 const STORAGE_KEY = 'gitfit-data';
-const DATA_VERSION = 7;
+const DATA_VERSION = 8;
 
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
@@ -226,6 +230,7 @@ function normalize(data) {
     delete session.dayName;
   }
   const draft = data.draft ? { swaps: {}, ...data.draft } : null;
+  if (draft && draft.quick && !Array.isArray(draft.exercises)) draft.exercises = [];
   if (draft && draft.dayId) {
     draft.workoutId = draft.dayId;
     delete draft.dayId;
@@ -255,6 +260,7 @@ function normalize(data) {
     days,
     sessions,
     // Version 6 added swaps to the draft, and the streak. Version 7 added streak locks.
+    // Version 8 added quick workouts (draft.quick, session.quick).
     draft,
     streak: { start: null, weeks: [], notices: [], locks: {}, ...data.streak },
   };
@@ -401,6 +407,64 @@ const Store = {
   // Saved on every keystroke so nothing is lost if the phone locks
   // or the app gets closed mid-workout.
 
+  // The workout the draft is for: the planned workout, or for a quick workout a stand-in
+  // built from the draft ({ id: 'quick', quick: true, name, exercises: [{ id, refId, sets }] }),
+  // so the workout screen and the checks below can treat both the same way. null if no draft.
+  draftWorkout() {
+    const draft = this.data.draft;
+    if (!draft) return null;
+    if (!draft.quick) return this.getWorkout(draft.workoutId);
+    return {
+      id: 'quick',
+      quick: true,
+      name: draft.name,
+      exercises: draft.exercises.map(e => ({ id: e.id, refId: e.refId, sets: (draft.entries[e.id] || []).length })),
+    };
+  },
+
+  // ---------- Quick workout (a one-off, not added to the plan) ----------
+
+  // Starts an empty quick workout (replacing any other workout in progress; app.js asks first).
+  startQuick() {
+    this.data.draft = { quick: true, workoutId: null, name: 'Quick workout', startedAt: new Date().toISOString(),
+      exercises: [], entries: {}, swaps: {} };
+    this.save();
+  },
+
+  renameQuick(name) {
+    this.data.draft.name = name;
+    this.save();
+  },
+
+  // Adds an exercise with one set, its weight prefilled from the last time it was done. Returns its id.
+  quickAddExercise(refId) {
+    const draft = this.data.draft;
+    const id = newId();
+    draft.exercises.push({ id, refId });
+    const history = this.exerciseHistory(refId);
+    const lastWeight = history[history.length - 1]?.sets[0]?.weight ?? null;
+    draft.entries[id] = [{ weight: lastWeight, reps: '' }];
+    this.save();
+    return id;
+  },
+
+  // One more set row, with the weight of the set above (or last time's weight for that set).
+  quickAddSet(exerciseId) {
+    const rows = this.data.draft.entries[exerciseId];
+    const refId = this.data.draft.exercises.find(e => e.id === exerciseId).refId;
+    const history = this.exerciseHistory(refId);
+    const lastTime = history[history.length - 1]?.sets[rows.length]?.weight ?? null;
+    rows.push({ weight: rows[rows.length - 1]?.weight ?? lastTime, reps: '' });
+    this.save();
+  },
+
+  quickRemoveExercise(exerciseId) {
+    const draft = this.data.draft;
+    draft.exercises = draft.exercises.filter(e => e.id !== exerciseId);
+    delete draft.entries[exerciseId];
+    this.save();
+  },
+
   // Makes sure there's a draft for this workout with exactly one row per target set.
   // Each set's weight (lbs, or null) starts as last time's weight; reps start empty.
   ensureDraft(workout) {
@@ -469,7 +533,7 @@ const Store = {
   // Returns the session, or null if nothing was filled in.
   finishDraft() {
     const draft = this.data.draft;
-    const workout = this.getWorkout(draft.workoutId);
+    const workout = this.draftWorkout();
     const toNumber = v => (v === '' || v == null || isNaN(Number(v)) ? null : Number(v));
 
     const exercises = [];
@@ -491,16 +555,24 @@ const Store = {
           name: info.name,
           primary: info.primary,
           secondary: info.secondary,
-          targetSets: ex.sets,
-          targetRepMin: ex.repMin,
-          targetRepMax: ex.repMax,
+          // A quick workout has no targets.
+          ...(workout.quick ? {} : { targetSets: ex.sets, targetRepMin: ex.repMin, targetRepMax: ex.repMax }),
           sets,
         });
       }
     }
     if (!exercises.length) return null;
 
-    const session = {
+    // A quick workout isn't in the plan: no workout id and no plan (see streak.js for how it counts).
+    const session = workout.quick ? {
+      id: newId(),
+      quick: true,
+      workoutId: null,
+      workoutName: workout.name.trim() || 'Quick workout',
+      date: new Date().toISOString(),
+      plan: [],
+      exercises,
+    } : {
       id: newId(),
       workoutId: workout.id,
       workoutName: workout.name,
@@ -520,7 +592,7 @@ const Store = {
   // non-bodyweight exercises (bodyweight sets are meant to have no weight).
   draftGaps() {
     const draft = this.data.draft;
-    const workout = draft && this.getWorkout(draft.workoutId);
+    const workout = this.draftWorkout();
     if (!workout) return [];
     const gaps = [];
     for (const ex of workout.exercises) {
@@ -541,7 +613,7 @@ const Store = {
   draftProgress(exerciseId) {
     const draft = this.data.draft;
     const rows = draft?.entries[exerciseId] || [];
-    const ex = draft && this.getWorkout(draft.workoutId)?.exercises.find(e => e.id === exerciseId);
+    const ex = this.draftWorkout()?.exercises.find(e => e.id === exerciseId);
     const info = Library.forExercise({ refId: draft?.swaps[exerciseId] || ex?.refId });
     const hasReps = set => set.reps !== '' && set.reps != null;
     const filled = rows.filter(hasReps).length;

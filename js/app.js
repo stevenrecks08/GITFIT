@@ -6,6 +6,7 @@
 //   #/new/<id>         → copy of a workout          [Workouts tab]
 //   #/workout/<id>/edit → edit a workout            [Workouts tab]
 //   #/workout/<id>     → do a workout (any day)     [Workouts tab]
+//   #/quick            → the quick workout in progress (+ button → Quick workout) [Workouts tab]
 //   #/history          → past workouts (link at the top of Workouts) [Workouts tab]
 //   #/history/<id>     → fix or delete one past workout [Workouts tab]
 //   #/profile          → profile                  [Profile tab]
@@ -64,6 +65,9 @@ const openSets = { groups: new Set(), muscles: new Set() };
 // Swap for today on the workout screen: whose exercise search is open, and what's typed.
 let swap = { exerciseId: null, query: '' };
 
+// "+ Add exercise" on a quick workout: whether its search is open, and what's typed.
+let quickAdd = { open: false, query: '' };
+
 // Log screens: the search text (kept so Back returns to the same results),
 // and the calendar month / tapped day on an exercise's log.
 let logQuery = '';
@@ -117,6 +121,24 @@ function saveWorkoutName() {
   titleEl.textContent = `Edit ${name}`;
 }
 
+// Only one workout can be in progress. Asks before throwing away the one there is;
+// returns true if it was discarded (or there was none).
+function discardOtherDraft() {
+  const other = Store.draftWorkout();
+  if (!confirm(`You have an unfinished "${other ? other.name : 'workout'}". Discard it and start this one?`)) return false;
+  Store.discardDraft();
+  return true;
+}
+
+// Opens or closes the + button's menu (New workout / Quick workout).
+function setFabMenu(open) {
+  const menu = document.getElementById('fab-menu');
+  if (!menu) return;
+  menu.classList.toggle('is-open', open);
+  menu.setAttribute('aria-hidden', !open);
+  document.querySelector('.fab').setAttribute('aria-expanded', open);
+}
+
 // Shows a yes/no pop-up (see Views.confirmDialog).
 function showDialog(options) {
   overlayEl.innerHTML = Views.confirmDialog(options);
@@ -134,6 +156,7 @@ function currentRoute() {
   if (parts[0] === 'workout' && parts[1]) {
     return { view: parts[2] === 'edit' ? 'edit' : 'workout', workoutId: parts[1], tab: 'workouts' };
   }
+  if (parts[0] === 'quick') return { view: 'quick', tab: 'workouts' };
   if (parts[0] === 'new') {
     // #/new/day/<weekday> = "+ Add workout" on a day; #/new/<id> = a copy of that workout
     if (parts[1] === 'day') return { view: 'new', copyFrom: null, weekday: Number(parts[2]), tab: 'workouts' };
@@ -186,6 +209,10 @@ function render() {
         : { name: '', weekday: route.weekday ?? todayWeekday(), copyFrom: null };
     }
     screen = Views.newWorkout(newForm);
+  } else if (route.view === 'quick') {
+    const quick = Store.draftWorkout();
+    if (!quick?.quick) return go('#/'); // no quick workout in progress (finished or discarded)
+    screen = Views.workout(quick, Store.data.draft, openExerciseId, swap, quickAdd);
   } else {
     const workout = Store.getWorkout(route.workoutId);
     if (!workout) return go('#/');
@@ -314,12 +341,61 @@ const actions = {
   'open-workout'(id) {
     if (dragJustEnded()) return;
     const draft = Store.data.draft;
-    if (draft && draft.workoutId !== id) {
-      const other = Store.getWorkout(draft.workoutId);
-      if (!confirm(`You have an unfinished "${other ? other.name : 'workout'}". Discard it and start this one?`)) return;
-      Store.discardDraft();
-    }
+    if (draft && (draft.quick || draft.workoutId !== id) && !discardOtherDraft()) return;
     go(`#/workout/${id}`);
+  },
+
+  // Resume on the "Workout in progress" banner for a quick workout.
+  'resume-quick'() {
+    go('#/quick');
+  },
+
+  // The + button: opens (or closes) the small menu: New workout / Quick workout.
+  'fab-menu'() {
+    setFabMenu(!document.getElementById('fab-menu').classList.contains('is-open'));
+  },
+
+  // Quick workout: a one-off that's logged but not added to the week.
+  // (One already in progress is resumed; another workout in progress is discarded after asking.)
+  'quick-start'() {
+    setFabMenu(false);
+    const draft = Store.data.draft;
+    if (!draft?.quick) {
+      if (draft && !discardOtherDraft()) return;
+      Store.startQuick();
+    }
+    go('#/quick');
+  },
+
+  'quick-add-open'() {
+    quickAdd = { open: true, query: '' };
+    render();
+    document.getElementById('quick-search').focus();
+  },
+
+  'quick-add-cancel'() {
+    quickAdd = { open: false, query: '' };
+    render();
+  },
+
+  // Tapped an exercise in the quick workout's search: add it with one set and open it.
+  'quick-pick'(refId) {
+    openExerciseId = Store.quickAddExercise(refId);
+    quickAdd = { open: false, query: '' };
+    render();
+    document.getElementById(`ex-${openExerciseId}`).scrollIntoView({ block: 'nearest' });
+  },
+
+  'quick-add-set'(id) {
+    Store.quickAddSet(id);
+    render();
+  },
+
+  'quick-remove'(id) {
+    if (Store.draftHasReps(id) && !confirm('Remove this exercise and the sets typed for it?')) return;
+    Store.quickRemoveExercise(id);
+    openExerciseId = null;
+    render();
   },
 
   'edit-workout'(id) {
@@ -498,7 +574,7 @@ const actions = {
 
   // Finish workout: if any set is still empty, ask first (Go back / Finish anyway).
   'finish'() {
-    const workout = Store.getWorkout(Store.data.draft.workoutId);
+    const workout = Store.draftWorkout();
     if (!workout.exercises.some(ex => Store.draftHasReps(ex.id))) {
       toast('Fill in at least one set first');
       return;
@@ -593,10 +669,10 @@ const actions = {
       overlayEl.hidden = true;
       overlayEl.innerHTML = '';
     }
-    const workoutId = lastFinish.draft.workoutId;
+    const draft = lastFinish.draft;
     lastFinish = null;
     hideToast();
-    go(`#/workout/${workoutId}`);
+    go(draft.quick ? '#/quick' : `#/workout/${draft.workoutId}`);
   },
 
   'discard'() {
@@ -702,6 +778,7 @@ function closeMusclePopup() {
 document.addEventListener('click', event => {
   const button = event.target.closest('[data-action]');
   if (!button || button.dataset.action !== 'muscle') closeMusclePopup(); // tap anywhere else closes it
+  if (!event.target.closest('.fab-menu, .fab')) setFabMenu(false);      // same for the + menu
   if (!button) return;
   actions[button.dataset.action](button.dataset.id, button);
 });
@@ -738,7 +815,7 @@ function dragJustEnded() {
 
 appEl.addEventListener('pointerdown', event => {
   const card = event.target.closest('.workout-card');
-  if (!card || event.button > 0) return;
+  if (!card || !card.dataset.workout || event.button > 0) return; // (quick workout cards don't move)
   drag = { id: card.dataset.workout, card, startX: event.clientX, startY: event.clientY,
     x: event.clientX, y: event.clientY, active: false, overDay: null };
   drag.timer = setTimeout(pickUp, HOLD_MS);
@@ -868,6 +945,19 @@ appEl.addEventListener('input', event => {
     return;
   }
 
+  if (input.id === 'quick-search') {
+    quickAdd.query = input.value;
+    document.getElementById('quick-results').innerHTML = Views.libraryResults(input.value, 'quick-pick');
+    return;
+  }
+
+  // Quick workout title: saved as you type (an empty title becomes "Quick workout" when finished).
+  if (input.id === 'quick-name') {
+    Store.renameQuick(input.value);
+    titleEl.textContent = input.value.trim() || 'Quick workout';
+    return;
+  }
+
   const field = input.dataset.field;
   if (!field) return;
   const value = field === 'weight' ? Units.readWeight(input.value) : input.value.trim();
@@ -883,7 +973,7 @@ appEl.addEventListener('input', event => {
 // show below it instead of under the keyboard. The extra space (is-searching) lets
 // the page scroll that far even before there are results.
 appEl.addEventListener('focusin', event => {
-  if (event.target.id !== 'lib-search' && event.target.id !== 'swap-search') return;
+  if (!['lib-search', 'swap-search', 'quick-search'].includes(event.target.id)) return;
   appEl.classList.add('is-searching');
   const pin = () => event.target.scrollIntoView({ block: 'start' });
   pin();
@@ -1036,6 +1126,7 @@ window.addEventListener('hashchange', () => {
   picker = newPicker();
   openExerciseId = null;
   swap = { exerciseId: null, query: '' };
+  quickAdd = { open: false, query: '' };
   logState = { month: null, day: null };
   newForm = null;
   pastEdit = null;

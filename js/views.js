@@ -267,16 +267,31 @@ const Views = {
   // A day with no workouts is a rest day automatically; tap a workout to start it (any day);
   // hold a workout and drag it to move it to another day (see the drag code in app.js).
   home(openSets) {
-    const { draft } = Store.data;
-    const draftWorkout = draft && Store.getWorkout(draft.workoutId);
+    const draftWorkout = Store.draftWorkout();
     const today = todayWeekday();
     const thisWeek = weekKey(Date.now());
 
     const resume = draftWorkout ? `
       <div class="card banner stack">
         <div><strong>Workout in progress:</strong> ${esc(draftWorkout.name)}</div>
-        <button class="btn btn-primary" data-action="open-workout" data-id="${draftWorkout.id}">Resume</button>
+        <button class="btn btn-primary" data-action="${draftWorkout.quick ? 'resume-quick' : 'open-workout'}" data-id="${draftWorkout.id}">Resume</button>
       </div>` : '';
+
+    // Quick workouts finished this week, on the day they were finished (a workout just after
+    // midnight belongs to the day before, like the streak's 3 am day change). Blue "✓ Done" cards;
+    // tapping one opens it in Past workouts. They aren't in the plan, so next week they're gone.
+    const quickOn = WEEKDAYS.map(() => []);
+    for (const s of Store.data.sessions) {
+      const time = new Date(s.date).getTime();
+      if (s.quick && weekKey(time) === thisWeek) quickOn[daysPassed(time)].push(s);
+    }
+    const quickCard = s => `
+      <div class="card workout-card is-quick">
+        <button class="workout-open" data-action="open-session" data-id="${esc(s.id)}">
+          <span class="workout-name">${esc(s.workoutName)}</span>
+          <span class="day-meta">Quick · ${s.exercises.length} exercise${s.exercises.length === 1 ? '' : 's'} · <span class="done-mark">✓ Done</span></span>
+        </button>
+      </div>`;
 
     const days = WEEKDAYS.map((dayName, weekday) => {
       const rest = Store.isRestDay(weekday);
@@ -307,7 +322,8 @@ const Views = {
             ${weekday === today ? '<span class="tag tag-today">Today</span>' : ''}
             ${rest ? '<span class="rest-word">Rest day</span>' : ''}
           </div>
-          ${cards || empty}
+          ${cards}${quickOn[weekday].map(quickCard).join('')}
+          ${cards ? '' : empty}
         </section>`;
     }).join('');
 
@@ -331,7 +347,15 @@ const Views = {
         <h2>Planned sets per week</h2>
         ${plannedSetsTable(Stats.weekPlannedSets(), openSets)}
 
-        <button type="button" class="fab" data-action="new-workout" aria-label="New workout">
+        <div class="fab-menu" id="fab-menu" aria-hidden="true">
+          <button type="button" class="fab-option" data-action="new-workout">
+            <strong>New workout</strong><span>Add a workout to your week</span>
+          </button>
+          <button type="button" class="fab-option is-quick" data-action="quick-start">
+            <strong>Quick workout</strong><span>A one-off, logged but not added to your week</span>
+          </button>
+        </div>
+        <button type="button" class="fab" data-action="fab-menu" aria-label="New workout or quick workout" aria-expanded="false">
           <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.6"
             stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
         </button>
@@ -545,9 +569,13 @@ const Views = {
 
   // ---------- Workout: compact list, one exercise expanded at a time ----------
   // swap = the Swap for today search: { exerciseId (whose search is open, or null), query }
-  workout(workout, draft, openId, swap) {
-    const title = workout.name;
-    if (!workout.exercises.length) {
+  // A quick workout (workout.quick, from Store.draftWorkout()) uses the same screen with an
+  // editable title, no targets or swaps, "+ Add set" on each exercise, and "+ Add exercise"
+  // (quickAdd = its search: { open, query }).
+  workout(workout, draft, openId, swap, quickAdd = { open: false, query: '' }) {
+    const quick = Boolean(workout.quick);
+    const title = workout.name || 'Quick workout';
+    if (!quick && !workout.exercises.length) {
       return {
         title,
         back: '#/',
@@ -585,7 +613,12 @@ const Views = {
 
         // Swap for today: a button, or the exercise search once it's tapped.
         // Once swapped, only Undo swap shows (undo, then swap again to pick a different one).
-        const swapPanel = swap.exerciseId === ex.id ? `
+        // A quick workout has "+ Add set" and "Remove" instead.
+        const swapPanel = quick ? `
+          <div class="row swap-row">
+            <button type="button" class="btn btn-small" data-action="quick-add-set" data-id="${ex.id}">+ Add set</button>
+            <button type="button" class="btn btn-small" data-action="quick-remove" data-id="${ex.id}">Remove exercise</button>
+          </div>` : swap.exerciseId === ex.id ? `
           <div class="swap-panel stack">
             <input type="search" id="swap-search" value="${esc(swap.query)}"
               placeholder="Swap for today: search exercises" autocomplete="off" aria-label="Search exercises to swap in">
@@ -600,7 +633,8 @@ const Views = {
 
         body = `
           <div class="ex-body">
-            <div class="ex-sub">Target ${ex.sets} × ${repRange(ex.repMin, ex.repMax)}${last ? ` · last done ${formatDate(last.date)}` : ''}</div>
+            ${quick ? (last ? `<div class="ex-sub">Last done ${formatDate(last.date)}</div>` : '')
+              : `<div class="ex-sub">Target ${ex.sets} × ${repRange(ex.repMin, ex.repMax)}${last ? ` · last done ${formatDate(last.date)}` : ''}</div>`}
             <div class="set-grid">
               <div class="col-head">Set</div>
               <div class="col-head">Weight (${unit})</div>
@@ -628,11 +662,27 @@ const Views = {
         </div>`;
     }).join('');
 
+    // Quick workout: the title box at the top, and "+ Add exercise" (or its search) below the exercises.
+    const quickTop = quick ? `
+      <input id="quick-name" class="quick-name" value="${esc(workout.name)}" placeholder="Quick workout"
+        autocomplete="off" aria-label="Workout title">
+      ${workout.exercises.length ? '' : '<p class="muted quick-hint">Add the exercises you do as you go. This workout won\'t be added to your week.</p>'}` : '';
+    const quickBottom = !quick ? '' : quickAdd.open ? `
+      <div class="card stack">
+        <input type="search" id="quick-search" value="${esc(quickAdd.query)}"
+          placeholder="Search name, muscle or equipment" autocomplete="off" aria-label="Search exercises to add">
+        <div id="quick-results" class="lib-results">${this.libraryResults(quickAdd.query, 'quick-pick')}</div>
+        <button type="button" class="btn" data-action="quick-add-cancel">Cancel</button>
+      </div>` : `
+      <button type="button" class="btn btn-add-ex ${workout.exercises.length ? '' : 'is-first'}" data-action="quick-add-open">+ Add exercise</button>`;
+
     return {
       title,
       back: '#/',
       html: `
+        ${quickTop}
         ${cards}
+        ${quickBottom}
         <div class="finish-bar stack">
           <button class="btn btn-primary" data-action="finish">Finish workout</button>
           <button class="btn btn-danger" data-action="discard">Discard workout</button>
@@ -798,9 +848,9 @@ const Views = {
         : weekDates(new Date(sessions[0].date).getTime());
       const sets = sessions.reduce((n, s) => n + setCount(s), 0);
       const cards = sessions.map(s => `
-        <button class="card past-card" data-action="open-session" data-id="${esc(s.id)}">
+        <button class="card past-card ${s.quick ? 'is-quick' : ''}" data-action="open-session" data-id="${esc(s.id)}">
           <span class="past-when">${when(s.date)}</span>
-          <span class="day-name">${esc(s.workoutName || 'Workout')}</span>
+          <span class="day-name">${esc(s.workoutName || 'Workout')}${s.quick ? ' <span class="tag tag-quick">Quick</span>' : ''}</span>
           <span class="day-meta">${plural(s.exercises.length, 'exercise')} · ${plural(setCount(s), 'set')}</span>
         </button>`).join('');
       return `
@@ -856,6 +906,7 @@ const Views = {
       title: session.workoutName || 'Workout',
       back: '#/history',
       html: `
+        ${session.quick ? '<p class="past-quick"><span class="tag tag-quick">Quick</span> Not in your week. Its sets only count for the streak when they make up missed sets.</p>' : ''}
         <p class="past-date">${new Date(session.date).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</p>
         <p class="muted past-hint">Sets with no reps aren't saved.</p>
         ${cards}
