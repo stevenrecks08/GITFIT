@@ -120,7 +120,7 @@ function fromDayKey(key) {
 
 // Line graph of estimated max, from the first point to today.
 // points = [{ time (ms), value (in the chosen unit) }], oldest first.
-// singles = the same shape, for logged 1-rep sets: drawn as a faint gray line behind,
+// singles = the same shape, for logged 1-rep sets: drawn as a thin white line behind,
 // with a small key under the graph. With no points, draws an empty graph with emptyNote written over it.
 function maxChart(points, emptyNote, singles = []) {
   const W = 320, H = 170, L = 40, R = 10, T = 10, B = 24; // size and margins (SVG units)
@@ -806,7 +806,7 @@ const Views = {
     const latest = weighted[weighted.length - 1];
     const points = weighted.map(h => ({ time: new Date(h.date).getTime(), value: Number(Units.showWeight(h.best.max)) }));
     // Actual max: the heaviest weight ever logged for a single rep (the first day it was lifted).
-    // singlePoints = the heaviest single of each workout that had one, for the graph's gray line.
+    // singlePoints = the heaviest single of each workout that had one, for the graph's white line.
     let single = null;
     const singlePoints = [];
     for (const h of history) {
