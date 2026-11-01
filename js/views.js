@@ -239,6 +239,8 @@ const Views = {
         ${kindOption('workout', 'Workout', 'Train this day')}
         ${kindOption('rest', 'Rest day', 'No workout')}
       </div>`;
+    // Changes already save as you go; this just closes the screen so it feels saved.
+    const saveDayButton = `<button type="button" class="btn btn-primary save-day" data-action="save-day">Save changes</button>`;
 
     if (day.rest) {
       return {
@@ -247,7 +249,8 @@ const Views = {
         html: `
           ${kindChoices}
           <p class="empty">${WEEKDAYS[day.weekday]} is a rest day.
-            ${day.exercises.length ? 'Its exercises are kept — switch back to Workout to see them.' : ''}</p>`,
+            ${day.exercises.length ? 'Its exercises are kept — switch back to Workout to see them.' : ''}</p>
+          ${saveDayButton}`,
       };
     }
 
@@ -289,6 +292,8 @@ const Views = {
 
         <h2>${editing ? 'Edit exercise' : 'Add exercise'}</h2>
         <div id="exercise-panel">${panel}</div>
+
+        ${saveDayButton}
       `,
     };
   },

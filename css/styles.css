@@ -550,4 +550,5 @@ main.is-searching { padding-bottom: 100vh; }
   font-weight: 600;
   z-index: 20;
 }
+.save-day { margin-top: 28px; }
 .no-tabbar .toast { bottom: calc(24px + env(safe-area-inset-bottom)); }
