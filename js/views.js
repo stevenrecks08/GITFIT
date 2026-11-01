@@ -120,8 +120,9 @@ function fromDayKey(key) {
 
 // Line graph of estimated max, from the first point to today.
 // points = [{ time (ms), value (in the chosen unit) }], oldest first.
-// With no points, draws an empty graph with emptyNote written over it.
-function maxChart(points, emptyNote) {
+// singles = the same shape, for logged 1-rep sets: drawn as a faint gray line behind,
+// with a small key under the graph. With no points, draws an empty graph with emptyNote written over it.
+function maxChart(points, emptyNote, singles = []) {
   const W = 320, H = 170, L = 40, R = 10, T = 10, B = 24; // size and margins (SVG units)
 
   if (!points.length) {
@@ -141,7 +142,7 @@ function maxChart(points, emptyNote) {
 
   const t0 = points[0].time;
   const t1 = Math.max(Date.now(), points[points.length - 1].time);
-  const values = points.map(p => p.value);
+  const values = [...points, ...singles].map(p => p.value);
   const pad = Math.max((Math.max(...values) - Math.min(...values)) * 0.15, Math.max(...values) * 0.05, 1);
   const lo = Math.max(0, Math.min(...values) - pad);
   const hi = Math.max(...values) + pad;
@@ -154,6 +155,13 @@ function maxChart(points, emptyNote) {
     <text class="chart-label" x="${L - 6}" y="${y(v) + 4}" text-anchor="end">${Math.round(v)}</text>`).join('');
   const line = points.map((p, i) => `${i ? 'L' : 'M'}${x(p.time).toFixed(1)},${y(p.value).toFixed(1)}`).join(' ');
   const dots = points.map(p => `<circle class="chart-dot" cx="${x(p.time).toFixed(1)}" cy="${y(p.value).toFixed(1)}" r="3.5"/>`).join('');
+  const singleLine = singles.map((p, i) => `${i ? 'L' : 'M'}${x(p.time).toFixed(1)},${y(p.value).toFixed(1)}`).join(' ');
+  const singleDots = singles.map(p => `<circle class="chart-single-dot" cx="${x(p.time).toFixed(1)}" cy="${y(p.value).toFixed(1)}" r="2.5"/>`).join('');
+  const key = singles.length ? `
+    <p class="chart-key">
+      <span><i class="key-estimate"></i>Estimated max</span>
+      <span><i class="key-single"></i>Actual 1-rep</span>
+    </p>` : '';
   const xLabels = t1 === t0
     ? `<text class="chart-label" x="${(L + W - R) / 2}" y="${H - 6}" text-anchor="middle">Today</text>`
     : `<text class="chart-label" x="${L}" y="${H - 6}">${shortDate(t0)}</text>
@@ -162,10 +170,11 @@ function maxChart(points, emptyNote) {
   return `
     <svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Estimated max over time">
       ${grid}
+      ${singles.length ? `<path class="chart-single-line" d="${singleLine}"/>${singleDots}` : ''}
       <path class="chart-line" d="${line}"/>
       ${dots}
       ${xLabels}
-    </svg>`;
+    </svg>${key}`;
 }
 
 // Month calendar. Days in `logged` are tappable; all others are grayed out.
@@ -797,11 +806,14 @@ const Views = {
     const latest = weighted[weighted.length - 1];
     const points = weighted.map(h => ({ time: new Date(h.date).getTime(), value: Number(Units.showWeight(h.best.max)) }));
     // Actual max: the heaviest weight ever logged for a single rep (the first day it was lifted).
+    // singlePoints = the heaviest single of each workout that had one, for the graph's gray line.
     let single = null;
+    const singlePoints = [];
     for (const h of history) {
-      for (const set of h.sets) {
-        if (set.reps === 1 && set.weight && (!single || set.weight > single.weight)) single = { weight: set.weight, date: h.date };
-      }
+      const heaviest = Math.max(0, ...h.sets.filter(set => set.reps === 1 && set.weight).map(set => set.weight));
+      if (!heaviest) continue;
+      singlePoints.push({ time: new Date(h.date).getTime(), value: Number(Units.showWeight(heaviest)) });
+      if (!single || heaviest > single.weight) single = { weight: heaviest, date: h.date };
     }
     const maxSection = `
       <div class="card">
@@ -813,7 +825,7 @@ const Views = {
           <p class="log-max is-small ${single ? '' : 'is-blank'}">${single ? `${Units.showWeight(single.weight)} <span>${unit}</span>` : '—'}</p>
           <p class="log-sub">${single ? `Lifted for 1 rep on ${shortDate(single.date)}` : 'Log a set of 1 rep to fill this in'}</p>
         </div>
-        ${maxChart(points, history.length ? 'No sets with weight yet' : 'No history yet')}
+        ${maxChart(points, history.length ? 'No sets with weight yet' : 'No history yet', singlePoints)}
         <p class="log-formula">Estimated with the Epley formula: weight × (1 + reps ÷ 30)</p>
       </div>`;
 

@@ -638,6 +638,12 @@ main.is-searching { padding-bottom: 100vh; }
 .chart-label { fill: var(--muted); font-size: 11px; }
 .chart-line { fill: none; stroke: var(--accent); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
 .chart-dot { fill: var(--accent); stroke: var(--surface); stroke-width: 1.5; }
+.chart-single-line { fill: none; stroke: var(--muted); stroke-opacity: 0.5; stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
+.chart-single-dot { fill: var(--muted); fill-opacity: 0.6; }
+.chart-key { display: flex; gap: 16px; margin: 6px 0 0; font-size: 12px; color: var(--muted); }
+.chart-key span { display: flex; align-items: center; gap: 6px; }
+.chart-key i { display: block; width: 14px; height: 2.5px; border-radius: 2px; background: var(--accent); }
+.chart-key i.key-single { height: 1.5px; background: var(--muted); opacity: 0.6; }
 
 .cal-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
 .cal-head .btn { font-size: 22px; }
