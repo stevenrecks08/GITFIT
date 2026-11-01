@@ -10,6 +10,12 @@
   --accent-text: #06210f;
   --danger: #f87171;
   --rest: #60a5fa;        /* rest days */
+  --flame: #4ade80;       /* streak flame once the week is hit */
+  --flame-core: #d9fbe6;
+  --flame-off: #3f4654;   /* streak flame before the week is hit */
+  --flame-off-core: #5f6778;
+  --freeze: #60a5fa;      /* streak freezes */
+  --gold: #facc15;        /* milestone celebration */
   --radius: 14px;
   --tap: 52px;            /* minimum height for anything you tap */
   --tabbar-h: 58px;       /* bottom tab bar, not counting the iPhone home-indicator area */
@@ -415,6 +421,13 @@ main.is-searching { padding-bottom: 100vh; }
 
 .finish-bar { margin-top: 20px; }
 
+/* Swap for today (inside an open exercise) */
+.swap-row, .swap-panel { margin-top: 12px; }
+.swap-row { justify-content: flex-start; }
+.swap-row > * { flex: 0 0 auto; }
+.ex-toggle .swap-note { color: var(--rest); white-space: normal; }
+#swap-search { scroll-margin-top: calc(var(--topbar-h) + env(safe-area-inset-top) + 12px); }
+
 /* ---------- Profile ---------- */
 .profile-head {
   display: flex;
@@ -439,7 +452,63 @@ main.is-searching { padding-bottom: 100vh; }
 .profile-name { margin: 0; font-size: 24px; font-weight: 700; text-align: center; overflow-wrap: anywhere; }
 
 .profile-stats { margin: -6px 0 0; font-size: 15px; }
-.profile-head + .btn { margin-top: 24px; text-decoration: none; }
+.streak-card + .btn { margin-top: 12px; text-decoration: none; }
+
+/* ---------- Weekly streak (Profile) ---------- */
+.streak-card { margin-top: 20px; }
+.streak-top { display: flex; align-items: center; gap: 10px; }
+.streak-flame { flex: 0 0 auto; width: 44px; height: 44px; }
+.streak-flame svg { display: block; width: 100%; height: 100%; }
+.flame-outer { fill: var(--flame-off); }
+.flame-inner { fill: var(--flame-off-core); }
+.streak-flame.is-lit .flame-outer, .celebrate .flame-outer { fill: var(--flame); }
+.streak-flame.is-lit .flame-inner, .celebrate .flame-inner { fill: var(--flame-core); }
+.streak-count { font-size: 38px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+.streak-words { flex: 1; min-width: 0; margin-left: 4px; }
+.streak-words > * { display: block; }
+.streak-words .muted { font-size: 14px; margin-top: 2px; }
+
+.week-sets { display: flex; justify-content: space-between; margin-top: 16px; font-size: 15px; }
+.week-sets strong { font-variant-numeric: tabular-nums; }
+.week-bar { position: relative; height: 10px; margin-top: 8px; border-radius: 999px; background: var(--surface-2); }
+.week-bar i { display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width 0.4s ease-out; }
+/* The freeze line: at 90% or more, a held freeze saves the week */
+.freeze-mark {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--freeze);
+}
+
+.streak-stats { display: flex; gap: 18px; margin-top: 12px; font-size: 14px; color: var(--muted); }
+.streak-stats strong { color: var(--text); font-variant-numeric: tabular-nums; }
+
+/* Recent weeks: one box per week, oldest on the left */
+.week-strip { display: flex; gap: 4px; margin-top: 14px; }
+.wk { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.wk-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 34px;
+  aspect-ratio: 1;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 800;
+}
+.wk-date { font-size: 10px; color: var(--muted); white-space: nowrap; }
+.wk.is-hit .wk-box { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.wk.is-frozen .wk-box { background: #13253f; border-color: var(--freeze); color: var(--freeze); }
+.wk.is-missed .wk-box { border-color: var(--danger); color: var(--danger); }
+.wk.is-empty .wk-box { color: var(--muted); }
+.wk.is-untracked .wk-box { border-style: dashed; opacity: 0.4; }
+.wk.is-current .wk-box { border: 2px dashed var(--accent); }
+.wk.is-this-week .wk-date { color: var(--text); font-weight: 700; }
 .note { margin: 0; font-size: 14px; }
 
 /* ---------- Muscle map (Profile) ---------- */
@@ -580,4 +649,139 @@ main.is-searching { padding-bottom: 100vh; }
   z-index: 20;
 }
 .save-day { margin-top: 28px; }
+
+/* ---------- Streak celebration and notices (full screen) ---------- */
+/* Animations only move and fade things (transform/opacity), which iPhone Safari keeps smooth. */
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(24px + env(safe-area-inset-top)) 24px calc(24px + env(safe-area-inset-bottom));
+  background: rgba(8, 10, 13, 0.96);
+  animation: fade-in 0.25s ease-out;
+}
+.overlay[hidden] { display: none; }
+.overlay.is-celebration { background: var(--bg); }
+
+.notice { max-width: 420px; }
+.notice h2 { margin-top: 0; }
+.notice p { margin: 0 0 12px; line-height: 1.4; }
+.notice .btn { margin-top: 6px; }
+
+.celebrate {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  cursor: pointer;
+}
+.celebrate p { margin: 0; }
+.celebrate-art { position: relative; width: 150px; height: 150px; }
+.celebrate.is-milestone .celebrate-art { width: 200px; height: 200px; }
+
+.celebrate-flame {
+  position: absolute;
+  inset: 0;
+  transform-origin: 50% 85%;
+  animation: flame-pop 0.7s cubic-bezier(0.2, 1.5, 0.4, 1) both, flicker 1.8s ease-in-out 0.7s infinite;
+  will-change: transform;
+}
+.celebrate-flame svg { display: block; width: 100%; height: 100%; }
+
+.celebrate-glow {
+  position: absolute;
+  inset: -30%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(74, 222, 128, 0.45) 0%, rgba(74, 222, 128, 0) 65%);
+  animation: glow 2.4s ease-in-out 0.2s infinite both;
+  will-change: transform, opacity;
+}
+.is-milestone .celebrate-glow { background: radial-gradient(circle, rgba(250, 204, 21, 0.45) 0%, rgba(250, 204, 21, 0) 65%); }
+
+/* Milestone sparks: each one is turned to its angle, and its dot flies outward */
+.spark { position: absolute; left: 50%; top: 55%; width: 0; height: 0; }
+.spark i {
+  position: absolute;
+  left: -4px;
+  top: -4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--gold);
+  opacity: 0;
+  animation: spark 0.9s ease-out both;
+}
+.spark:nth-child(even) i { background: var(--accent); }
+
+.celebrate-num {
+  margin-top: 14px !important;
+  font-size: 76px;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  animation: rise 0.5s ease-out 0.3s both;
+}
+.is-milestone .celebrate-num { font-size: 96px; color: var(--gold); }
+.celebrate-label {
+  font-size: 15px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  animation: rise 0.5s ease-out 0.4s both;
+}
+.celebrate-badge {
+  margin-top: 14px !important;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--gold);
+  color: #2a2103;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  animation: badge-pop 0.5s cubic-bezier(0.2, 1.6, 0.4, 1) 0.9s both;
+}
+.celebrate-msg { margin-top: 18px !important; font-size: 20px; font-weight: 600; animation: rise 0.5s ease-out 0.6s both; }
+.celebrate-hint { margin-top: 36px !important; font-size: 14px; color: var(--muted); animation: fade-in 0.6s ease-out 1.6s both; }
+
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes flame-pop {
+  from { transform: scale(0.2) translateY(30%); opacity: 0; }
+  to   { transform: scale(1) translateY(0); opacity: 1; }
+}
+@keyframes flicker {
+  0%, 100% { transform: scale(1, 1) rotate(0deg); }
+  30%      { transform: scale(1.03, 0.97) rotate(-1.5deg); }
+  60%      { transform: scale(0.98, 1.04) rotate(1deg); }
+}
+@keyframes glow {
+  0%, 100% { transform: scale(0.9); opacity: 0.7; }
+  50%      { transform: scale(1.1); opacity: 1; }
+}
+@keyframes spark {
+  0%   { transform: translateY(-30px) scale(1); opacity: 0; }
+  15%  { opacity: 1; }
+  100% { transform: translateY(-140px) scale(0.3); opacity: 0; }
+}
+@keyframes rise {
+  from { transform: translateY(16px); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+@keyframes badge-pop {
+  from { transform: scale(0.4); opacity: 0; }
+  to   { transform: scale(1); opacity: 1; }
+}
+
+/* Reduce Motion turned on in iPhone settings: everything just appears */
+@media (prefers-reduced-motion: reduce) {
+  .overlay, .overlay * { animation: none !important; }
+  .spark { display: none; }
+}
 .no-tabbar .toast { bottom: calc(24px + env(safe-area-inset-bottom)); }

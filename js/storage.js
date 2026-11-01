@@ -6,7 +6,7 @@
 //
 // Shape of the saved data:
 // {
-//   version: 4,
+//   version: 6,
 //   settings: { name, units: 'imperial' | 'metric', heightIn, bodyWeightLbs, sex: 'male' | 'female' },
 //   customExercises: [     // your own exercises, used alongside LIBRARY in library.js
 //     { id: 'custom-…', name, equipment, primary: [muscle ids], secondary: [muscle ids], custom: true }
@@ -16,18 +16,28 @@
 //       exercises: [ { id, refId (library or custom exercise id), sets, repMin, repMax } ] }
 //   ],
 //   sessions: [            // one per finished workout, oldest first
-//     { id, dayId, dayName, date (ISO string),
-//       exercises: [ { exerciseId, refId, name, primary, secondary,
+//     { id, dayId, dayName, date (ISO string, when Finish was tapped),
+//       plan: [ { exerciseId, refId, sets } ],  // the day's plan when it was logged (locks it for the streak)
+//       exercises: [ { exerciseId (the planned day exercise it covers), refId, name, primary, secondary,
+//                      swappedFrom (the planned refId; only on exercises swapped for today),
 //                      targetSets, targetRepMin, targetRepMax,
 //                      sets: [ { weight, reps } ] } ] }
 //   ],
-//   draft: null or { dayId, startedAt, entries: { [exerciseId]: [ { weight, reps } ] } }
+//   draft: null or { dayId, startedAt, entries: { [exerciseId]: [ { weight, reps } ] },
+//                    swaps: { [exerciseId]: refId } },  // exercises swapped for today only
+//   streak: {              // the weekly streak; see streak.js
+//     start: 'YYYY-MM-DD' (Monday of the first tracked week) or null until there's a plan,
+//     weeks: [ { week: 'YYYY-MM-DD' (its Monday), result: 'hit' | 'frozen' | 'missed' | 'empty',
+//                logged, planned } ],  // oldest first; once added, never changed
+//     notices: [ text ]    // shown once, next time the app opens (freeze used / streak ended)
+//   }
 // }
 // Older sessions may be missing primary/secondary (they have a single "muscle" text
-// instead), and ones saved before version 2 have targetReps instead of targetRepMin/Max.
+// instead), ones saved before version 2 have targetReps instead of targetRepMin/Max,
+// and ones saved before version 6 have no plan.
 
 const STORAGE_KEY = 'gitfit-data';
-const DATA_VERSION = 5;
+const DATA_VERSION = 6;
 
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
@@ -213,7 +223,9 @@ function normalize(data) {
     customExercises,
     days,
     sessions,
-    draft: data.draft || null,
+    // Version 6 added swaps to the draft, and the streak.
+    draft: data.draft ? { swaps: {}, ...data.draft } : null,
+    streak: { start: null, weeks: [], notices: [], ...data.streak },
   };
 }
 
@@ -331,11 +343,11 @@ const Store = {
   ensureDraft(day) {
     let draft = this.data.draft;
     if (!draft || draft.dayId !== day.id) {
-      draft = { dayId: day.id, startedAt: new Date().toISOString(), entries: {} };
+      draft = { dayId: day.id, startedAt: new Date().toISOString(), entries: {}, swaps: {} };
       this.data.draft = draft;
     }
     for (const ex of day.exercises) {
-      const lastSets = this.lastResult(ex)?.sets || [];
+      const lastSets = this.lastFor(ex)?.sets || [];
       const rows = draft.entries[ex.id] || [];
       // Keeps rows already typed in; adds or trims if the set count was edited.
       draft.entries[ex.id] = Array.from({ length: ex.sets }, (_, i) =>
@@ -355,6 +367,33 @@ const Store = {
   draftHasReps(exerciseId) {
     const rows = this.data.draft?.entries[exerciseId] || [];
     return rows.some(s => s.reps !== '');
+  },
+
+  // The exercise swapped in for today in place of a day exercise (its refId), or null.
+  swappedRef(exerciseId) {
+    return this.data.draft?.swaps[exerciseId] || null;
+  },
+
+  // Last time's sets for a day exercise in this workout: those of the swapped-in
+  // exercise if it was swapped for today, otherwise lastResult().
+  lastFor(dayExercise) {
+    const swapped = this.swappedRef(dayExercise.id);
+    if (!swapped) return this.lastResult(dayExercise);
+    const history = this.exerciseHistory(swapped);
+    const last = history[history.length - 1];
+    return last ? { date: last.date, sets: last.sets } : null;
+  },
+
+  // Does a different exercise in place of a planned one, for this workout only
+  // (the weekly plan doesn't change). Its sets start over, prefilled from its own last time.
+  // Swapping back to the planned exercise undoes the swap.
+  swapExercise(day, exerciseId, refId) {
+    const ex = day.exercises.find(e => e.id === exerciseId);
+    const swaps = this.data.draft.swaps;
+    if (refId === ex.refId) delete swaps[exerciseId];
+    else swaps[exerciseId] = refId;
+    delete this.data.draft.entries[exerciseId];
+    this.ensureDraft(day);
   },
 
   discardDraft() {
@@ -377,11 +416,15 @@ const Store = {
         .filter(s => s.reps !== null);
       if (sets.length) {
         // Name and muscles are copied in, so history stays right even if the
-        // exercise is later changed or removed.
-        const info = Library.forExercise(ex);
+        // exercise is later changed or removed. A swapped exercise is saved as itself,
+        // under the planned exercise's id so it still counts for the streak.
+        const swapped = draft.swaps[ex.id];
+        const refId = swapped || ex.refId;
+        const info = Library.forExercise({ refId });
         exercises.push({
           exerciseId: ex.id,
-          refId: ex.refId,
+          refId,
+          ...(swapped ? { swappedFrom: ex.refId } : {}),
           name: info.name,
           primary: info.primary,
           secondary: info.secondary,
@@ -399,6 +442,7 @@ const Store = {
       dayId: day.id,
       dayName: dayLabel(day),
       date: new Date().toISOString(),
+      plan: day.exercises.map(e => ({ exerciseId: e.id, refId: e.refId, sets: e.sets })),
       exercises,
     };
     this.data.sessions.push(session);

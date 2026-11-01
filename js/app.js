@@ -48,6 +48,9 @@ function showPanel() {
 // Which exercise is expanded on the workout screen (null = all collapsed).
 let openExerciseId = null;
 
+// Swap for today on the workout screen: whose exercise search is open, and what's typed.
+let swap = { exerciseId: null, query: '' };
+
 // Log screens: the search text (kept so Back returns to the same results),
 // and the calendar month / tapped day on an exercise's log.
 let logQuery = '';
@@ -76,6 +79,7 @@ function go(hash) {
 }
 
 function render() {
+  Streak.update(); // decides any week that just ended, and catches a week that was just hit
   const route = currentRoute();
   let screen;
 
@@ -99,7 +103,7 @@ function render() {
     } else {
       // Only start a draft once there's something to log.
       const draft = day.exercises.length ? Store.ensureDraft(day) : null;
-      screen = Views.workout(day, draft, openExerciseId);
+      screen = Views.workout(day, draft, openExerciseId, swap);
     }
   }
 
@@ -116,6 +120,51 @@ function render() {
   tabBarEl.innerHTML = tabBarHtml(route.tab);
   appEl.classList.remove('is-searching');
   appEl.innerHTML = screen.html;
+  showOverlay();
+}
+
+// ---------- Streak celebration and notices (full-screen, over any screen) ----------
+
+const overlayEl = document.getElementById('overlay');
+const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+// Shows the celebration if a week was just hit, otherwise any streak notice waiting.
+function showOverlay() {
+  if (!overlayEl.hidden) return;
+  if (Streak.celebrate != null) {
+    const streak = Streak.celebrate;
+    Streak.celebrate = null;
+    overlayEl.innerHTML = Views.celebration(streak);
+    overlayEl.className = 'overlay is-celebration';
+    overlayEl.hidden = false;
+    overlayEl.dataset.openedAt = Date.now();
+    countUp(overlayEl.querySelector('.celebrate-num'), streak);
+  } else if (Store.data.streak.notices.length) {
+    overlayEl.innerHTML = Views.streakNotice(Store.data.streak.notices);
+    overlayEl.className = 'overlay is-notice';
+    overlayEl.hidden = false;
+  }
+}
+
+function closeOverlay() {
+  overlayEl.hidden = true;
+  overlayEl.innerHTML = '';
+  showOverlay(); // a notice may be waiting behind a celebration
+}
+
+// Counts the number up from 0 after the flame pops in, slowing down at the end.
+function countUp(el, to) {
+  if (reduceMotion.matches) return; // the final number is already showing
+  const delay = 350;
+  const duration = Math.min(1400, 400 + to * 60);
+  const started = performance.now() + delay;
+  el.textContent = '0';
+  const tick = now => {
+    const t = Math.min(1, Math.max(0, (now - started) / duration));
+    el.textContent = String(Math.round(to * (1 - Math.pow(1 - t, 3))));
+    if (t < 1) requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
 }
 
 function toast(message) {
@@ -231,9 +280,39 @@ const actions = {
   // Opens this exercise (closing any other), or closes it if it's already open.
   'toggle-exercise'(id) {
     openExerciseId = openExerciseId === id ? null : id;
+    swap = { exerciseId: null, query: '' };
     render();
     // Closing one above can shift this row off screen, so bring it back into view.
     document.getElementById(`ex-${id}`).scrollIntoView({ block: 'nearest' });
+  },
+
+  // Swap for today: open the exercise search under this exercise.
+  'swap-open'(id) {
+    swap = { exerciseId: id, query: '' };
+    render();
+    document.getElementById('swap-search').focus();
+  },
+
+  'swap-cancel'() {
+    swap = { exerciseId: null, query: '' };
+    render();
+  },
+
+  // Tapped an exercise in the swap search: do it instead of the planned one, this workout only.
+  // Any sets already typed for this exercise are cleared.
+  'swap-pick'(refId) {
+    const day = Store.getDay(currentRoute().dayId);
+    Store.swapExercise(day, swap.exerciseId, refId);
+    toast(`Swapped for today: ${Library.forExercise({ refId }).name}`);
+    swap = { exerciseId: null, query: '' };
+    render();
+  },
+
+  // Back to the planned exercise.
+  'swap-undo'(id) {
+    const day = Store.getDay(currentRoute().dayId);
+    Store.swapExercise(day, id, day.exercises.find(e => e.id === id).refId);
+    render();
   },
 
   'finish'() {
@@ -309,6 +388,20 @@ const actions = {
     pop.style.top = `${above >= 0 ? above : box.bottom - area.top + 6}px`;
   },
 
+  // Tap anywhere on the celebration to close it (not in the first moment, so a
+  // tap that was already on its way doesn't close it before it's seen).
+  'dismiss-celebration'() {
+    if (Date.now() - Number(overlayEl.dataset.openedAt) < 700) return;
+    closeOverlay();
+  },
+
+  // OK on a streak notice: it has been seen, so it won't show again.
+  'dismiss-notice'() {
+    Store.data.streak.notices = [];
+    Store.save();
+    closeOverlay();
+  },
+
   'delete-all'() {
     if (!confirm('Delete ALL data? This removes every workout day, exercise, custom exercise, workout history and setting from this device. It cannot be undone.')) return;
     Store.deleteAll();
@@ -353,6 +446,12 @@ appEl.addEventListener('input', event => {
     return;
   }
 
+  if (input.id === 'swap-search') {
+    swap.query = input.value;
+    document.getElementById('swap-results').innerHTML = Views.libraryResults(input.value, 'swap-pick');
+    return;
+  }
+
   // Muscle search on the custom exercise form.
   if (input.dataset.muscleSearch) {
     const role = input.dataset.muscleSearch;
@@ -377,7 +476,7 @@ appEl.addEventListener('input', event => {
 // show below it instead of under the keyboard. The extra space (is-searching) lets
 // the page scroll that far even before there are results.
 appEl.addEventListener('focusin', event => {
-  if (event.target.id !== 'lib-search') return;
+  if (event.target.id !== 'lib-search' && event.target.id !== 'swap-search') return;
   appEl.classList.add('is-searching');
   const pin = () => event.target.scrollIntoView({ block: 'start' });
   pin();
@@ -516,9 +615,18 @@ appEl.addEventListener('submit', event => {
 window.addEventListener('hashchange', () => {
   picker = newPicker();
   openExerciseId = null;
+  swap = { exerciseId: null, query: '' };
   logState = { month: null, day: null };
   render();
   window.scrollTo(0, 0);
+});
+
+// A home-screen app usually comes back from the background instead of reloading, so
+// check the streak then too (a week may have ended while it was away).
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  if (Streak.update()) render();
+  else showOverlay();
 });
 
 try {

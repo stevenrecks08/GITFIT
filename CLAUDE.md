@@ -19,6 +19,7 @@ js/storage.js     ALL saving/loading (localStorage), data shape, upgrades (norma
 js/units.js       Converts saved units (lbs, inches) to/from the shown unit
 js/standards.js   Strength standards from strengthlevel.com for the map's Level mode
 js/stats.js       Per-muscle numbers: growth, levels, planned sets
+js/streak.js      Weekly streak rules: week results, freezes, Profile summary
 js/bodymap.js     Muscle map drawing and colors
 js/tabs.js        Bottom tab bar (Workouts, Profile); shows only on each tab's main screen
 js/views.js       Builds each screen's HTML; each returns { title, back, html }
@@ -28,12 +29,12 @@ README.md         User-facing guide; keep it up to date when you change structur
 
 Rule of thumb: **storage.js** knows about data, **views.js** knows about HTML, **app.js** connects them.
 
-**Script order in `index.html` matters**: library → storage → units → standards → stats → bodymap → tabs → views → app. A new file goes where its dependencies are already loaded.
+**Script order in `index.html` matters**: library → storage → units → standards → stats → streak → bodymap → tabs → views → app. A new file goes where its dependencies are already loaded.
 
 ## How data is saved
 
 - Everything is one JSON object in the browser's `localStorage` under the key **`gitfit-data`** (`STORAGE_KEY` in `storage.js`). It lives only on that device and that browser — the phone's data and the computer's data are separate.
-- The data shape is documented in the comment at the top of `storage.js`: `version`, `settings`, `customExercises`, `days` (always 7, Monday = 0), `sessions` (finished workouts, oldest first), `draft` (workout in progress, saved on every keystroke).
+- The data shape is documented in the comment at the top of `storage.js`: `version`, `settings`, `customExercises`, `days` (always 7, Monday = 0), `sessions` (finished workouts, oldest first, each with the day's `plan` when logged), `draft` (workout in progress, saved on every keystroke, with any `swaps` for today), `streak` (start week, locked week results, pending notices).
 - Only `storage.js` reads or writes `localStorage`. Other files go through `Store`.
 - **Changing the data shape**: bump `DATA_VERSION` and add an upgrade step in `normalize()` so older saved data (and old backup files) still load. Never drop or rename saved fields without migrating them. Update the shape comment at the top of `storage.js`.
 - Muscle ids and exercise ids (`refId`) are saved in user data. **Never rename or remove an existing id** without a migration (see `RENAMED_MUSCLES` for how a rename was handled). Adding new ones is fine.
@@ -55,6 +56,15 @@ Rule of thumb: **storage.js** knows about data, **views.js** knows about HTML, *
   - Legs: quads, hamstrings, glutes, adductors, calves
 
   Each exercise has **primary** muscles (each set counts as **1 set**) and **secondary** muscles (each set counts as **0.5 set**). A muscle can't be both primary and secondary on one exercise.
+- **Weekly streak** (`streak.js`, rules in its top comment):
+  - A week runs Monday 3 am → next Monday 3 am. A workout counts for the week Finish was tapped in, on any day.
+  - A week is hit when every planned set is logged (a set with reps), counting finished workouts only. Each planned exercise counts at most its planned sets.
+  - Days already logged that week are locked to the plan saved with their first workout that week; days not done yet follow the current plan. Several workouts for the same day add up.
+  - Hit is locked the moment it happens (even if reached by editing the plan). Ended weeks are judged once and never changed.
+  - Hit earns 1 freeze (max 2). A week that ends at 90%+ (no rounding) uses a freeze if the streak is above 0, and the streak stays the same. Otherwise the streak goes to 0. Weeks with 0 planned sets don't count.
+  - Tracking starts the first full week after a plan with an exercise exists.
+  - Swap for today saves the swapped exercise under its own `refId`, with the planned exercise's `exerciseId` and `swappedFrom`, so history stays right and it counts for the streak.
+  - Current, best and freezes are always recomputed from `streak.weeks`; never store them separately.
 - **Test data must never be written into the code.** No demo/sample workouts, fake sessions, or seeded user data in any committed file (an earlier `js/demo-data.js` was removed for this reason; `normalize()` still drops any session marked `demo: true`). Test by entering data in the app on the computer, or with a temporary console snippet that isn't committed. Defaults like an empty week are fine.
 - **The computer is the dev version; GitHub Pages is the live version.** The live app is https://stevenrecks08.github.io/GITFIT/ (repo `stevenrecks08/GITFIT`, branch `main`). Whatever is pushed to `main` goes live on the phone.
 - **Commit automatically after every finished change, without asking.** Use a short, clear commit message.

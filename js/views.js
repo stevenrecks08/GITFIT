@@ -42,6 +42,15 @@ function initials(name) {
 
 const SETS_SCALE = 16; // a full bar = 16+ sets a week
 
+// The streak flame. Its colors come from CSS (.flame-outer / .flame-inner).
+const FLAME_SVG = `
+  <svg viewBox="0 0 24 24" aria-hidden="true">
+    <path class="flame-outer" d="M12 1.5C13.6 5.6 19.5 8.6 19.5 14.6a7.5 7.5 0 0 1-15 0c0-3 1.5-5.4 3.6-7
+      .1 2.4 1.2 4 2.7 4.7C10.1 8.7 10.6 4.9 12 1.5z"/>
+    <path class="flame-inner" d="M12 22.1a3.9 3.9 0 0 1-3.9-3.9c0-2.4 1.9-3.9 3.2-5.8.4 1.9 1.9 2.6 2.9 3.8
+      .9 1 1.7 1.6 1.7 2a3.9 3.9 0 0 1-3.9 3.9z"/>
+  </svg>`;
+
 // Planned sets per muscle group for the week ({ 'Chest': 9, … }), each with a bar.
 function plannedSetsTable(groups) {
   const names = MUSCLE_GROUPS.map(g => g.name).filter(name => groups[name]);
@@ -420,7 +429,8 @@ const Views = {
   },
 
   // ---------- Workout: compact list, one exercise expanded at a time ----------
-  workout(day, draft, openId) {
+  // swap = the Swap for today search: { exerciseId (whose search is open, or null), query }
+  workout(day, draft, openId, swap) {
     const title = day.name || WEEKDAYS[day.weekday];
     if (!day.exercises.length) {
       return {
@@ -434,8 +444,10 @@ const Views = {
 
     const unit = Units.weightUnit();
     const cards = day.exercises.map((ex, i) => {
-      const info = Library.forExercise(ex);
-      const last = Store.lastResult(ex);
+      // A swapped exercise shows as itself, with its own history.
+      const swapped = Store.swappedRef(ex.id);
+      const info = Library.forExercise({ refId: swapped || ex.refId });
+      const last = Store.lastFor(ex);
       const isOpen = ex.id === openId;
       const isDone = !isOpen && Store.draftHasReps(ex.id);
 
@@ -452,6 +464,19 @@ const Views = {
               data-ex="${ex.id}" data-set="${i}" data-field="reps" aria-label="Set ${i + 1} reps">`;
         }).join('');
 
+        // Swap for today: a button, or the exercise search once it's tapped.
+        const swapPanel = swap.exerciseId === ex.id ? `
+          <div class="swap-panel stack">
+            <input type="search" id="swap-search" value="${esc(swap.query)}"
+              placeholder="Swap for today: search exercises" autocomplete="off" aria-label="Search exercises to swap in">
+            <div id="swap-results" class="lib-results">${this.libraryResults(swap.query, 'swap-pick')}</div>
+            <button type="button" class="btn" data-action="swap-cancel">Cancel</button>
+          </div>` : `
+          <div class="row swap-row">
+            <button type="button" class="btn btn-small" data-action="swap-open" data-id="${ex.id}">Swap for today</button>
+            ${swapped ? `<button type="button" class="btn btn-small" data-action="swap-undo" data-id="${ex.id}">Undo swap</button>` : ''}
+          </div>`;
+
         body = `
           <div class="ex-body">
             <div class="ex-sub">Target ${ex.sets} × ${repRange(ex.repMin, ex.repMax)}${last ? ` · last done ${formatDate(last.date)}` : ''}</div>
@@ -461,15 +486,18 @@ const Views = {
               <div class="col-head">Reps</div>
               ${setRows}
             </div>
+            ${swapPanel}
           </div>`;
       }
 
+      const plannedName = swapped ? Library.forExercise(ex).name : '';
       return `
         <div class="card workout-ex ${isOpen ? 'is-open' : ''}" id="ex-${ex.id}">
           <button class="ex-toggle" data-action="toggle-exercise" data-id="${ex.id}" aria-expanded="${isOpen}">
             <span class="ex-num">${i + 1}</span>
             <span class="ex-toggle-main">
               <span class="ex-title">${esc(info.name)}</span>
+              ${swapped ? `<span class="ex-sub swap-note">Swapped for today · planned: ${esc(plannedName)}</span>` : ''}
               <span class="ex-sub">${lastSummary(last)}</span>
             </span>
             <span class="tag">${esc(Library.primaryLabel(info))}</span>
@@ -513,10 +541,103 @@ const Views = {
           <p class="profile-name">${esc(name)}</p>
           ${stats ? `<p class="muted profile-stats">${stats}</p>` : ''}
         </div>
+        ${this.streakCard()}
         <a class="btn" href="#/log">Log</a>
         ${this.muscleMap(mapMode)}
       `,
     };
+  },
+
+  // ---------- Weekly streak (on Profile) ----------
+  // The flame is gray until this week is hit, then green.
+  streakCard() {
+    const { started, start, totals, week, recent } = Streak.summary();
+    const fill = week.planned ? Math.min(100, week.logged / week.planned * 100) : 0;
+    const startLabel = start
+      ? fromDayKey(start).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) : '';
+    const headline = started ? `${totals.current}-week streak`
+      : start ? `Streak starts ${startLabel}` : 'Plan a workout to start a streak';
+    const sub = started
+      ? (week.hit ? 'This week is done 🔥' : 'Log every planned set to hit this week')
+      : start ? 'This week is practice' : 'Add exercises to a day on the Workouts tab';
+
+    const icons = { hit: '✓', frozen: '❄︎', missed: '✕', empty: '–', current: '', untracked: '' };
+    const names = { hit: 'hit', frozen: 'saved by a freeze', missed: 'missed', empty: 'nothing planned',
+      current: 'in progress', untracked: 'not tracked' };
+    const strip = recent.map(w => `
+      <div class="wk is-${w.status} ${w.isThisWeek ? 'is-this-week' : ''}"
+        aria-label="Week of ${shortDate(fromDayKey(w.key))}: ${names[w.status]}">
+        <span class="wk-box" aria-hidden="true">${icons[w.status]}</span>
+        <span class="wk-date" aria-hidden="true">${w.isThisWeek ? 'Now' : shortDate(fromDayKey(w.key))}</span>
+      </div>`).join('');
+
+    return `
+      <div class="card streak-card">
+        <div class="streak-top">
+          <span class="streak-flame ${week.hit ? 'is-lit' : ''}">${FLAME_SVG}</span>
+          <span class="streak-count">${started ? totals.current : 0}</span>
+          <span class="streak-words">
+            <strong>${headline}</strong>
+            <span class="muted">${sub}</span>
+          </span>
+        </div>
+
+        <div class="week-sets">
+          <span>Sets this week</span>
+          <strong>${week.logged} / ${week.planned}</strong>
+        </div>
+        <div class="week-bar ${week.hit ? 'is-full' : ''}" role="img"
+          aria-label="${week.logged} of ${week.planned} planned sets logged">
+          <i style="width:${fill}%"></i>
+          <b class="freeze-mark" style="left:${FREEZE_LINE * 100}%" title="Freeze line (90%)"></b>
+        </div>
+
+        <div class="streak-stats">
+          <span>Best <strong>${totals.best}</strong></span>
+          <span>❄&#xFE0E; Freezes <strong>${totals.freezes} / ${MAX_FREEZES}</strong></span>
+        </div>
+
+        <div class="week-strip">${strip}</div>
+      </div>`;
+  },
+
+  // Full-screen celebration when a week is hit; a bigger one every MILESTONE_WEEKS weeks.
+  // The number starts at its final value; app.js counts it up from 0.
+  celebration(streak) {
+    const milestone = streak % MILESTONE_WEEKS === 0;
+    const messages = ['Every planned set, logged.', 'Another full week in the books.',
+      'Consistency wins. Keep it burning.', 'You showed up all week.'];
+    const message = streak === 1 ? 'Week one done — your streak has started!'
+      : milestone ? `${streak} weeks in a row. That's a milestone!`
+      : messages[streak % messages.length];
+    const sparks = milestone
+      ? Array.from({ length: 14 }, (_, i) =>
+        `<span class="spark" style="transform:rotate(${i * 360 / 14}deg)"><i style="animation-delay:${0.25 + (i % 3) * 0.08}s"></i></span>`).join('')
+      : '';
+    return `
+      <div class="celebrate ${milestone ? 'is-milestone' : ''}" data-action="dismiss-celebration" role="dialog"
+        aria-label="${streak}-week streak">
+        <div class="celebrate-art">
+          <span class="celebrate-glow"></span>
+          ${sparks}
+          <span class="celebrate-flame">${FLAME_SVG}</span>
+        </div>
+        <p class="celebrate-num">${streak}</p>
+        <p class="celebrate-label">week streak</p>
+        ${milestone ? '<p class="celebrate-badge">Milestone</p>' : ''}
+        <p class="celebrate-msg">${message}</p>
+        <p class="celebrate-hint">Tap to continue</p>
+      </div>`;
+  },
+
+  // What happened to the streak while the app was closed (freeze used / streak ended).
+  streakNotice(lines) {
+    return `
+      <div class="card notice" role="dialog" aria-label="Streak update">
+        <h2>Streak update</h2>
+        ${lines.map(line => `<p>${esc(line)}</p>`).join('')}
+        <button type="button" class="btn btn-primary" data-action="dismiss-notice">OK</button>
+      </div>`;
   },
 
   // ---------- Muscle map (on Profile) ----------
