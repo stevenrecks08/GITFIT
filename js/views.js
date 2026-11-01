@@ -571,6 +571,12 @@ const Views = {
       : week.logged >= freezeSets ? 'Freeze line reached. Finish the rest to hit the week.'
       : `Log ${freezeSets} of ${week.planned} to keep your streak with a freeze.`;
 
+    // How to earn the next freeze (one every WEEKS_PER_FREEZE weeks in a row).
+    const toNext = WEEKS_PER_FREEZE - totals.current % WEEKS_PER_FREEZE;
+    const earnNote = !started ? `Hit ${WEEKS_PER_FREEZE} weeks in a row to earn a freeze.`
+      : totals.freezes >= MAX_FREEZES ? `Freezes full. You earn one every ${WEEKS_PER_FREEZE} weeks in a row.`
+      : `${toNext} more week${toNext === 1 ? '' : 's'} in a row to earn a freeze.`;
+
     const icons = { hit: '✓', frozen: '❄︎', missed: '✕', empty: '–', current: '', untracked: '' };
     const names = { hit: 'hit', frozen: 'saved by a freeze', missed: 'missed', empty: 'nothing planned',
       current: 'in progress', untracked: 'not tracked' };
@@ -606,6 +612,7 @@ const Views = {
           <span>Best <strong>${totals.best}</strong></span>
           <span>❄&#xFE0E; Freezes <strong>${totals.freezes} / ${MAX_FREEZES}</strong></span>
         </div>
+        <p class="earn-note">${earnNote}</p>
 
         <div class="week-strip">${strip}</div>
       </div>`;
@@ -620,6 +627,9 @@ const Views = {
     const message = streak === 1 ? 'Week one done — your streak has started!'
       : milestone ? `${streak} weeks in a row. That's a milestone!`
       : messages[streak % messages.length];
+    // Did this week earn a freeze? (Not if 2 were already held.)
+    const weeks = Store.data.streak.weeks;
+    const earned = Streak.totals().freezes > Streak.totals(weeks.slice(0, -1)).freezes;
     const sparks = milestone
       ? Array.from({ length: 14 }, (_, i) =>
         `<span class="spark" style="transform:rotate(${i * 360 / 14}deg)"><i style="animation-delay:${0.25 + (i % 3) * 0.08}s"></i></span>`).join('')
@@ -636,6 +646,7 @@ const Views = {
         <p class="celebrate-label">week streak</p>
         ${milestone ? '<p class="celebrate-badge">Milestone</p>' : ''}
         <p class="celebrate-msg">${message}</p>
+        ${earned ? '<p class="celebrate-freeze">❄&#xFE0E; +1 streak freeze earned</p>' : ''}
         <p class="celebrate-hint">Tap to continue</p>
       </div>`;
   },

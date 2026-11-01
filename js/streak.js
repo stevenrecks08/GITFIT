@@ -13,7 +13,8 @@
 // don't make up for another. Sets of an exercise swapped for today count for the one it replaced.
 //
 // Each week's result is decided once and never changed:
-//   hit    → streak +1 and earns a freeze (up to MAX_FREEZES held). Decided the moment it happens.
+//   hit    → streak +1. Decided the moment it happens. Every WEEKS_PER_FREEZE (4) weeks in a row
+//            (streak 4, 8, 12 …) earns a freeze, up to MAX_FREEZES held.
 //   frozen → the week ended with at least FREEZE_LINE (90%) of planned sets, a freeze was held
 //            and the streak was above 0: the freeze is used and the streak stays where it is
 //   missed → anything else when the week ends: streak back to 0
@@ -25,7 +26,8 @@
 const WEEK_START_HOUR = 3;
 const FREEZE_LINE = 0.9;
 const MAX_FREEZES = 2;
-const MILESTONE_WEEKS = 4; // a bigger celebration every 4 weeks
+const WEEKS_PER_FREEZE = 4; // a freeze is earned at streak 4, 8, 12 …
+const MILESTONE_WEEKS = 4;  // a bigger celebration every 4 weeks
 const RECENT_WEEKS = 8;    // past weeks shown in the strip on Profile (plus this week)
 
 // Monday 3 am of the week a time falls in.
@@ -83,7 +85,7 @@ const Streak = {
       if (w.result === 'hit') {
         current++;
         best = Math.max(best, current);
-        freezes = Math.min(MAX_FREEZES, freezes + 1);
+        if (current % WEEKS_PER_FREEZE === 0) freezes = Math.min(MAX_FREEZES, freezes + 1);
       } else if (w.result === 'frozen') {
         freezes--;
       } else if (w.result === 'missed') {

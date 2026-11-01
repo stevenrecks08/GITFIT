@@ -477,6 +477,7 @@ main.is-searching { padding-bottom: 100vh; }
 
 .streak-stats { display: flex; gap: 18px; margin-top: 12px; font-size: 14px; color: var(--muted); }
 .streak-stats strong { color: var(--text); font-variant-numeric: tabular-nums; }
+.earn-note { margin: 4px 0 0; font-size: 13px; color: var(--muted); }
 
 /* Recent weeks: one box per week, oldest on the left */
 .week-strip { display: flex; gap: 4px; margin-top: 14px; }
@@ -741,6 +742,15 @@ main.is-searching { padding-bottom: 100vh; }
   animation: badge-pop 0.5s cubic-bezier(0.2, 1.6, 0.4, 1) 0.9s both;
 }
 .celebrate-msg { margin-top: 18px !important; font-size: 20px; font-weight: 600; animation: rise 0.5s ease-out 0.6s both; }
+.celebrate-freeze {
+  margin-top: 14px !important;
+  padding: 8px 16px;
+  border: 1px solid var(--freeze);
+  border-radius: 999px;
+  color: var(--freeze);
+  font-weight: 700;
+  animation: badge-pop 0.5s cubic-bezier(0.2, 1.6, 0.4, 1) 1.1s both;
+}
 .celebrate-hint { margin-top: 36px !important; font-size: 14px; color: var(--muted); animation: fade-in 0.6s ease-out 1.6s both; }
 
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
