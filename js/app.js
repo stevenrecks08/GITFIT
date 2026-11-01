@@ -556,8 +556,31 @@ const actions = {
   },
 
   // Tapped an exercise in the swap search: do it instead of the planned one, this workout only.
-  // Any sets already typed for this exercise are cleared.
+  // Any sets already typed for this exercise are cleared. A swap into a different muscle group
+  // won't count for the streak, so that asks first.
   'swap-pick'(refId) {
+    const workout = Store.getWorkout(currentRoute().workoutId);
+    const planned = Library.forExercise(workout.exercises.find(e => e.id === swap.exerciseId));
+    const picked = Library.forExercise({ refId });
+    const from = Library.groupOf(planned);
+    const to = Library.groupOf(picked);
+    if (from && to !== from) {
+      showDialog({
+        title: 'This swap won\'t count',
+        lines: [
+          `${picked.name} is ${to ? `a ${to}` : 'not a ' + from} exercise, and ${planned.name} is ${from}. A swap only counts toward your streak when it's in the same muscle group.`,
+          `Its sets will still be logged (history, maxes and the muscle map), but the planned ${planned.name} sets will count as missed.`,
+        ],
+        confirm: { label: 'Swap anyway', action: 'swap-confirm', id: refId },
+        cancel: { label: 'Cancel', action: 'dialog-cancel' },
+      });
+      return;
+    }
+    actions['swap-confirm'](refId);
+  },
+
+  'swap-confirm'(refId) {
+    hideDialog();
     const workout = Store.getWorkout(currentRoute().workoutId);
     Store.swapExercise(workout, swap.exerciseId, refId);
     toast(`Swapped for today: ${Library.forExercise({ refId }).name}`);

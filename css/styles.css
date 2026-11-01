@@ -427,8 +427,7 @@ body.is-dragging { -webkit-user-select: none; user-select: none; }
 /* Quick workout screen: the title box and the "+ Add exercise" button */
 .quick-name { margin-bottom: 12px; font-size: 18px; font-weight: 700; }
 .quick-hint { margin: -2px 0 14px; font-size: 14px; }
-.btn-add-ex { margin-top: 4px; border-style: dashed; color: var(--text); font-weight: 600; }
-.btn-add-ex.is-first { min-height: 64px; border-style: solid; background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-size: 17px; }
+.btn-add-ex { margin-top: 4px; color: var(--text); font-weight: 600; }
 
 /* Day chips (Mon … Sun) on the new / edit workout screens */
 .weekday-pick { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
@@ -683,7 +682,7 @@ main.is-searching { padding-bottom: 100vh; }
 .swap-row { justify-content: flex-start; }
 .swap-row > * { flex: 0 0 auto; }
 .ex-toggle .swap-note { color: var(--rest); white-space: normal; }
-#swap-search { scroll-margin-top: calc(var(--topbar-h) + env(safe-area-inset-top) + 12px); }
+#swap-search, #quick-search { scroll-margin-top: calc(var(--topbar-h) + env(safe-area-inset-top) + 12px); }
 
 /* ---------- Profile ---------- */
 .profile-head {

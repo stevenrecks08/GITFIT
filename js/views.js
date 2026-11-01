@@ -674,7 +674,7 @@ const Views = {
         <div id="quick-results" class="lib-results">${this.libraryResults(quickAdd.query, 'quick-pick')}</div>
         <button type="button" class="btn" data-action="quick-add-cancel">Cancel</button>
       </div>` : `
-      <button type="button" class="btn btn-add-ex ${workout.exercises.length ? '' : 'is-first'}" data-action="quick-add-open">+ Add exercise</button>`;
+      <button type="button" class="btn btn-add-ex" data-action="quick-add-open">+ Add exercise</button>`;
 
     return {
       title,
