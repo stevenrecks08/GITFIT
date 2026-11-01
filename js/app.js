@@ -134,7 +134,11 @@ function currentRoute() {
   if (parts[0] === 'workout' && parts[1]) {
     return { view: parts[2] === 'edit' ? 'edit' : 'workout', workoutId: parts[1], tab: 'workouts' };
   }
-  if (parts[0] === 'new') return { view: 'new', copyFrom: parts[1] || null, tab: 'workouts' };
+  if (parts[0] === 'new') {
+    // #/new/day/<weekday> = "+ Add workout" on a day; #/new/<id> = a copy of that workout
+    if (parts[1] === 'day') return { view: 'new', copyFrom: null, weekday: Number(parts[2]), tab: 'workouts' };
+    return { view: 'new', copyFrom: parts[1] || null, tab: 'workouts' };
+  }
   if (parts[0] === 'history') {
     return parts[1] ? { view: 'past', sessionId: parts[1], tab: 'workouts' } : { view: 'history', tab: 'workouts' };
   }
@@ -179,7 +183,7 @@ function render() {
       const source = route.copyFrom && Store.getWorkout(route.copyFrom);
       newForm = source
         ? { name: source.name, weekday: source.weekday, copyFrom: source.id }
-        : { name: '', weekday: todayWeekday(), copyFrom: null };
+        : { name: '', weekday: route.weekday ?? todayWeekday(), copyFrom: null };
     }
     screen = Views.newWorkout(newForm);
   } else {
@@ -210,7 +214,23 @@ function render() {
   tabBarEl.innerHTML = tabBarHtml(route.tab);
   appEl.classList.remove('is-searching');
   appEl.innerHTML = screen.html;
+  if (route.view === 'home' && !scrolledToToday) scrollToToday();
   showOverlay();
+}
+
+// When the app opens on the week, today's day is scrolled near the top (once per app open,
+// so coming back to the week later doesn't jump around).
+// (The browser's own "keep the old scroll position on reload" is turned off so it doesn't undo this.)
+let scrolledToToday = false;
+history.scrollRestoration = 'manual';
+function scrollToToday() {
+  scrolledToToday = true;
+  requestAnimationFrame(() => { // once the week has been laid out
+    const today = appEl.querySelector('.day-block.is-today');
+    if (!today) return;
+    const topbar = document.querySelector('.topbar').getBoundingClientRect().bottom;
+    window.scrollTo(0, Math.max(0, today.getBoundingClientRect().top + window.scrollY - topbar - 12));
+  });
 }
 
 // ---------- Streak celebration and notices (full-screen, over any screen) ----------
@@ -322,6 +342,11 @@ const actions = {
   },
 
   // The + button on the week.
+  // "+ Add workout" under an empty day: the New workout form with that day picked.
+  'new-workout-on'(weekday) {
+    go(`#/new/day/${weekday}`);
+  },
+
   'new-workout'() {
     go('#/new');
   },

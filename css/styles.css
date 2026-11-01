@@ -217,39 +217,52 @@ button, .btn {
 .past-card .day-name { display: block; font-size: 19px; font-weight: 700; }
 .past-card .day-meta { display: block; font-size: 14px; color: var(--muted); margin-top: 2px; }
 
-/* ---------- The week (Workouts tab): each day with its workouts ---------- */
-.week-hint { margin: -4px 0 12px; font-size: 14px; }
+/* ---------- The week (Workouts tab): each day with its workouts ----------
+   Three text sizes only: 18px (day names, workout titles), 15px (buttons), 13px (everything secondary).
+   Days are 22px apart; inside a day, the header and its content are 6px apart, so each day reads as one group. */
+.week-intro { margin: 4px 0 16px; }
+.banner + .week-intro { margin-top: 24px; }
+.week-title { display: flex; align-items: baseline; gap: 10px; }
+.week-title h2 { margin: 0; font-size: 13px; }
+.week-range { font-size: 13px; color: var(--muted); opacity: 0.75; }
+.week-hint { margin: 4px 0 0; font-size: 13px; color: var(--muted); opacity: 0.75; line-height: 1.4; }
+
 .day-block {
-  margin-bottom: 8px;
-  padding: 4px 8px 10px;
-  border-radius: var(--radius);
-  border: 1px solid transparent;
-  transition: background-color 0.15s, border-color 0.15s;
+  margin: 0 -10px 22px;
+  padding: 4px 10px 6px 7px;
+  border-left: 3px solid transparent;
+  border-radius: 0 var(--radius) var(--radius) 0;
+  transition: background-color 0.15s;
 }
 .day-head {
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 48px;
-  padding: 0 2px;
+  min-height: 36px;
+  margin-bottom: 6px;
 }
-.day-head-name { font-size: 17px; font-weight: 700; }
+.day-head-name { font-size: 18px; font-weight: 600; }
 
-/* Training day / rest day switch (iPhone settings style). The knob slides with transform. */
+/* Today: a green "Today" pill, a green left edge and a slightly lighter background */
+.day-block.is-today { border-left-color: var(--accent); background: rgba(74, 222, 128, 0.05); }
+
+/* Training day / rest day switch (iPhone settings style), kept small and quiet so the
+   day names and workouts stand out. The knob slides with transform. */
 .day-toggle {
   position: relative;
   flex: 0 0 auto;
-  width: 54px;
-  height: 32px;
+  width: 38px;
+  height: 22px;
   margin-left: auto;
   padding: 0;
   border: none;
   border-radius: 999px;
-  background: var(--surface-2);
-  box-shadow: inset 0 0 0 1px var(--border);
+  background: #2a2f3a;
   transition: background-color 0.2s;
 }
-.day-toggle.is-on { background: var(--accent); box-shadow: none; }
+/* A bigger invisible tap area than the switch itself */
+.day-toggle::before { content: ''; position: absolute; inset: -11px -8px; }
+.day-toggle.is-on { background: #2c6b45; }
 .day-toggle-knob {
   position: absolute;
   top: 2px;
@@ -257,31 +270,56 @@ button, .btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
-  background: #fff;
-  color: var(--rest);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-  transition: transform 0.2s ease;
+  background: #8a92a1;
+  color: #2a2f3a;
+  transition: transform 0.2s ease, background-color 0.2s;
 }
-.day-toggle.is-on .day-toggle-knob { transform: translateX(22px); color: var(--accent-text); }
-.day-empty { margin: 0 2px; padding: 12px 14px; border: 1px dashed var(--border); border-radius: var(--radius); color: var(--muted); font-size: 14px; }
+.day-toggle-knob svg { width: 11px; height: 11px; }
+.day-toggle.is-on .day-toggle-knob { transform: translateX(16px); background: #d7f5e2; color: #1d4a30; }
 
+/* An empty training day: just a small, quiet "+ Add workout" */
+.day-add {
+  min-height: 32px;
+  padding: 0 2px;
+  background: none;
+  border: none;
+  color: var(--muted);
+  opacity: 0.6;
+  font-size: 13px;
+  font-weight: 500;
+}
+.day-add:active { opacity: 1; }
+
+/* Workout cards: solid card, bold title, dim line under it, thin green strip on the left */
 .workout-card {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
+  padding: 12px 12px 12px 18px;
+  overflow: hidden;
   /* Holding a card picks it up to drag; don't select text or show the iPhone callout menu. */
   -webkit-user-select: none;
   user-select: none;
   -webkit-touch-callout: none;
 }
+.workout-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 3px;
+  background: var(--accent);
+}
 .workout-card + .workout-card { margin-top: 8px; }
 .workout-open {
   flex: 1;
   min-width: 0;
-  min-height: 56px;
+  min-height: 48px;
   padding: 0;
   background: none;
   border: none;
@@ -289,13 +327,19 @@ button, .btn {
   text-align: left;
 }
 .workout-name { display: block; font-size: 18px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.workout-open .day-meta { display: block; font-size: 14px; color: var(--muted); margin-top: 2px; }
+.workout-open .day-meta { display: block; font-size: 13px; color: var(--muted); margin-top: 3px; }
+.workout-card .btn-small { min-height: 38px; background: transparent; color: var(--muted); }
 
-/* Rest days: their workouts stay, grayed out, and can't be started */
-.rest-word { color: var(--rest); font-size: 14px; font-weight: 600; }
+/* Rest days: dimmed, shorter, with just the small "Rest day" label. Their workouts stay,
+   grayed out, and can't be started. */
+.rest-word { color: var(--rest); font-size: 13px; font-weight: 600; }
+.day-block.is-rest { opacity: 0.55; margin-bottom: 14px; padding-bottom: 0; }
+.day-block.is-rest .day-head { min-height: 30px; margin-bottom: 0; }
 .day-block.is-rest .day-head-name { color: var(--muted); }
-.day-block.is-rest .workout-card { background: transparent; border-style: dashed; opacity: 0.5; }
+.day-block.is-rest .workout-card { margin-bottom: 8px; background: transparent; border-style: dashed; }
+.day-block.is-rest .workout-card::before { background: var(--muted); }
 .day-block.is-rest .workout-open { cursor: default; }
+
 
 /* Dragging a workout */
 .drag-ghost {
@@ -310,7 +354,7 @@ button, .btn {
   opacity: 0.95;
 }
 .workout-card.is-dragging { opacity: 0.3; }
-.day-block.is-drop-target { background: #16331f; border-color: var(--accent); }
+.day-block.is-drop-target { background: #16331f; border-left-color: var(--accent); opacity: 1; }
 body.is-dragging { -webkit-user-select: none; user-select: none; }
 
 /* The + button for a new workout, bottom right above the tab bar */

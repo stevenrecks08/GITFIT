@@ -263,6 +263,17 @@ function dayToggle(weekday, dayName, rest) {
     </button>`;
 }
 
+// This week's dates, Monday → Sunday: "Nov 2 – 8", or "Oct 26 – Nov 1" across two months.
+// (The week starts at 3 am Monday, the same as the streak.)
+function weekDates(now = Date.now()) {
+  const start = weekStartOf(now);
+  const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 6);
+  const month = date => date.toLocaleDateString(undefined, { month: 'short' });
+  return start.getMonth() === end.getMonth()
+    ? `${month(start)} ${start.getDate()} – ${end.getDate()}`
+    : `${month(start)} ${start.getDate()} – ${month(end)} ${end.getDate()}`;
+}
+
 const Views = {
 
   // ---------- Home: the week, Monday to Sunday, with each day's workouts ----------
@@ -297,15 +308,18 @@ const Views = {
             <button class="btn btn-small" data-action="edit-workout" data-id="${w.id}">Edit</button>
           </div>`;
       }).join('');
+      // An empty training day gets a small "+ Add workout"; an empty rest day is just its header.
+      const empty = rest ? '' : `
+        <button type="button" class="day-add" data-action="new-workout-on" data-id="${weekday}">+ Add workout</button>`;
       return `
-        <section class="day-block ${rest ? 'is-rest' : ''}" data-weekday="${weekday}">
+        <section class="day-block ${rest ? 'is-rest' : ''} ${weekday === today ? 'is-today' : ''}" data-weekday="${weekday}">
           <div class="day-head">
             <span class="day-head-name">${dayName}</span>
             ${weekday === today ? '<span class="tag tag-today">Today</span>' : ''}
             ${rest ? '<span class="rest-word">Rest day</span>' : ''}
             ${dayToggle(weekday, dayName, rest)}
           </div>
-          ${cards || `<p class="day-empty">${rest ? 'Recovery day' : 'Nothing planned'}</p>`}
+          ${cards || empty}
         </section>`;
     }).join('');
 
@@ -315,10 +329,15 @@ const Views = {
       history: true,
       html: `
         ${resume}
-        <h2>This week</h2>
-        ${Store.data.workouts.length
-          ? '<p class="muted week-hint">Tap a workout to start it. Hold and drag it to move it to another day.</p>'
-          : '<p class="muted week-hint">Tap + to create your first workout.</p>'}
+        <div class="week-intro">
+          <div class="week-title">
+            <h2>This week</h2>
+            <span class="week-range">${weekDates()}</span>
+          </div>
+          <p class="week-hint">${Store.data.workouts.length
+            ? 'Tap a workout to start it. Hold and drag it to move it to another day.'
+            : 'Tap + to create your first workout.'}</p>
+        </div>
         <div class="week">${days}</div>
 
         <h2>Planned sets per week</h2>
