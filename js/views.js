@@ -465,6 +465,7 @@ const Views = {
         }).join('');
 
         // Swap for today: a button, or the exercise search once it's tapped.
+        // Once swapped, only Undo swap shows (undo, then swap again to pick a different one).
         const swapPanel = swap.exerciseId === ex.id ? `
           <div class="swap-panel stack">
             <input type="search" id="swap-search" value="${esc(swap.query)}"
@@ -473,8 +474,9 @@ const Views = {
             <button type="button" class="btn" data-action="swap-cancel">Cancel</button>
           </div>` : `
           <div class="row swap-row">
-            <button type="button" class="btn btn-small" data-action="swap-open" data-id="${ex.id}">Swap for today</button>
-            ${swapped ? `<button type="button" class="btn btn-small" data-action="swap-undo" data-id="${ex.id}">Undo swap</button>` : ''}
+            ${swapped
+              ? `<button type="button" class="btn btn-small" data-action="swap-undo" data-id="${ex.id}">Undo swap</button>`
+              : `<button type="button" class="btn btn-small" data-action="swap-open" data-id="${ex.id}">Swap for today</button>`}
           </div>`;
 
         body = `
@@ -589,7 +591,6 @@ const Views = {
         <div class="week-bar ${week.hit ? 'is-full' : ''}" role="img"
           aria-label="${week.logged} of ${week.planned} planned sets logged">
           <i style="width:${fill}%"></i>
-          <b class="freeze-mark" style="left:${FREEZE_LINE * 100}%" title="Freeze line (90%)"></b>
         </div>
 
         <div class="streak-stats">

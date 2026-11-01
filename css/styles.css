@@ -470,18 +470,8 @@ main.is-searching { padding-bottom: 100vh; }
 
 .week-sets { display: flex; justify-content: space-between; margin-top: 16px; font-size: 15px; }
 .week-sets strong { font-variant-numeric: tabular-nums; }
-.week-bar { position: relative; height: 10px; margin-top: 8px; border-radius: 999px; background: var(--surface-2); }
+.week-bar { height: 10px; margin-top: 8px; border-radius: 999px; background: var(--surface-2); }
 .week-bar i { display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width 0.4s ease-out; }
-/* The freeze line: at 90% or more, a held freeze saves the week */
-.freeze-mark {
-  position: absolute;
-  top: -3px;
-  bottom: -3px;
-  width: 2px;
-  margin-left: -1px;
-  border-radius: 1px;
-  background: var(--freeze);
-}
 
 .streak-stats { display: flex; gap: 18px; margin-top: 12px; font-size: 14px; color: var(--muted); }
 .streak-stats strong { color: var(--text); font-variant-numeric: tabular-nums; }
