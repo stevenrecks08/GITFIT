@@ -688,11 +688,14 @@ const Views = {
 
         // Swap for today: a button, or the exercise search once it's tapped.
         // Once swapped, only Undo swap shows (undo, then swap again to pick a different one).
-        // A quick workout has "+ Add set", "Remove set" (once there's more than one) and "Remove exercise" instead.
+        // Every workout has "+ Add set" and "− Remove set" (when the last set can go: Store.canRemoveDraftSet()).
+        // A quick workout also has "Remove exercise" instead of the swap.
+        const setButtons = `
+            <button type="button" class="btn btn-small" data-action="add-set" data-id="${ex.id}">+ Add set</button>
+            ${Store.canRemoveDraftSet(ex.id) ? `<button type="button" class="btn btn-small" data-action="remove-set" data-id="${ex.id}">− Remove set</button>` : ''}`;
         const swapPanel = quick ? `
           <div class="row swap-row">
-            <button type="button" class="btn btn-small" data-action="quick-add-set" data-id="${ex.id}">+ Add set</button>
-            ${draft.entries[ex.id].length > 1 ? `<button type="button" class="btn btn-small" data-action="quick-remove-set" data-id="${ex.id}">− Remove set</button>` : ''}
+            ${setButtons}
             <button type="button" class="btn btn-small" data-action="quick-remove" data-id="${ex.id}">Remove exercise</button>
           </div>` : swap.exerciseId === ex.id && swap.creating ? `
           <div class="swap-panel stack">
@@ -706,6 +709,7 @@ const Views = {
             <button type="button" class="btn" data-action="swap-cancel">Cancel</button>
           </div>` : `
           <div class="row swap-row">
+            ${setButtons}
             ${swapped
               ? `<button type="button" class="btn btn-small" data-action="swap-undo" data-id="${ex.id}">Undo swap</button>`
               : `<button type="button" class="btn btn-small" data-action="swap-open" data-id="${ex.id}">Swap for today</button>`}

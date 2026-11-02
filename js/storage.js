@@ -31,7 +31,7 @@
 //                                 // planned exercise it was added to make up, with its targetRepMin/Max)
 //                      sets: [ { weight, reps } ] } ] }
 //   ],
-//   draft: null or { workoutId, startedAt, entries: { [exerciseId]: [ { weight, reps, loggedAt? } ] },
+//   draft: null or { workoutId, startedAt, entries: { [exerciseId]: [ { weight, reps, loggedAt?, extra? } ] },
 //                    swaps: { [exerciseId]: refId },  // exercises swapped for today only
 //                    pausedAt (ISO while the timer is paused, else null), pausedMs (earlier pauses) },
 //                    // loggedAt = when that set's reps were typed
@@ -492,19 +492,29 @@ const Store = {
   },
 
   // One more set row, with the weight of the set above (or last time's weight for that set).
-  quickAddSet(exerciseId) {
-    const rows = this.data.draft.entries[exerciseId];
-    const refId = this.data.draft.exercises.find(e => e.id === exerciseId).refId;
+  // On a planned workout it's marked extra: a bonus set for today, on top of the plan.
+  addDraftSet(exerciseId) {
+    const draft = this.data.draft;
+    const workout = this.draftWorkout();
+    const rows = draft.entries[exerciseId];
+    const refId = draft.swaps[exerciseId] || workout.exercises.find(e => e.id === exerciseId).refId;
     const history = this.exerciseHistory(refId);
     const lastTime = history[history.length - 1]?.sets[rows.length]?.weight ?? null;
-    rows.push({ weight: rows[rows.length - 1]?.weight ?? lastTime, reps: '' });
+    rows.push({ weight: rows[rows.length - 1]?.weight ?? lastTime, reps: '', ...(workout.quick ? {} : { extra: true }) });
     this.save();
   },
 
-  // Takes off the last set. An exercise always keeps at least one (Remove exercise is for the rest).
-  quickRemoveSet(exerciseId) {
-    const rows = this.data.draft.entries[exerciseId];
-    if (rows.length > 1) rows.pop();
+  // Can the last set of this exercise be taken off? On a quick workout, if at least one would be
+  // left (Remove exercise is for the rest). On a planned workout, only a set added today:
+  // a planned set that's skipped is just left empty.
+  canRemoveDraftSet(exerciseId) {
+    const draft = this.data.draft;
+    const rows = draft.entries[exerciseId];
+    return draft.quick ? rows.length > 1 : Boolean(rows[rows.length - 1]?.extra);
+  },
+
+  removeDraftSet(exerciseId) {
+    if (this.canRemoveDraftSet(exerciseId)) this.data.draft.entries[exerciseId].pop();
     this.save();
   },
 
@@ -515,7 +525,7 @@ const Store = {
     this.save();
   },
 
-  // Makes sure there's a draft for this workout with exactly one row per target set.
+  // Makes sure there's a draft for this workout with one row per target set, then any extra sets.
   // Each set's weight (lbs, or null) starts as last time's weight; reps start empty.
   ensureDraft(workout) {
     let draft = this.data.draft;
@@ -526,9 +536,12 @@ const Store = {
     for (const ex of workout.exercises) {
       const lastSets = this.lastFor(ex)?.sets || [];
       const rows = draft.entries[ex.id] || [];
-      // Keeps rows already typed in; adds or trims if the set count was edited.
-      draft.entries[ex.id] = Array.from({ length: ex.sets }, (_, i) =>
-        rows[i] || { weight: lastSets[i]?.weight ?? null, reps: '' });
+      const planned = rows.filter(r => !r.extra);
+      // Keeps rows already typed in; adds or trims if the set count was edited. Extra sets stay after them.
+      draft.entries[ex.id] = [
+        ...Array.from({ length: ex.sets }, (_, i) => planned[i] || { weight: lastSets[i]?.weight ?? null, reps: '' }),
+        ...rows.filter(r => r.extra),
+      ];
     }
     this.save();
     return draft;

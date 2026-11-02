@@ -480,16 +480,16 @@ const actions = {
     document.getElementById(`ex-${openExerciseId}`).scrollIntoView({ block: 'nearest' });
   },
 
-  'quick-add-set'(id) {
-    Store.quickAddSet(id);
+  'add-set'(id) {
+    Store.addDraftSet(id);
     render();
   },
 
   // Takes off the last set; asks first if reps were already typed in it.
-  'quick-remove-set'(id) {
+  'remove-set'(id) {
     const rows = Store.data.draft.entries[id];
     if (rows[rows.length - 1].reps !== '' && !confirm('Remove the last set and the reps typed in it?')) return;
-    Store.quickRemoveSet(id);
+    Store.removeDraftSet(id);
     render();
   },
 
