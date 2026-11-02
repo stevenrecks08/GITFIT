@@ -85,6 +85,7 @@ let openExerciseId = null;
 const openSets = { groups: new Set(), muscles: new Set() };
 
 // Swap for today on the workout screen: whose exercise search is open, and what's typed.
+// creating = true while its custom exercise form is showing (the form itself uses picker).
 let swap = { exerciseId: null, query: '' };
 
 // "+ Add exercise" on a quick workout: whether its search is open, and what's typed.
@@ -248,7 +249,7 @@ function render() {
     } else {
       // Only start a draft once there's something to log.
       const draft = workout.exercises.length ? Store.ensureDraft(workout) : null;
-      screen = Views.workout(workout, draft, openExerciseId, swap);
+      screen = Views.workout(workout, draft, openExerciseId, swap, undefined, picker);
     }
   }
 
@@ -585,6 +586,7 @@ const actions = {
 
   // Leaving the custom form: back to the library, or back to sets & reps when editing.
   'cancel-custom'() {
+    swap.creating = false; // (if this form was opened from Swap for today: back to its search)
     picker.mode = picker.custom.id ? 'details' : 'pick';
     render();
   },
@@ -630,6 +632,17 @@ const actions = {
   'swap-cancel'() {
     swap = { exerciseId: null, query: '' };
     render();
+  },
+
+  // Create a custom exercise from the swap search. It uses the same form as the edit screen,
+  // with the name filled in from whatever was typed in the search.
+  'swap-new-custom'() {
+    swap.creating = true;
+    picker = newPicker();
+    picker.mode = 'custom';
+    picker.custom = { id: null, name: swap.query.trim(), equipment: EQUIPMENT[0], primary: [], secondary: [] };
+    render();
+    document.getElementById('custom-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
   },
 
   // Tapped an exercise in the swap search: do it instead of the planned one, this workout only.
@@ -1228,6 +1241,15 @@ appEl.addEventListener('submit', event => {
       primary: [...primary],
       secondary: [...secondary],
     };
+    // Opened from Swap for today: save it, then swap it in (a different muscle group asks first, as usual).
+    if (swap.creating) {
+      const refId = Store.addCustomExercise(fields).id;
+      swap.creating = false;
+      picker = newPicker();
+      render();
+      actions['swap-pick'](refId);
+      return;
+    }
     if (picker.custom.id) {
       Store.updateCustomExercise(picker.custom.id, fields);
       toast(`Saved ${fields.name}`);

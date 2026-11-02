@@ -517,7 +517,8 @@ const Views = {
     if (!query.trim()) return '';
     const { results, total } = Library.search(query);
     if (!results.length) {
-      return `<p class="empty">No matches.${action === 'pick-exercise' ? ' Create it as a custom exercise.' : ''}</p>`;
+      const canCreate = action === 'pick-exercise' || action === 'swap-pick';
+      return `<p class="empty">No matches.${canCreate ? ' Create it as a custom exercise.' : ''}</p>`;
     }
     const more = total > results.length
       ? `<p class="lib-more">Showing the best ${results.length} of ${total} — keep typing to narrow it down.</p>` : '';
@@ -568,7 +569,8 @@ const Views = {
 
   // Or: create (or edit) a custom exercise. Muscles are found by typing, like exercises.
   // (A tappable body diagram can replace the muscle search later.)
-  customExerciseForm(picker) {
+  // saveLabel = the save button's text, when saving does more than save (see Swap for today).
+  customExerciseForm(picker, saveLabel) {
     const c = picker.custom;
     const isEdit = Boolean(c.id);
     const equipmentOptions = EQUIPMENT.map(e =>
@@ -595,7 +597,7 @@ const Views = {
         ${musclePicker('secondary', 'Secondary muscles', '½ set each')}
         ${isEdit ? `<p class="muted note">Changes apply in every workout that uses this exercise.
           Past workouts keep the muscles they were logged with.</p>` : ''}
-        <button class="btn btn-primary">${isEdit ? 'Save changes' : 'Save exercise'}</button>
+        <button class="btn btn-primary">${saveLabel || (isEdit ? 'Save changes' : 'Save exercise')}</button>
         <button type="button" class="btn" data-action="cancel-custom">${isEdit ? 'Cancel' : 'Back to library'}</button>
       </form>`;
   },
@@ -640,11 +642,12 @@ const Views = {
   },
 
   // ---------- Workout: compact list, one exercise expanded at a time ----------
-  // swap = the Swap for today search: { exerciseId (whose search is open, or null), query }
+  // swap = the Swap for today search: { exerciseId (whose search is open, or null), query,
+  //   creating (showing the custom exercise form instead of the search; its state is in picker) }
   // A quick workout (workout.quick, from Store.draftWorkout()) uses the same screen with an
   // editable title, no targets or swaps, "+ Add set" on each exercise, and "+ Add exercise"
   // (quickAdd = its search: { open, query }).
-  workout(workout, draft, openId, swap, quickAdd = { open: false, query: '' }) {
+  workout(workout, draft, openId, swap, quickAdd = { open: false, query: '' }, picker = null) {
     const quick = Boolean(workout.quick);
     const title = workout.name || 'Quick workout';
     if (!quick && !workout.exercises.length) {
@@ -690,11 +693,15 @@ const Views = {
           <div class="row swap-row">
             <button type="button" class="btn btn-small" data-action="quick-add-set" data-id="${ex.id}">+ Add set</button>
             <button type="button" class="btn btn-small" data-action="quick-remove" data-id="${ex.id}">Remove exercise</button>
+          </div>` : swap.exerciseId === ex.id && swap.creating ? `
+          <div class="swap-panel stack">
+            ${this.customExerciseForm(picker, 'Save and swap')}
           </div>` : swap.exerciseId === ex.id ? `
           <div class="swap-panel stack">
             <input type="search" id="swap-search" value="${esc(swap.query)}"
               placeholder="Swap for today: search exercises" autocomplete="off" aria-label="Search exercises to swap in">
             <div id="swap-results" class="lib-results">${this.libraryResults(swap.query, 'swap-pick')}</div>
+            <button type="button" class="btn" data-action="swap-new-custom">+ Create custom exercise</button>
             <button type="button" class="btn" data-action="swap-cancel">Cancel</button>
           </div>` : `
           <div class="row swap-row">
