@@ -23,6 +23,28 @@ const tabBarEl = document.getElementById('tabbar');
 const gearBtn = document.getElementById('gear');
 const toastEl = document.getElementById('toast');
 const historyLink = document.getElementById('history-link');
+const timerEl = document.getElementById('timer');
+const timerBtn = document.getElementById('timer-btn');
+
+// Pause and play icons for the timer button.
+const PAUSE_SVG = `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>`;
+const PLAY_SVG = `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>`;
+
+// Workout timer: every second, shows the time of the workout in progress wherever it's on the
+// screen (the top bar on the workout screen, the banner on the week). The time is always worked
+// out from the saved start (Store.draftElapsed), so nothing is lost while the app is closed.
+function updateTimers() {
+  const paused = Store.isDraftPaused();
+  const time = formatClock(Store.draftElapsed());
+  document.querySelectorAll('[data-timer]').forEach(el => { el.textContent = time; });
+  document.querySelectorAll('[data-timer-paused]').forEach(el => { el.hidden = !paused; });
+  timerBtn.innerHTML = paused ? PLAY_SVG : PAUSE_SVG;
+  timerBtn.setAttribute('aria-label', paused ? 'Resume timer' : 'Pause timer');
+}
+setInterval(updateTimers, 1000);
+
+// Over this long when Finish is tapped → ask whether it was left running by mistake.
+const LONG_WORKOUT_MS = 3 * 60 * 60 * 1000;
 
 // The New workout / Copy workout form: { name, weekday, copyFrom (workout id or null) }.
 // null until that screen opens; kept while it's open so a redraw doesn't lose what's typed.
@@ -236,6 +258,7 @@ function render() {
   backBtn.dataset.href = screen.back || '';
   gearBtn.hidden = !screen.gear;
   historyLink.hidden = !screen.history;
+  timerEl.hidden = !(screen.timer && Store.data.draft);
   // The tab bar only shows on each tab's main screen; deeper screens use Back.
   const here = '#/' + location.hash.replace(/^#\/?/, '');
   const showTabs = TABS.some(tab => tab.href === here);
@@ -244,6 +267,7 @@ function render() {
   tabBarEl.innerHTML = tabBarHtml(route.tab);
   appEl.classList.remove('is-searching');
   appEl.innerHTML = screen.html;
+  updateTimers();
   showOverlay();
 }
 
@@ -326,16 +350,34 @@ function hideToast() {
 //   { sessionId, draft (copy from before finishing), hadHit (this week was already hit before) }
 let lastFinish = null;
 
-function finishWorkout() {
+// endAt (ms, optional) = end it at that time instead of now ("Use last set time").
+// A workout left running for over 3 hours asks first (unless `checked`, i.e. already answered).
+function finishWorkout(endAt = null, checked = false) {
+  const elapsed = Store.draftElapsed();
+  const lastSet = Store.lastSetTime();
+  if (!checked && elapsed > LONG_WORKOUT_MS && lastSet) {
+    const at = new Date(lastSet).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+    showDialog({
+      title: 'Still working out?',
+      lines: [`This workout ran ${formatHoursMinutes(elapsed)}. End it at your last logged set (${at}) instead?`],
+      confirm: { label: 'Use last set time', action: 'finish-last-set', id: String(lastSet) },
+      cancel: { label: `Keep ${formatHoursMinutes(elapsed)}`, action: 'finish-keep' },
+    });
+    return;
+  }
+
   const draft = JSON.parse(JSON.stringify(Store.data.draft));
   const hadHit = Streak.summary().week.hit;
-  const session = Store.finishDraft();
+  const session = Store.finishDraft(endAt);
   if (!session) {
     toast('Fill in at least one set first');
     return;
   }
+  // Ended at a last set in a week that's already over: that week is judged again with it.
+  const earlierWeek = weekKey(new Date(session.date).getTime()) < weekKey(Date.now());
+  if (earlierWeek) Streak.rejudge(session.date);
   toast('Workout saved 💪', { label: 'Undo', action: 'undo-finish' }, 5000);
-  lastFinish = { sessionId: session.id, draft, hadHit };
+  lastFinish = { sessionId: session.id, draft, hadHit, rejudgeFrom: earlierWeek ? session.date : null };
   go('#/');
 }
 
@@ -644,6 +686,25 @@ const actions = {
     overlayEl.hidden = false;
   },
 
+  // The "ran over 3 hours" question: end at the last set, or keep the full time.
+  'finish-last-set'(time) {
+    hideDialog();
+    finishWorkout(Number(time), true);
+  },
+
+  'finish-keep'() {
+    hideDialog();
+    finishWorkout(null, true);
+  },
+
+  // Pause / resume button next to the timer.
+  'timer-toggle'() {
+    if (!Store.data.draft) return;
+    if (Store.isDraftPaused()) Store.resumeDraft();
+    else Store.pauseDraft();
+    updateTimers();
+  },
+
   'finish-anyway'() {
     overlayEl.hidden = true;
     overlayEl.innerHTML = '';
@@ -722,7 +783,8 @@ const actions = {
   'undo-finish'() {
     if (!lastFinish) return;
     Store.undoFinish(lastFinish.sessionId, lastFinish.draft);
-    if (!lastFinish.hadHit) Streak.undoHit(); // the hit came from this workout
+    if (lastFinish.rejudgeFrom) Streak.rejudge(lastFinish.rejudgeFrom); // its earlier week, without it again
+    else if (!lastFinish.hadHit) Streak.undoHit(); // the hit came from this workout
     if (overlayEl.classList.contains('is-celebration')) {
       overlayEl.hidden = true;
       overlayEl.innerHTML = '';
@@ -1196,6 +1258,7 @@ window.addEventListener('hashchange', () => {
 // check the streak then too (a week may have ended while it was away).
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible') return;
+  updateTimers(); // straight away, not a second later
   if (Streak.update()) render();
   else showOverlay();
 });

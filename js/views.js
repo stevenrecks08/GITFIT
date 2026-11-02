@@ -260,6 +260,28 @@ function weekDates(now = Date.now()) {
     : `${month(start)} ${start.getDate()} – ${month(end)} ${end.getDate()}`;
 }
 
+// The workout timer: "12:34" under an hour, "1:02:34" from an hour.
+function formatClock(ms) {
+  const total = Math.floor(ms / 1000);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor(total / 60) % 60;
+  const s = String(total % 60).padStart(2, '0');
+  return h ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`;
+}
+
+// A finished workout's length in Past workouts: "52 min", "1 h 12 min".
+function formatDuration(ms) {
+  const minutes = Math.max(1, Math.round(ms / 60000));
+  const h = Math.floor(minutes / 60);
+  return h ? `${h} h ${minutes % 60} min` : `${minutes} min`;
+}
+
+// Short form for the "ran too long" question: "4h 12m".
+function formatHoursMinutes(ms) {
+  const minutes = Math.floor(ms / 60000);
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+}
+
 const Views = {
 
   // ---------- Home: the week, Monday to Sunday, with each day's workouts ----------
@@ -273,7 +295,7 @@ const Views = {
 
     const resume = draftWorkout ? `
       <div class="card banner stack">
-        <div><strong>Workout in progress:</strong> ${esc(draftWorkout.name)}</div>
+        <div><strong>Workout in progress:</strong> ${esc(draftWorkout.name)}<span class="banner-timer"><span data-timer>${formatClock(Store.draftElapsed())}</span><span data-timer-paused ${Store.isDraftPaused() ? '' : 'hidden'}> · Paused</span></span></div>
         <button class="btn btn-primary" data-action="${draftWorkout.quick ? 'resume-quick' : 'open-workout'}" data-id="${draftWorkout.id}">Resume</button>
       </div>` : '';
 
@@ -723,6 +745,7 @@ const Views = {
     return {
       title,
       back: '#/',
+      timer: true, // the workout timer shows in the top bar
       html: `
         ${quickTop}
         ${cards}
@@ -895,7 +918,7 @@ const Views = {
         <button class="card past-card ${s.quick ? 'is-quick' : ''}" data-action="open-session" data-id="${esc(s.id)}">
           <span class="past-when">${when(s.date)}</span>
           <span class="day-name">${esc(s.workoutName || 'Workout')}${s.quick ? ' <span class="tag tag-quick">Quick</span>' : ''}</span>
-          <span class="day-meta">${plural(s.exercises.length, 'exercise')} · ${plural(setCount(s), 'set')}</span>
+          <span class="day-meta">${plural(s.exercises.length, 'exercise')} · ${plural(setCount(s), 'set')}${s.durationMs ? ` · ${formatDuration(s.durationMs)}` : ''}</span>
         </button>`).join('');
       return `
         <div class="past-week">

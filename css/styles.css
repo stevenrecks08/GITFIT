@@ -105,6 +105,28 @@ html, body {
 }
 .top-link[hidden] { display: none; }
 
+/* Workout timer: quiet muted numbers on the right of the top bar, with a small pause/resume button */
+.top-timer { display: flex; align-items: center; gap: 4px; margin-left: auto; margin-right: -10px; flex: 0 0 auto; }
+.top-timer[hidden] { display: none; }
+.timer-time { color: var(--muted); font-size: 15px; font-variant-numeric: tabular-nums; }
+.timer-paused { color: var(--muted); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.8; }
+.timer-paused[hidden] { display: none; }
+.timer-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--muted);
+}
+.timer-btn:active { color: var(--text); background: var(--surface-2); }
+/* On the "Workout in progress" banner */
+.banner-timer { margin-left: 6px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
 /* Past workouts list and editing one */
 .past-card {
   display: flex;

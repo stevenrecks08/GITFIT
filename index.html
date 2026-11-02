@@ -24,6 +24,12 @@
     <button id="back" class="back-btn" hidden>&lsaquo; Back</button>
     <h1 id="title">GitFit</h1>
     <a id="history-link" class="top-link" href="#/history" hidden>Past workouts</a>
+    <!-- Workout timer (workout screens only): elapsed time, "Paused", and pause/resume. Filled in by app.js. -->
+    <div id="timer" class="top-timer" hidden>
+      <span class="timer-paused" data-timer-paused hidden>Paused</span>
+      <span class="timer-time" data-timer>0:00</span>
+      <button type="button" id="timer-btn" class="timer-btn" data-action="timer-toggle" aria-label="Pause timer"></button>
+    </div>
     <a id="gear" class="gear-btn" href="#/settings" aria-label="Settings" hidden>
       <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2"
         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">

@@ -6,7 +6,7 @@
 //
 // Shape of the saved data:
 // {
-//   version: 8,
+//   version: 9,
 //   settings: { name, units: 'imperial' | 'metric', heightIn, bodyWeightLbs, sex: 'male' | 'female' },
 //   customExercises: [     // your own exercises, used alongside LIBRARY in library.js
 //     { id: 'custom-…', name, equipment, primary: [muscle ids], secondary: [muscle ids], custom: true }
@@ -19,7 +19,9 @@
 //     { weekday, rest }    // a rest day automatically. Kept so older data and backups still match.
 //   ],
 //   sessions: [            // one per finished workout, oldest first
-//     { id, workoutId, workoutName, date (ISO string, when Finish was tapped),
+//     { id, workoutId, workoutName, date (ISO string, when Finish was tapped, or the last set's time
+//                                         if "Use last set time" was picked for a workout left running),
+//       durationMs (how long it took, not counting pauses; missing on workouts saved before version 9),
 //       quick (true on a quick workout: a one-off, not in the plan; workoutId is null and plan is []),
 //       plan: [ { exerciseId, refId, sets } ],  // the workout's plan when it was logged (locks it for the streak)
 //       exercises: [ { exerciseId (the planned workout exercise it covers), refId, name, primary, secondary,
@@ -29,8 +31,10 @@
 //                                 // planned exercise it was added to make up, with its targetRepMin/Max)
 //                      sets: [ { weight, reps } ] } ] }
 //   ],
-//   draft: null or { workoutId, startedAt, entries: { [exerciseId]: [ { weight, reps } ] },
-//                    swaps: { [exerciseId]: refId } },  // exercises swapped for today only
+//   draft: null or { workoutId, startedAt, entries: { [exerciseId]: [ { weight, reps, loggedAt? } ] },
+//                    swaps: { [exerciseId]: refId },  // exercises swapped for today only
+//                    pausedAt (ISO while the timer is paused, else null), pausedMs (earlier pauses) },
+//                    // loggedAt = when that set's reps were typed
 //          or, for a quick workout: { quick: true, workoutId: null, name, startedAt,
 //                    exercises: [ { id, refId, makeupFor?, repMin?, repMax? } ] (in the order added),
 //                    entries, swaps: {} }
@@ -49,9 +53,11 @@
 // Before version 7 each weekday held its own exercises ("days" with a name and exercises);
 // each became a workout on that weekday, keeping its id, and sessions had dayId/dayName.
 // Version 8 added quick workouts (quick sessions and quick drafts); older data has none.
+// Version 9 added the workout timer: draft.pausedAt / pausedMs, sets' loggedAt in the draft,
+// and session.durationMs (older sessions have no duration).
 
 const STORAGE_KEY = 'gitfit-data';
-const DATA_VERSION = 8;
+const DATA_VERSION = 9;
 
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
@@ -234,6 +240,12 @@ function normalize(data) {
   }
   const draft = data.draft ? { swaps: {}, ...data.draft } : null;
   if (draft && draft.quick && !Array.isArray(draft.exercises)) draft.exercises = [];
+  // Version 9: the timer's pause. (A draft from before has no pause; its startedAt already exists.)
+  if (draft) {
+    draft.pausedAt = draft.pausedAt || null;
+    draft.pausedMs = draft.pausedMs || 0;
+    draft.startedAt = draft.startedAt || new Date().toISOString();
+  }
   if (draft && draft.dayId) {
     draft.workoutId = draft.dayId;
     delete draft.dayId;
@@ -430,6 +442,7 @@ const Store = {
   // Starts an empty quick workout (replacing any other workout in progress; app.js asks first).
   startQuick() {
     this.data.draft = { quick: true, workoutId: null, name: 'Quick workout', startedAt: new Date().toISOString(),
+      pausedAt: null, pausedMs: 0,
       exercises: [], entries: {}, swaps: {} };
     this.save();
   },
@@ -500,7 +513,7 @@ const Store = {
   ensureDraft(workout) {
     let draft = this.data.draft;
     if (!draft || draft.workoutId !== workout.id) {
-      draft = { workoutId: workout.id, startedAt: new Date().toISOString(), entries: {}, swaps: {} };
+      draft = { workoutId: workout.id, startedAt: new Date().toISOString(), pausedAt: null, pausedMs: 0, entries: {}, swaps: {} };
       this.data.draft = draft;
     }
     for (const ex of workout.exercises) {
@@ -515,9 +528,56 @@ const Store = {
   },
 
   // field is 'weight' (lbs number or null) or 'reps' (text as typed)
+  // Typing reps also notes when (loggedAt), so a workout left running can end at its last set.
   updateDraftSet(exerciseId, setIndex, field, value) {
-    this.data.draft.entries[exerciseId][setIndex][field] = value;
+    const set = this.data.draft.entries[exerciseId][setIndex];
+    set[field] = value;
+    if (field === 'reps') {
+      if (value !== '') set.loggedAt = new Date().toISOString();
+      else delete set.loggedAt;
+    }
     this.save();
+  },
+
+  // ---------- Workout timer ----------
+  // Worked out from the saved start time, never counted up while the app runs, so it stays right
+  // when the app is closed or the phone is locked. Paused time (pausedMs, plus the pause going on
+  // now since pausedAt) doesn't count.
+
+  // How long the workout in progress has run, in ms, at `now` (or at the pause, if paused then).
+  draftElapsed(now = Date.now()) {
+    const draft = this.data.draft;
+    if (!draft) return 0;
+    const pausedAt = draft.pausedAt ? new Date(draft.pausedAt).getTime() : Infinity;
+    const end = Math.min(now, pausedAt);
+    return Math.max(0, end - new Date(draft.startedAt).getTime() - (draft.pausedMs || 0));
+  },
+
+  isDraftPaused() {
+    return Boolean(this.data.draft?.pausedAt);
+  },
+
+  pauseDraft() {
+    this.data.draft.pausedAt = new Date().toISOString();
+    this.save();
+  },
+
+  resumeDraft() {
+    const draft = this.data.draft;
+    draft.pausedMs = (draft.pausedMs || 0) + (Date.now() - new Date(draft.pausedAt).getTime());
+    draft.pausedAt = null;
+    this.save();
+  },
+
+  // When the last set of the workout in progress was logged (ms), or null if none has a time.
+  lastSetTime() {
+    let last = null;
+    for (const rows of Object.values(this.data.draft?.entries || {})) {
+      for (const set of rows) {
+        if (set.loggedAt && set.reps !== '') last = Math.max(last ?? 0, new Date(set.loggedAt).getTime());
+      }
+    }
+    return last;
   },
 
   // True once any set of this exercise has reps typed in.
@@ -561,9 +621,14 @@ const Store = {
   // Turns the draft into a saved session. Only sets with reps entered are saved
   // (weights are prefilled, so a weight alone doesn't mean the set was done).
   // Returns the session, or null if nothing was filled in.
-  finishDraft() {
+  // endAt (ms, optional) = when it ended, for a workout left running ("Use last set time"):
+  // it's saved as finished then, which also decides which day and week it counts for.
+  finishDraft(endAt = null) {
     const draft = this.data.draft;
     const workout = this.draftWorkout();
+    const end = endAt ?? Date.now();
+    const date = new Date(end).toISOString();
+    const durationMs = this.draftElapsed(end);
     const toNumber = v => (v === '' || v == null || isNaN(Number(v)) ? null : Number(v));
 
     const exercises = [];
@@ -600,18 +665,23 @@ const Store = {
       quick: true,
       workoutId: null,
       workoutName: workout.name.trim() || 'Quick workout',
-      date: new Date().toISOString(),
+      date,
+      durationMs,
       plan: [],
       exercises,
     } : {
       id: newId(),
       workoutId: workout.id,
       workoutName: workout.name,
-      date: new Date().toISOString(),
+      date,
+      durationMs,
       plan: workout.exercises.map(e => ({ exerciseId: e.id, refId: e.refId, sets: e.sets })),
       exercises,
     };
-    this.data.sessions.push(session);
+    // Sessions stay oldest first (one ended at its last set can be older than the newest).
+    const at = this.data.sessions.findIndex(s => new Date(s.date) > new Date(date));
+    if (at === -1) this.data.sessions.push(session);
+    else this.data.sessions.splice(at, 0, session);
     this.data.draft = null;
     this.save();
     return session;
