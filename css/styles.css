@@ -254,7 +254,7 @@ button, .btn {
 
 /* ---------- The week (Workouts tab): each day with its workouts ----------
    Three text sizes only: 18px (day names, workout titles), 15px (buttons), 13px (everything secondary).
-   Days are 22px apart; inside a day, the header and its content are 6px apart, so each day reads as one group. */
+   Days are split by a thin line with more space above it than below; inside a day, the header and its content are 6px apart, so each day reads as one group. */
 .week-intro { margin: 4px 0 16px; }
 .banner + .week-intro { margin-top: 24px; }
 .week-title { display: flex; align-items: baseline; gap: 10px; }
@@ -262,12 +262,26 @@ button, .btn {
 .week-range { font-size: 13px; color: var(--muted); }
 .week-hint { margin: 4px 0 0; font-size: 13px; color: var(--muted); line-height: 1.4; }
 
+.week { margin-bottom: 22px; }
 .day-block {
-  margin: 0 -10px 22px;
+  position: relative;
+  margin: 0 -10px;
   padding: 4px 10px 6px 7px;
   border-left: 3px solid transparent;
   border-radius: 0 var(--radius) var(--radius) 0;
   transition: background-color 0.15s;
+}
+/* Each day after Monday starts with a thin line. It sits close above its own day and far from
+   the day before, so each day reads as its own block. */
+.day-block + .day-block { margin-top: 33px; }
+.day-block + .day-block::before {
+  content: '';
+  position: absolute;
+  top: -5px;
+  left: 7px;
+  right: 10px;
+  height: 1px;
+  background: var(--border);
 }
 .day-head {
   display: flex;
@@ -277,6 +291,7 @@ button, .btn {
   margin-bottom: 6px;
 }
 .day-head-name { font-size: 18px; font-weight: 600; }
+.day-head-date { font-size: 13px; color: var(--muted); white-space: nowrap; }
 
 /* Today: a green "Today" pill, a green left edge and a slightly lighter background */
 .day-block.is-today { border-left-color: var(--accent); background: rgba(74, 222, 128, 0.05); }
@@ -316,10 +331,14 @@ button, .btn {
   width: 3px;
   background: var(--accent);
 }
+.workout-card.is-partial::before { background: var(--partial); }
+.workout-card.is-missed::before { background: var(--missed); }
 .workout-card + .workout-card { margin-top: 8px; }
+/* The left side of a card: the workout, with Catch up under it when there is one */
+.workout-body { flex: 1; min-width: 0; }
 .workout-open {
-  flex: 1;
-  min-width: 0;
+  display: block;
+  width: 100%;
   min-height: 48px;
   padding: 0;
   background: none;
@@ -328,7 +347,7 @@ button, .btn {
   text-align: left;
 }
 .workout-name { display: block; font-size: 18px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.workout-open .day-meta { display: block; font-size: 13px; color: var(--muted); margin-top: 3px; }
+.workout-open .day-meta { display: block; font-size: 13px; color: var(--muted); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* The small pencil (edit) button: quiet, with a full-size tap area */
 .icon-btn {
   display: flex;
@@ -350,19 +369,19 @@ button, .btn {
 .done-mark { color: var(--accent); font-weight: 600; }
 
 /* A workout on a day that has passed this week with sets missing: amber "Partial · 12/15 sets"
-   or muted red "Missed · 0/15 sets", and a small Catch up button */
+   or muted red "Missed · 0/15 sets", and a small Catch up button under it on the left */
 .state-partial { color: var(--partial); font-weight: 600; }
 .state-missed { color: var(--missed); font-weight: 600; }
-.catch-up-btn { flex: 0 0 auto; min-height: 36px; padding: 0 10px; font-size: 13px; font-weight: 600; }
+.catch-up-btn { margin-top: 4px; min-height: 36px; padding: 0 10px; font-size: 13px; font-weight: 600; }
 
 /* A quick workout finished this week: the same card with blue instead of green, and no pencil */
 .workout-card.is-quick::before { background: var(--quick); }
 .workout-card.is-quick .done-mark { color: var(--quick); }
-.workout-card.is-quick .workout-open { min-height: 44px; }
+.workout-card.is-quick .workout-open { flex: 1; min-width: 0; width: auto; min-height: 44px; }
 
 /* Rest days (no workouts): shorter, with a muted name, the small "Rest day" label and the add link */
 .rest-word { color: var(--rest); font-size: 13px; font-weight: 600; }
-.day-block.is-rest { margin-bottom: 14px; padding-bottom: 0; }
+.day-block.is-rest { padding-bottom: 0; }
 .day-block.is-rest .day-head { min-height: 30px; margin-bottom: 0; }
 .day-block.is-rest .day-head-name { color: var(--muted); }
 

@@ -261,6 +261,13 @@ function weekDates(now = Date.now()) {
     : `${month(start)} ${start.getDate()} – ${month(end)} ${end.getDate()}`;
 }
 
+// The date of a weekday in this week, for its heading: "Oct 26".
+function dayDate(weekday, now = Date.now()) {
+  const start = weekStartOf(now);
+  const date = new Date(start.getFullYear(), start.getMonth(), start.getDate() + weekday);
+  return `${date.toLocaleDateString(undefined, { month: 'short' })} ${date.getDate()}`;
+}
+
 // The workout timer: "12:34" under an hour, "1:02:34" from an hour.
 function formatClock(ms) {
   const total = Math.floor(ms / 1000);
@@ -341,13 +348,17 @@ const Views = {
         }
         const catchUp = state && state.state !== 'done'
           ? `<button type="button" class="btn btn-small catch-up-btn" data-action="catch-up" data-id="${w.id}">Catch up</button>` : '';
+        // The left strip follows the state: amber for Partial, red for Missed, otherwise green.
+        const stripClass = state && state.state !== 'done' ? `is-${state.state}` : '';
         return `
-          <div class="card workout-card" data-workout="${w.id}">
-            <button class="workout-open" data-action="open-workout" data-id="${w.id}">
-              <span class="workout-name">${esc(w.name)}</span>
-              <span class="day-meta">${count} exercise${count === 1 ? '' : 's'}${when}</span>
-            </button>
-            ${catchUp}
+          <div class="card workout-card ${stripClass}" data-workout="${w.id}">
+            <div class="workout-body">
+              <button class="workout-open" data-action="open-workout" data-id="${w.id}">
+                <span class="workout-name">${esc(w.name)}</span>
+                <span class="day-meta">${count} exercise${count === 1 ? '' : 's'}${when}</span>
+              </button>
+              ${catchUp}
+            </div>
             <button type="button" class="icon-btn" data-action="edit-workout" data-id="${w.id}" aria-label="Edit ${esc(w.name)}">${PENCIL_SVG}</button>
           </div>`;
       }).join('');
@@ -358,6 +369,7 @@ const Views = {
         <section class="day-block ${rest ? 'is-rest' : ''} ${weekday === today ? 'is-today' : ''}" data-weekday="${weekday}">
           <div class="day-head">
             <span class="day-head-name">${dayName}</span>
+            <span class="day-head-date">${dayDate(weekday)}</span>
             ${weekday === today ? '<span class="tag tag-today">Today</span>' : ''}
             ${rest ? '<span class="rest-word">Rest day</span>' : ''}
           </div>
