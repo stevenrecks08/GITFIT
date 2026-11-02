@@ -517,7 +517,7 @@ const Views = {
     if (!query.trim()) return '';
     const { results, total } = Library.search(query);
     if (!results.length) {
-      const canCreate = action === 'pick-exercise' || action === 'swap-pick';
+      const canCreate = ['pick-exercise', 'swap-pick', 'quick-pick'].includes(action);
       return `<p class="empty">No matches.${canCreate ? ' Create it as a custom exercise.' : ''}</p>`;
     }
     const more = total > results.length
@@ -646,7 +646,7 @@ const Views = {
   //   creating (showing the custom exercise form instead of the search; its state is in picker) }
   // A quick workout (workout.quick, from Store.draftWorkout()) uses the same screen with an
   // editable title, no targets or swaps, "+ Add set" on each exercise, and "+ Add exercise"
-  // (quickAdd = its search: { open, query }).
+  // (quickAdd = its search: { open, query, creating (showing the custom exercise form instead) }).
   workout(workout, draft, openId, swap, quickAdd = { open: false, query: '' }, picker = null) {
     const quick = Boolean(workout.quick);
     const title = workout.name || 'Quick workout';
@@ -752,12 +752,13 @@ const Views = {
       <input id="quick-name" class="quick-name" value="${esc(workout.name)}" placeholder="Quick workout"
         autocomplete="off" aria-label="Workout title">
       ${workout.exercises.length ? '' : '<p class="muted quick-hint">Add the exercises you do as you go. This workout won\'t be added to your week.</p>'}` : '';
-    const quickBottom = !quick ? '' : quickAdd.open ? `
+    const quickBottom = !quick ? '' : quickAdd.creating ? this.customExerciseForm(picker, 'Save and add') : quickAdd.open ? `
       <div class="card stack" id="quick-add-panel">
         ${this.missedPicker()}
         <input type="search" id="quick-search" value="${esc(quickAdd.query)}"
           placeholder="Search name, muscle or equipment" autocomplete="off" aria-label="Search exercises to add">
         <div id="quick-results" class="lib-results">${this.libraryResults(quickAdd.query, 'quick-pick')}</div>
+        <button type="button" class="btn" data-action="quick-new-custom">+ Create custom exercise</button>
         <button type="button" class="btn" data-action="quick-add-cancel">Cancel</button>
       </div>` : `
       <button type="button" class="btn btn-add-ex" data-action="quick-add-open">+ Add exercise</button>`;

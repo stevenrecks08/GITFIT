@@ -89,6 +89,7 @@ const openSets = { groups: new Set(), muscles: new Set() };
 let swap = { exerciseId: null, query: '' };
 
 // "+ Add exercise" on a quick workout: whether its search is open, and what's typed.
+// creating = true while its custom exercise form is showing (the form itself uses picker).
 let quickAdd = { open: false, query: '' };
 
 // Log screens: the search text (kept so Back returns to the same results),
@@ -163,6 +164,16 @@ function setFabMenu(open) {
 }
 
 // Scrolls the quick workout's + Add exercise panel to just under the top bar.
+// Opens the custom exercise form from a workout's search (Swap for today or a quick workout's
+// + Add exercise). It's the same form as the edit screen, named from whatever was typed.
+function openCustomForm(query) {
+  picker = newPicker();
+  picker.mode = 'custom';
+  picker.custom = { id: null, name: query.trim(), equipment: EQUIPMENT[0], primary: [], secondary: [] };
+  render();
+  document.getElementById('custom-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 function showQuickPanel() {
   document.getElementById('quick-add-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -240,7 +251,7 @@ function render() {
   } else if (route.view === 'quick') {
     const quick = Store.draftWorkout();
     if (!quick?.quick) return go('#/'); // no quick workout in progress (finished or discarded)
-    screen = Views.workout(quick, Store.data.draft, openExerciseId, swap, quickAdd);
+    screen = Views.workout(quick, Store.data.draft, openExerciseId, swap, quickAdd, picker);
   } else {
     const workout = Store.getWorkout(route.workoutId);
     if (!workout) return go('#/');
@@ -456,6 +467,11 @@ const actions = {
     render();
   },
 
+  'quick-new-custom'() {
+    quickAdd.creating = true;
+    openCustomForm(quickAdd.query);
+  },
+
   // Tapped an exercise in the quick workout's search: add it with one set and open it.
   'quick-pick'(refId) {
     openExerciseId = Store.quickAddExercise(refId);
@@ -586,7 +602,9 @@ const actions = {
 
   // Leaving the custom form: back to the library, or back to sets & reps when editing.
   'cancel-custom'() {
-    swap.creating = false; // (if this form was opened from Swap for today: back to its search)
+    // (if this form was opened from a workout's search: back to that search)
+    swap.creating = false;
+    quickAdd.creating = false;
     picker.mode = picker.custom.id ? 'details' : 'pick';
     render();
   },
@@ -634,15 +652,9 @@ const actions = {
     render();
   },
 
-  // Create a custom exercise from the swap search. It uses the same form as the edit screen,
-  // with the name filled in from whatever was typed in the search.
   'swap-new-custom'() {
     swap.creating = true;
-    picker = newPicker();
-    picker.mode = 'custom';
-    picker.custom = { id: null, name: swap.query.trim(), equipment: EQUIPMENT[0], primary: [], secondary: [] };
-    render();
-    document.getElementById('custom-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    openCustomForm(swap.query);
   },
 
   // Tapped an exercise in the swap search: do it instead of the planned one, this workout only.
@@ -1248,6 +1260,13 @@ appEl.addEventListener('submit', event => {
       picker = newPicker();
       render();
       actions['swap-pick'](refId);
+      return;
+    }
+    // Opened from a quick workout's + Add exercise: save it, then add it to the workout.
+    if (quickAdd.creating) {
+      const refId = Store.addCustomExercise(fields).id;
+      picker = newPicker();
+      actions['quick-pick'](refId); // (this also closes the form)
       return;
     }
     if (picker.custom.id) {

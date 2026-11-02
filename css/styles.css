@@ -477,7 +477,7 @@ body.is-dragging { -webkit-user-select: none; user-select: none; }
 .quick-name { margin-bottom: 12px; font-size: 18px; font-weight: 700; }
 .quick-hint { margin: -2px 0 14px; font-size: 14px; }
 .btn-add-ex { margin-top: 4px; color: var(--text); font-weight: 600; }
-#quick-add-panel { scroll-margin-top: calc(var(--topbar-h) + env(safe-area-inset-top) + 12px); }
+#quick-add-panel, #custom-form { scroll-margin-top: calc(var(--topbar-h) + env(safe-area-inset-top) + 12px); }
 
 /* "Missed this week" at the top of + Add exercise: small day headers, then each missed exercise */
 .missed-picker h3 { margin: 0 0 2px; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
@@ -740,7 +740,7 @@ main.is-searching { padding-bottom: 100vh; }
 .swap-row > * { flex: 0 0 auto; }
 .ex-toggle .swap-note { color: var(--rest); white-space: normal; }
 .swap-panel #custom-form { padding: 0; border: none; background: none; }
-#custom-form, #swap-search, #quick-search { scroll-margin-top: calc(var(--topbar-h) + env(safe-area-inset-top) + 12px); }
+#swap-search, #quick-search { scroll-margin-top: calc(var(--topbar-h) + env(safe-area-inset-top) + 12px); }
 
 /* ---------- Profile ---------- */
 .profile-head {
