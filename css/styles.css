@@ -920,10 +920,12 @@ main.is-searching { padding-bottom: 100vh; }
 .log-max { margin: 2px 0 0; font-size: 34px; font-weight: 700; color: var(--accent); }
 .log-max span { font-size: 18px; font-weight: 600; color: var(--muted); }
 .log-sub { margin: 2px 0 10px; font-size: 14px; color: var(--muted); }
-.log-actual { padding-top: 10px; border-top: 1px solid var(--border); }
-.log-max.is-small { font-size: 26px; color: var(--text); }
-.log-max.is-small span { font-size: 15px; }
-.log-max.is-small.is-blank { color: var(--muted); }
+/* Actual 1-rep max: one small line under the estimate — white number, muted label and date */
+.log-actual { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 6px; margin: 0 0 10px; padding-top: 8px; border-top: 1px solid var(--border); font-size: 14px; }
+.log-actual-label { color: var(--muted); }
+.log-actual-value { color: var(--text); font-weight: 600; }
+.log-actual-value.is-blank { color: var(--muted); }
+.log-actual-date { color: var(--muted); }
 .log-formula { margin: 6px 0 0; font-size: 12px; color: var(--muted); }
 .log-hint { margin: 12px 0 0; font-size: 14px; text-align: center; }
 

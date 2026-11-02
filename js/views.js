@@ -158,11 +158,12 @@ function maxChart(points, emptyNote, singles = []) {
   const dots = points.map(p => `<circle class="chart-dot" cx="${x(p.time).toFixed(1)}" cy="${y(p.value).toFixed(1)}" r="3.5"/>`).join('');
   const singleLine = singles.map((p, i) => `${i ? 'L' : 'M'}${x(p.time).toFixed(1)},${y(p.value).toFixed(1)}`).join(' ');
   const singleDots = singles.map(p => `<circle class="chart-single-dot" cx="${x(p.time).toFixed(1)}" cy="${y(p.value).toFixed(1)}" r="2.5"/>`).join('');
-  const key = singles.length ? `
+  // The "Actual 1-rep" key only shows once a 1-rep set has been logged.
+  const key = `
     <p class="chart-key">
       <span><i class="key-estimate"></i>Estimated max</span>
-      <span><i class="key-single"></i>Actual 1-rep</span>
-    </p>` : '';
+      ${singles.length ? '<span><i class="key-single"></i>Actual 1-rep</span>' : ''}
+    </p>`;
   const xLabels = t1 === t0
     ? `<text class="chart-label" x="${(L + W - R) / 2}" y="${H - 6}" text-anchor="middle">Today</text>`
     : `<text class="chart-label" x="${L}" y="${H - 6}">${shortDate(t0)}</text>
@@ -1132,11 +1133,14 @@ const Views = {
         <p class="log-label">Current estimated max</p>
         <p class="log-max ${latest ? '' : 'is-blank'}">${latest ? `${Units.showWeight(latest.best.max)} <span>${unit}</span>` : '—'}</p>
         <p class="log-sub">${latest ? `Best set on ${shortDate(latest.date)}: ${formatSet(latest.best.set)}` : '&nbsp;'}</p>
-        <div class="log-actual">
-          <p class="log-label">Actual 1-rep max</p>
-          <p class="log-max is-small ${single ? '' : 'is-blank'}">${single ? `${Units.showWeight(single.weight)} <span>${unit}</span>` : '—'}</p>
-          <p class="log-sub">${single ? `Lifted for 1 rep on ${shortDate(single.date)}` : 'Log a set of 1 rep to fill this in'}</p>
-        </div>
+        <!-- Actual 1-rep max: one small line (many exercises are never done for 1 rep).
+             With none logged it stays as a blank "—", so you can see it's tracked. -->
+        <p class="log-actual">
+          <span class="log-actual-label">Actual 1-rep max</span>
+          ${single
+            ? `<span class="log-actual-value">${Units.showWeight(single.weight)} ${unit}</span><span class="log-actual-date">· ${shortDate(single.date)}</span>`
+            : '<span class="log-actual-value is-blank">—</span>'}
+        </p>
         ${maxChart(points, history.length ? 'No sets with weight yet' : 'No history yet', singlePoints)}
         <p class="log-formula">Estimated with the Epley formula: weight × (1 + reps ÷ 30)</p>
       </div>`;
