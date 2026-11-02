@@ -293,22 +293,38 @@ const Views = {
         </button>
       </div>`;
 
+    // Workouts on days that have passed this week: done, partial or missed (Streak.dayStates()).
+    const states = Streak.dayStates();
+
     const days = WEEKDAYS.map((dayName, weekday) => {
       const rest = Store.isRestDay(weekday);
       const workouts = Store.workoutsOn(weekday);
       const cards = workouts.map(w => {
         const last = Store.lastSessionFor(w.id);
         const count = w.exercises.length;
-        // Finished this week → a green "✓ Done"; otherwise when it was last done.
+        const state = states[w.id];
+        // A passed day's workout: "✓ Done" (with "caught up Wed" if it was made up later),
+        // amber "Partial · 12/15 sets" or red "Missed · 0/15 sets" (both with Catch up).
+        // Otherwise: finished this week → "✓ Done", or when it was last done.
         const doneThisWeek = last && weekKey(new Date(last.date).getTime()) === thisWeek;
-        const when = doneThisWeek ? ' · <span class="done-mark">✓ Done</span>'
-          : last ? ` · last ${formatDate(last.date)}` : '';
+        let when;
+        if (state && state.state !== 'done') {
+          const label = state.state === 'partial' ? 'Partial' : 'Missed';
+          when = ` · <span class="state-${state.state}">${label} · ${state.done}/${state.planned} sets</span>`;
+        } else if (state || doneThisWeek) {
+          when = ` · <span class="done-mark">✓ Done${state?.caughtUp ? ` · caught up ${state.caughtUp}` : ''}</span>`;
+        } else {
+          when = last ? ` · last ${formatDate(last.date)}` : '';
+        }
+        const catchUp = state && state.state !== 'done'
+          ? `<button type="button" class="btn btn-small catch-up-btn" data-action="catch-up" data-id="${w.id}">Catch up</button>` : '';
         return `
           <div class="card workout-card" data-workout="${w.id}">
             <button class="workout-open" data-action="open-workout" data-id="${w.id}">
               <span class="workout-name">${esc(w.name)}</span>
               <span class="day-meta">${count} exercise${count === 1 ? '' : 's'}${when}</span>
             </button>
+            ${catchUp}
             <button type="button" class="icon-btn" data-action="edit-workout" data-id="${w.id}" aria-label="Edit ${esc(w.name)}">${PENCIL_SVG}</button>
           </div>`;
       }).join('');
@@ -567,6 +583,27 @@ const Views = {
         + ${MUSCLES[id]} <span class="chip-group">${MUSCLE_GROUP_OF[id]}</span></button>`).join('');
   },
 
+  // "Missed this week" at the top of a quick workout's + Add exercise: planned exercises from
+  // days that have passed that still have sets missing, under "Tue · Pull" headers.
+  // Tapping one adds it with its missing sets and target reps. Nothing missed → nothing shown.
+  missedPicker() {
+    const missed = Store.missedThisWeek();
+    if (!missed.length) return '';
+    const groups = missed.map(w => `
+      <div class="missed-day">${WEEKDAYS[w.weekday].slice(0, 3)} · ${esc(w.name)}</div>
+      ${w.exercises.map(e => `
+        <button type="button" class="lib-item missed-item" data-action="quick-missed"
+          data-id="${esc(e.makeupFor.workoutId)}|${esc(e.makeupFor.exerciseId)}">
+          <span class="lib-name">${esc(Library.forExercise(e).name)}</span>
+          <span class="lib-meta missed-sets">${e.sets} set${e.sets === 1 ? '' : 's'} missed</span>
+        </button>`).join('')}`).join('');
+    return `
+      <div class="missed-picker">
+        <h3>Missed this week</h3>
+        ${groups}
+      </div>`;
+  },
+
   // ---------- Workout: compact list, one exercise expanded at a time ----------
   // swap = the Swap for today search: { exerciseId (whose search is open, or null), query }
   // A quick workout (workout.quick, from Store.draftWorkout()) uses the same screen with an
@@ -633,7 +670,8 @@ const Views = {
 
         body = `
           <div class="ex-body">
-            ${quick ? (last ? `<div class="ex-sub">Last done ${formatDate(last.date)}</div>` : '')
+            ${quick ? ((ex.repMin ? `<div class="ex-sub">Target ${ex.sets} × ${repRange(ex.repMin, ex.repMax)}${last ? ` · last done ${formatDate(last.date)}` : ''}</div>`
+                : last ? `<div class="ex-sub">Last done ${formatDate(last.date)}</div>` : ''))
               : `<div class="ex-sub">Target ${ex.sets} × ${repRange(ex.repMin, ex.repMax)}${last ? ` · last done ${formatDate(last.date)}` : ''}</div>`}
             <div class="set-grid">
               <div class="col-head">Set</div>
@@ -646,6 +684,10 @@ const Views = {
       }
 
       const plannedName = swapped ? Library.forExercise(ex).name : '';
+      // A quick workout exercise added to make up a missed one: which day and workout.
+      const makeupWorkout = ex.makeupFor && Store.getWorkout(ex.makeupFor.workoutId);
+      const makeupNote = ex.makeupFor
+        ? `<span class="ex-sub makeup-note">Catching up${makeupWorkout ? ` ${WEEKDAYS[Streak.dayStates()[makeupWorkout.id]?.weekday ?? makeupWorkout.weekday].slice(0, 3)} · ${esc(makeupWorkout.name)}` : ''}</span>` : '';
       return `
         <div class="card workout-ex ${isOpen ? 'is-open' : ''}" id="ex-${ex.id}">
           <button class="ex-toggle" data-action="toggle-exercise" data-id="${ex.id}" aria-expanded="${isOpen}">
@@ -653,6 +695,7 @@ const Views = {
             <span class="ex-toggle-main">
               <span class="ex-title">${esc(info.name)}</span>
               ${swapped ? `<span class="ex-sub swap-note">Swapped for today · planned: ${esc(plannedName)}</span>` : ''}
+              ${makeupNote}
               <span class="ex-sub">${lastSummary(last)}</span>
             </span>
             <span class="tag">${esc(Library.primaryLabel(info))}</span>
@@ -668,7 +711,8 @@ const Views = {
         autocomplete="off" aria-label="Workout title">
       ${workout.exercises.length ? '' : '<p class="muted quick-hint">Add the exercises you do as you go. This workout won\'t be added to your week.</p>'}` : '';
     const quickBottom = !quick ? '' : quickAdd.open ? `
-      <div class="card stack">
+      <div class="card stack" id="quick-add-panel">
+        ${this.missedPicker()}
         <input type="search" id="quick-search" value="${esc(quickAdd.query)}"
           placeholder="Search name, muscle or equipment" autocomplete="off" aria-label="Search exercises to add">
         <div id="quick-results" class="lib-results">${this.libraryResults(quickAdd.query, 'quick-pick')}</div>

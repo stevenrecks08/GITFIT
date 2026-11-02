@@ -11,6 +11,8 @@
   --danger: #f87171;
   --rest: #60a5fa;        /* rest days */
   --quick: #60a5fa;       /* quick workouts (one-offs, not in the plan) */
+  --partial: #f2b84b;     /* a passed day's workout with some sets missing (soft amber) */
+  --missed: #e88686;      /* a passed day's workout with nothing done (muted red) */
   --flame: #4ade80;       /* streak flame once the week is hit */
   --flame-core: #d9fbe6;
   --flame-off: #3f4654;   /* streak flame before the week is hit */
@@ -325,6 +327,12 @@ button, .btn {
 /* Finished this week: a green "✓ Done" (the card stays full brightness) */
 .done-mark { color: var(--accent); font-weight: 600; }
 
+/* A workout on a day that has passed this week with sets missing: amber "Partial · 12/15 sets"
+   or muted red "Missed · 0/15 sets", and a small Catch up button */
+.state-partial { color: var(--partial); font-weight: 600; }
+.state-missed { color: var(--missed); font-weight: 600; }
+.catch-up-btn { flex: 0 0 auto; min-height: 36px; padding: 0 10px; font-size: 13px; font-weight: 600; }
+
 /* A quick workout finished this week: the same card with blue instead of green, and no pencil */
 .workout-card.is-quick::before { background: var(--quick); }
 .workout-card.is-quick .done-mark { color: var(--quick); }
@@ -428,6 +436,14 @@ body.is-dragging { -webkit-user-select: none; user-select: none; }
 .quick-name { margin-bottom: 12px; font-size: 18px; font-weight: 700; }
 .quick-hint { margin: -2px 0 14px; font-size: 14px; }
 .btn-add-ex { margin-top: 4px; color: var(--text); font-weight: 600; }
+#quick-add-panel { scroll-margin-top: calc(var(--topbar-h) + env(safe-area-inset-top) + 12px); }
+
+/* "Missed this week" at the top of + Add exercise: small day headers, then each missed exercise */
+.missed-picker h3 { margin: 0 0 2px; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+.missed-day { margin: 10px 0 4px; font-size: 13px; font-weight: 700; color: var(--text); }
+.missed-item .missed-sets { color: var(--partial); }
+.missed-picker + #quick-search { margin-top: 6px; }
+.ex-toggle .makeup-note { color: var(--partial); white-space: normal; }
 
 /* Day chips (Mon … Sun) on the new / edit workout screens */
 .weekday-pick { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }

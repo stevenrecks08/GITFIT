@@ -139,6 +139,11 @@ function setFabMenu(open) {
   document.querySelector('.fab').setAttribute('aria-expanded', open);
 }
 
+// Scrolls the quick workout's + Add exercise panel to just under the top bar.
+function showQuickPanel() {
+  document.getElementById('quick-add-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 // Shows a yes/no pop-up (see Views.confirmDialog).
 function showDialog(options) {
   overlayEl.innerHTML = Views.confirmDialog(options);
@@ -367,10 +372,40 @@ const actions = {
     go('#/quick');
   },
 
+  // With a Missed this week list showing, the panel scrolls into view instead of jumping to
+  // the search box (which would push the list off the top of the screen).
   'quick-add-open'() {
     quickAdd = { open: true, query: '' };
     render();
-    document.getElementById('quick-search').focus();
+    if (document.querySelector('.missed-picker')) showQuickPanel();
+    else document.getElementById('quick-search').focus();
+  },
+
+  // Tapped a missed exercise in the list: add it with its missing sets and target reps.
+  'quick-missed'(key) {
+    const [workoutId, exerciseId] = key.split('|');
+    const e = Store.missedThisWeek(workoutId)[0]?.exercises.find(m => m.makeupFor.exerciseId === exerciseId);
+    if (!e) return;
+    openExerciseId = Store.quickAddExercise(e.refId, e);
+    quickAdd = { open: false, query: '' };
+    render();
+    document.getElementById(`ex-${openExerciseId}`).scrollIntoView({ block: 'nearest' });
+  },
+
+  // Catch up on a Partial / Missed workout: a quick workout with its missed exercises added
+  // (added to the quick workout in progress, if there is one).
+  'catch-up'(workoutId) {
+    if (dragJustEnded()) return;
+    const missed = Store.missedThisWeek(workoutId)[0];
+    const draft = Store.data.draft;
+    if (!draft?.quick) {
+      if (draft && !discardOtherDraft()) return;
+      Store.startQuick();
+      if (missed) Store.renameQuick(`${missed.name} catch-up`);
+    }
+    for (const e of missed?.exercises || []) Store.quickAddExercise(e.refId, e);
+    if (missed) toast(`Added ${missed.exercises.length} missed exercise${missed.exercises.length === 1 ? '' : 's'}`);
+    go('#/quick');
   },
 
   'quick-add-cancel'() {

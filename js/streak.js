@@ -23,6 +23,10 @@
 //     had already passed (3 am the next morning) when the quick workout was finished,
 //   - made up by quick workout sets of an exercise in the same muscle group,
 //   - each missed exercise up to its missing sets. Quick workouts fill in oldest first.
+//     An exercise added for a particular missed one (Catch up / Missed this week, entry.makeupFor)
+//     makes that one up first, then any other missed sets in its group, oldest first.
+// Days that have passed show each workout as done, partial or missed (dayStates()), and
+// "caught up <day>" when its sets were finished after its own day (late, or by makeup sets).
 // Anything else in a quick workout is logged (history, maxes, muscle map) but doesn't count
 // toward the streak. Because planned sets are counted first, doing the planned workout late
 // as well never counts the same sets twice.
@@ -84,6 +88,27 @@ function entryGroup(entry) {
   return Library.groupOf(Library.get(entry.refId) || entry);
 }
 
+// Counts up to `sets` more sets toward a planned exercise (never past its planned sets),
+// remembering when. Returns how many were used.
+function credit(item, date, sets) {
+  const used = Math.min(sets, item.short);
+  if (used) {
+    item.short -= used;
+    item.credits.push({ time: new Date(date).getTime(), sets: used });
+  }
+  return used;
+}
+
+// When a fully done planned exercise got its last needed set (ms).
+function doneAt(item) {
+  let total = 0;
+  for (const c of [...item.credits].sort((a, b) => a.time - b.time)) {
+    total += c.sets;
+    if (total >= item.sets) return c.time;
+  }
+  return 0;
+}
+
 // A weekday as it is right now, in the form kept in streak.locks.
 function dayLock(weekday) {
   return {
@@ -123,54 +148,90 @@ const Streak = {
       }
     }
 
-    // 1. Planned workouts' own sets. What's still short is kept in `short` for makeup sets.
+    // Every planned exercise of the week, with when its sets were counted:
+    //   { workoutId, weekday, exerciseId, refId, group, sets (planned), short (still missing),
+    //     credits: [{ time, sets }] }
+    const items = [];
+
+    // 1. Planned workouts' own sets (in whichever session of that workout, any day this week).
     let planned = 0;
     let logged = 0;
-    const short = []; // [{ weekday, group, sets (still missing) }]
     for (const { workoutId, weekday, plan: dayPlan } of plannedWorkouts) {
-      const done = sessions.filter(s => s.workoutId === workoutId);
+      const done = sessions.filter(s => s.workoutId === workoutId)
+        .sort((a, b) => new Date(a.date) - new Date(b.date));
       // Workouts saved before streaks existed have no plan; they fall back to the day's.
       const plan = done.length && done[0].plan ? done[0].plan : dayPlan;
-      const entries = done.flatMap(s => s.exercises);
-      for (const item of plan) {
-        const group = Library.groupOf(Library.forExercise(item));
-        // A swapped-in exercise only counts if it's in the same group as the planned one.
-        const sets = entries.filter(e => e.exerciseId === item.exerciseId
-          && (!e.swappedFrom || entryGroup(e) === group))
-          .reduce((n, e) => n + e.sets.length, 0);
-        const counted = Math.min(item.sets, sets);
-        planned += item.sets;
-        logged += counted;
-        if (counted < item.sets) short.push({ weekday, group, sets: item.sets - counted });
+      for (const p of plan) {
+        const item = { workoutId, weekday, exerciseId: p.exerciseId, refId: p.refId,
+          group: Library.groupOf(Library.forExercise(p)), sets: p.sets, short: p.sets, credits: [] };
+        items.push(item);
+        planned += p.sets;
+        for (const s of done) {
+          // A swapped-in exercise only counts if it's in the same group as the planned one.
+          const sets = s.exercises.filter(e => e.exerciseId === p.exerciseId
+            && (!e.swappedFrom || entryGroup(e) === item.group))
+            .reduce((n, e) => n + e.sets.length, 0);
+          credit(item, s.date, sets);
+        }
       }
     }
 
-    // 2. Quick workouts make up missed sets in the same group, oldest first, only for days
-    //    that had already passed when the quick workout was finished.
+    // 2. Quick workouts make up missed sets in the same group, only for days that had already
+    //    passed when the quick workout was finished. An exercise added for a particular missed
+    //    exercise (Catch up or the Missed this week list: entry.makeupFor) makes that one up first;
+    //    any other sets go to the oldest missed sets in its group.
     const quick = sessions.filter(s => s.quick).sort((a, b) => new Date(a.date) - new Date(b.date));
     for (const session of quick) {
       const passed = daysPassed(new Date(session.date).getTime());
       for (const entry of session.exercises) {
         const group = entryGroup(entry);
         let left = entry.sets.length;
-        for (const gap of short) {
+        const target = entry.makeupFor && items.find(i =>
+          i.workoutId === entry.makeupFor.workoutId && i.exerciseId === entry.makeupFor.exerciseId);
+        const order = target ? [target, ...items.filter(i => i !== target)] : items;
+        for (const item of order) {
           if (!left) break;
-          if (gap.group !== group || gap.weekday >= passed || !gap.sets) continue;
-          const used = Math.min(left, gap.sets);
-          gap.sets -= used;
-          left -= used;
-          logged += used;
+          if (item.weekday >= passed || !item.short) continue;
+          if (item !== target && item.group !== group) continue;
+          left -= credit(item, session.date, left);
         }
       }
     }
+    logged = items.reduce((n, i) => n + i.sets - i.short, 0);
 
     // 3. What's still missed on days that have passed (a whole ended week has passed).
     const passedNow = key < weekKey(now) ? 7 : key === weekKey(now) ? daysPassed(now) : 0;
     const missed = {};
-    for (const gap of short) {
-      if (gap.sets && gap.group && gap.weekday < passedNow) missed[gap.group] = (missed[gap.group] || 0) + gap.sets;
+    for (const item of items) {
+      if (item.short && item.group && item.weekday < passedNow) missed[item.group] = (missed[item.group] || 0) + item.short;
     }
-    return { planned, logged, missed };
+    return { planned, logged, missed, items, passedNow };
+  },
+
+  // How each planned workout on a day that has passed this week went, for the week screen
+  // and the Missed this week list. Today and later days are never missed.
+  //   { [workoutId]: { weekday, planned, done, state: 'done' | 'partial' | 'missed',
+  //                    caughtUp (weekday name it was completed on, if after its own day, else null),
+  //                    missing: [{ exerciseId, refId, sets (still missing) }] } }
+  dayStates(now = Date.now()) {
+    const { items, passedNow } = this.progress(weekKey(now), now);
+    const states = {};
+    for (const item of items) {
+      if (item.weekday >= passedNow) continue;
+      const s = states[item.workoutId] || (states[item.workoutId] =
+        { weekday: item.weekday, planned: 0, done: 0, finishedAt: 0, missing: [] });
+      s.planned += item.sets;
+      s.done += item.sets - item.short;
+      if (item.short) s.missing.push({ exerciseId: item.exerciseId, refId: item.refId, sets: item.short });
+      else s.finishedAt = Math.max(s.finishedAt, doneAt(item));
+    }
+    for (const s of Object.values(states)) {
+      s.state = s.done >= s.planned ? 'done' : s.done ? 'partial' : 'missed';
+      const day = s.state === 'done' ? daysPassed(s.finishedAt) : -1;
+      s.caughtUp = day > s.weekday ? WEEKDAYS[day].slice(0, 3) : null;
+      delete s.finishedAt;
+    }
+    return states;
   },
 
   // Locks each day of a week that has passed (up to `upTo` days), as it is now.

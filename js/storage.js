@@ -25,12 +25,15 @@
 //       exercises: [ { exerciseId (the planned workout exercise it covers), refId, name, primary, secondary,
 //                      swappedFrom (the planned refId; only on exercises swapped for today),
 //                      targetSets, targetRepMin, targetRepMax,   // (not on quick workouts)
+//                      makeupFor: { workoutId, exerciseId }      // (quick workouts only: the missed
+//                                 // planned exercise it was added to make up, with its targetRepMin/Max)
 //                      sets: [ { weight, reps } ] } ] }
 //   ],
 //   draft: null or { workoutId, startedAt, entries: { [exerciseId]: [ { weight, reps } ] },
 //                    swaps: { [exerciseId]: refId } },  // exercises swapped for today only
 //          or, for a quick workout: { quick: true, workoutId: null, name, startedAt,
-//                    exercises: [ { id, refId } ] (in the order added), entries, swaps: {} }
+//                    exercises: [ { id, refId, makeupFor?, repMin?, repMax? } ] (in the order added),
+//                    entries, swaps: {} }
 //   streak: {              // the weekly streak; see streak.js
 //     start: 'YYYY-MM-DD' (Monday of the first tracked week) or null until there's a plan,
 //     weeks: [ { week: 'YYYY-MM-DD' (its Monday), result: 'hit' | 'frozen' | 'missed' | 'empty',
@@ -418,7 +421,7 @@ const Store = {
       id: 'quick',
       quick: true,
       name: draft.name,
-      exercises: draft.exercises.map(e => ({ id: e.id, refId: e.refId, sets: (draft.entries[e.id] || []).length })),
+      exercises: draft.exercises.map(e => ({ ...e, sets: (draft.entries[e.id] || []).length })),
     };
   },
 
@@ -436,16 +439,43 @@ const Store = {
     this.save();
   },
 
-  // Adds an exercise with one set, its weight prefilled from the last time it was done. Returns its id.
-  quickAddExercise(refId) {
+  // Adds an exercise (one set, or `sets`), weights prefilled from the last time it was done. Returns its id.
+  // A missed exercise being made up also has its target reps and makeupFor
+  // ({ workoutId, exerciseId } of the planned exercise; see streak.js).
+  quickAddExercise(refId, { sets = 1, repMin, repMax, makeupFor } = {}) {
     const draft = this.data.draft;
     const id = newId();
-    draft.exercises.push({ id, refId });
+    draft.exercises.push({ id, refId, ...(makeupFor ? { makeupFor, repMin, repMax } : {}) });
     const history = this.exerciseHistory(refId);
-    const lastWeight = history[history.length - 1]?.sets[0]?.weight ?? null;
-    draft.entries[id] = [{ weight: lastWeight, reps: '' }];
+    const lastSets = history[history.length - 1]?.sets || [];
+    draft.entries[id] = Array.from({ length: sets }, (_, i) =>
+      ({ weight: (lastSets[i] || lastSets[lastSets.length - 1])?.weight ?? null, reps: '' }));
     this.save();
     return id;
+  },
+
+  // Planned exercises missed this week that aren't in the quick workout yet, by workout,
+  // for the Missed this week list and Catch up:
+  //   [{ workoutId, weekday, name, exercises: [{ refId, sets, repMin, repMax, makeupFor }] }]
+  missedThisWeek(onlyWorkoutId = null) {
+    const inDraft = (this.data.draft?.exercises || []).map(e => e.makeupFor).filter(Boolean);
+    const list = [];
+    for (const [workoutId, state] of Object.entries(Streak.dayStates())) {
+      if (onlyWorkoutId && workoutId !== onlyWorkoutId) continue;
+      const workout = this.getWorkout(workoutId);
+      const exercises = state.missing
+        .filter(m => !inDraft.some(f => f.workoutId === workoutId && f.exerciseId === m.exerciseId))
+        .map(m => {
+          // Target reps from the workout as it is now (a locked plan only has set counts).
+          const planned = workout?.exercises.find(e => e.id === m.exerciseId);
+          return { refId: m.refId, sets: m.sets, repMin: planned?.repMin, repMax: planned?.repMax,
+            makeupFor: { workoutId, exerciseId: m.exerciseId } };
+        });
+      if (!exercises.length) continue;
+      const name = workout?.name || this.lastSessionFor(workoutId)?.workoutName || 'Workout';
+      list.push({ workoutId, weekday: state.weekday, name, exercises });
+    }
+    return list.sort((a, b) => a.weekday - b.weekday);
   },
 
   // One more set row, with the weight of the set above (or last time's weight for that set).
@@ -555,8 +585,9 @@ const Store = {
           name: info.name,
           primary: info.primary,
           secondary: info.secondary,
-          // A quick workout has no targets.
-          ...(workout.quick ? {} : { targetSets: ex.sets, targetRepMin: ex.repMin, targetRepMax: ex.repMax }),
+          // A quick workout has no targets, except a missed exercise being made up.
+          ...(!workout.quick ? { targetSets: ex.sets, targetRepMin: ex.repMin, targetRepMax: ex.repMax }
+            : ex.makeupFor ? { makeupFor: ex.makeupFor, targetRepMin: ex.repMin, targetRepMax: ex.repMax } : {}),
           sets,
         });
       }
