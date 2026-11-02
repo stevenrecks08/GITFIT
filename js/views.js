@@ -688,10 +688,11 @@ const Views = {
 
         // Swap for today: a button, or the exercise search once it's tapped.
         // Once swapped, only Undo swap shows (undo, then swap again to pick a different one).
-        // A quick workout has "+ Add set" and "Remove" instead.
+        // A quick workout has "+ Add set", "Remove set" (once there's more than one) and "Remove exercise" instead.
         const swapPanel = quick ? `
           <div class="row swap-row">
             <button type="button" class="btn btn-small" data-action="quick-add-set" data-id="${ex.id}">+ Add set</button>
+            ${draft.entries[ex.id].length > 1 ? `<button type="button" class="btn btn-small" data-action="quick-remove-set" data-id="${ex.id}">− Remove set</button>` : ''}
             <button type="button" class="btn btn-small" data-action="quick-remove" data-id="${ex.id}">Remove exercise</button>
           </div>` : swap.exerciseId === ex.id && swap.creating ? `
           <div class="swap-panel stack">

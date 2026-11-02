@@ -736,7 +736,7 @@ main.is-searching { padding-bottom: 100vh; }
 
 /* Swap for today (inside an open exercise) */
 .swap-row, .swap-panel { margin-top: 12px; }
-.swap-row { justify-content: flex-start; }
+.swap-row { justify-content: flex-start; flex-wrap: wrap; }
 .swap-row > * { flex: 0 0 auto; }
 .ex-toggle .swap-note { color: var(--rest); white-space: normal; }
 .swap-panel #custom-form { padding: 0; border: none; background: none; }

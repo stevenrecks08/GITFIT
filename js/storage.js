@@ -501,6 +501,13 @@ const Store = {
     this.save();
   },
 
+  // Takes off the last set. An exercise always keeps at least one (Remove exercise is for the rest).
+  quickRemoveSet(exerciseId) {
+    const rows = this.data.draft.entries[exerciseId];
+    if (rows.length > 1) rows.pop();
+    this.save();
+  },
+
   quickRemoveExercise(exerciseId) {
     const draft = this.data.draft;
     draft.exercises = draft.exercises.filter(e => e.id !== exerciseId);

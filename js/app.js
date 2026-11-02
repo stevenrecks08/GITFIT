@@ -485,6 +485,14 @@ const actions = {
     render();
   },
 
+  // Takes off the last set; asks first if reps were already typed in it.
+  'quick-remove-set'(id) {
+    const rows = Store.data.draft.entries[id];
+    if (rows[rows.length - 1].reps !== '' && !confirm('Remove the last set and the reps typed in it?')) return;
+    Store.quickRemoveSet(id);
+    render();
+  },
+
   'quick-remove'(id) {
     if (Store.draftHasReps(id) && !confirm('Remove this exercise and the sets typed for it?')) return;
     Store.quickRemoveExercise(id);
