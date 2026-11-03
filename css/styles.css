@@ -1099,6 +1099,12 @@ main.is-searching { padding-bottom: 100vh; }
 }
 .sets-row:active { opacity: 0.6; }
 .sets-row.is-muscle { min-height: 44px; font-size: 15px; }
+/* On the week, against the suggested range: red under it, green in it, blue over it, plain with none */
+.sets-row.is-low .sets-label, .sets-row.is-low .sets-num { color: var(--missed); font-weight: 600; }
+.sets-row.is-low .sets-bar i { background: var(--missed); }
+.sets-row.is-high .sets-bar i { background: var(--rest); }
+.sets-row.is-none .sets-bar i { background: var(--muted); }
+.sets-low { margin: 8px 0 4px; font-size: 14px; font-weight: 600; color: var(--missed); }
 .sets-row.is-changed .sets-label, .sets-row.is-changed .sets-num { color: var(--accent); font-weight: 600; }
 .sets-label { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .sets-bar { height: 6px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }

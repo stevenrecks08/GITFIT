@@ -100,6 +100,7 @@ function initials(name) {
 }
 
 const BACKUP_REMINDER_DAYS = 30;
+const LOW_NAMES_SHOWN = 4; // muscles named on the "Low this week" line before "and 3 more"
 
 // What the "i" next to the muscle map's caption says.
 const MAP_INFO = {
@@ -144,12 +145,19 @@ function setsRow(action, id, isOpen, label, fraction, sets, extraClass = '') {
 //   planned = Stats.weekPlannedSets() or dayPlannedSets()   open = Set of muscle ids that are expanded
 //   hideEmpty = leave out muscles with no sets (a single day, which would be full of zeros)
 //   changed = Set of muscle ids that just changed (shown in green)
-// All the bars share one scale (the most-trained muscle fills its bar), so any two can be compared.
-function plannedSetsTable(planned, open, { hideEmpty = false, changed = new Set() } = {}) {
+//   targets = compare each muscle with its suggested range for the week: red under it, green in it,
+//     blue over it, with a line at the top naming the low ones (Stats.targetState()).
+// Without targets (a single day), all the bars share one scale (the most-trained muscle fills its
+// bar), so any two can be compared.
+function plannedSetsTable(planned, open, { hideEmpty = false, changed = new Set(), targets = false } = {}) {
   const { muscles, sources } = planned;
   const values = Object.values(muscles);
   if (!values.length) return '<p class="empty">No exercises planned yet.</p>';
   const scale = Math.max(...values);
+
+  const low = !targets ? [] : Object.keys(MUSCLES).filter(id => Stats.targetState(id, muscles[id] || 0).state === 'low').map(id => MUSCLES[id]);
+  const lowLine = low.length ? `
+    <p class="sets-low">Low this week: ${low.slice(0, LOW_NAMES_SHOWN).join(', ')}${low.length > LOW_NAMES_SHOWN ? ` and ${low.length - LOW_NAMES_SHOWN} more` : ''}</p>` : '';
 
   const blocks = MUSCLE_GROUPS.map(group => {
     const rows = Object.entries(group.muscles).filter(([id]) => !hideEmpty || muscles[id]).map(([id, name]) => {
@@ -164,21 +172,36 @@ function plannedSetsTable(planned, open, { hideEmpty = false, changed = new Set(
               <span class="src-num">${setsText(s.sets)}</span>
             </button></li>`).join('')}</ul>`
         : '<p class="sets-none">No planned exercise trains this.</p>';
+      const target = targets ? Stats.targetState(id, sets) : null;
       return `
         <div class="sets-block ${isOpen ? 'is-open' : ''}" data-block="${id}">
-          ${setsRow('toggle-muscle', id, isOpen, name, sets / scale, sets, `is-muscle ${changed.has(id) ? 'is-changed' : ''}`)}
+          ${setsRow('toggle-muscle', id, isOpen, name, target ? target.fraction : sets / scale, sets,
+            `is-muscle ${target ? `is-${target.state}` : ''} ${changed.has(id) ? 'is-changed' : ''}`)}
           <div class="collapse"><div class="collapse-inner">${detail}</div></div>
         </div>`;
     }).join('');
     return rows ? `<p class="sets-heading">${group.name}</p>${rows}` : '';
   }).join('');
-  return `<div class="card sets-table">${blocks}</div>`;
+  return `<div class="card sets-table">${lowLine}${blocks}</div>`;
+}
+
+// The "i" by planned sets, and what it opens.
+function setsInfoButton(open) {
+  return `<button type="button" class="info-btn" data-action="sets-info" aria-label="How planned sets work" aria-expanded="${open}"><span>i</span></button>`;
+}
+function setsInfoBox(open) {
+  return `
+    <div class="map-info" id="sets-info" ${open ? '' : 'hidden'}>
+      <p>Each set counts as 1 set for an exercise's primary muscles, and ½ set for its secondary muscles.</p>
+      <p>On the week, each muscle is compared with a suggested range. It's only a suggestion: ${BIG_TARGET.join('–')} sets for bigger muscles, and ${SMALL_TARGET.join('–')} for smaller ones and each part of the chest. Red is under it, green is in it, and blue is over it.</p>
+      <p>Plain bars have no range, since those muscles usually get enough from other exercises.</p>
+    </div>`;
 }
 
 // The thin planned sets strip pinned to the bottom of a workout's screen. Closed: one line of
 // numbers, the muscles that just changed first (in green), then the most-trained. Tapping it opens
 // the full list, with a switch between the workout's day and the whole week.
-//   strip = { open, mode: 'day' or 'week' }   openRows = Set of muscle ids expanded in its list
+//   strip = { open, mode: 'day' or 'week', infoOpen }   openRows = Set of muscle ids expanded in its list
 //   changed = Set of muscle ids changed by the last edit
 function plannedStrip(workout, strip, openRows, changed) {
   const week = strip.mode === 'week';
@@ -199,9 +222,10 @@ function plannedStrip(workout, strip, openRows, changed) {
         ${CHEVRON}
       </button>
       <div class="collapse"><div class="collapse-inner"><div class="strip-panel">
-        <p class="strip-title">Planned sets</p>
+        <p class="strip-title">Planned sets ${setsInfoButton(strip.infoOpen)}</p>
+        ${setsInfoBox(strip.infoOpen)}
         <div class="segmented">${segment('day', dayName)}${segment('week', 'This week')}</div>
-        ${plannedSetsTable(planned, openRows, { hideEmpty: !week, changed })}
+        ${plannedSetsTable(planned, openRows, { hideEmpty: !week, changed, targets: week })}
       </div></div></div>
     </div>`;
 }
@@ -459,10 +483,10 @@ function formatHoursMinutes(ms) {
 const Views = {
 
   // ---------- Home: the week, Monday to Sunday, with each day's workouts ----------
-  // openSets = which planned-sets rows are expanded (a Set of muscle ids)
+  // openSets = which planned-sets rows are expanded (a Set of muscle ids); setsInfoOpen = its "i" is open
   // A day with no workouts is a rest day automatically; tap a workout to start it (any day);
   // hold a workout and drag it to move it to another day (see the drag code in app.js).
-  home(openSets) {
+  home(openSets, setsInfoOpen) {
     const draftWorkout = Store.draftWorkout();
     const today = todayWeekday();
     const thisWeek = weekKey(Date.now());
@@ -558,8 +582,9 @@ const Views = {
         </div>
         <div class="week">${days}</div>
 
-        <h2>Planned sets per week</h2>
-        ${plannedSetsTable(Stats.weekPlannedSets(), openSets)}
+        <h2>Planned sets per week ${setsInfoButton(setsInfoOpen)}</h2>
+        ${setsInfoBox(setsInfoOpen)}
+        ${plannedSetsTable(Stats.weekPlannedSets(), openSets, { targets: true })}
 
         <div class="fab-menu" id="fab-menu" aria-hidden="true">
           <button type="button" class="fab-option" data-action="new-workout">

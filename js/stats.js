@@ -33,6 +33,19 @@ function forEachMuscle(entry, add) {
   for (const m of entry.secondary) add(m, 0.5);
 }
 
+// Suggested planned sets per week: [low, high]. 10–20 is a common guideline for building muscle.
+// Chest is split into three parts, so each part gets the smaller range, as do the other smaller
+// muscles. Muscles left out here have no target: they usually get enough from other exercises.
+const BIG_TARGET = [10, 20];
+const SMALL_TARGET = [6, 12];
+const MUSCLE_TARGETS = {
+  quads: BIG_TARGET, hamstrings: BIG_TARGET, glutes: BIG_TARGET, lats: BIG_TARGET,
+  upperBack: BIG_TARGET, sideDelts: BIG_TARGET, biceps: BIG_TARGET, triceps: BIG_TARGET,
+  upperChest: SMALL_TARGET, midChest: SMALL_TARGET, lowerChest: SMALL_TARGET, frontDelts: SMALL_TARGET,
+  rearDelts: SMALL_TARGET, calves: SMALL_TARGET, abs: SMALL_TARGET,
+};
+const NO_TARGET_SCALE = 20; // the bar of a muscle with no target fills at this many sets
+
 const Stats = {
   GROWTH_WEEKS: 6,
   MIN_WEEKS: 3, // an exercise needs this many different weeks logged to count for growth
@@ -144,6 +157,16 @@ const Stats = {
     }
     for (const m in sources) sources[m].sort((a, b) => b.sets - a.sets || a.name.localeCompare(b.name));
     return { muscles, sources };
+  },
+
+  // How a muscle's planned sets for the week compare with its suggested range:
+  //   { state: 'low' | 'good' | 'high' | 'none' (no target), fraction (how full its bar is, 0–1) }
+  // The bar is full at the top of the range.
+  targetState(muscleId, sets) {
+    const target = MUSCLE_TARGETS[muscleId];
+    if (!target) return { state: 'none', fraction: Math.min(1, sets / NO_TARGET_SCALE) };
+    const [low, high] = target;
+    return { state: sets < low ? 'low' : sets > high ? 'high' : 'good', fraction: Math.min(1, sets / high) };
   },
 
   // Planned sets for the whole week (workouts on rest days don't count).

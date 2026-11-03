@@ -113,11 +113,12 @@ let summary = null;
 // The week's planned sets card on the Workouts tab: which muscles are expanded. Kept while the
 // app is open, so going into a workout and back leaves them as they were.
 const openSets = new Set();
+let setsInfoOpen = false; // whether its "i" is open
 
 // The planned sets strip on a workout's screen: whether it's opened up and whether it shows the
 // workout's day or the whole week, which muscles are expanded in it, and which muscles the last
 // edit changed (shown in green until you leave the screen or edit something else).
-const strip = { open: false, mode: 'day' };
+const strip = { open: false, mode: 'day', infoOpen: false };
 const stripRows = new Set();
 let plannedChanged = new Set();
 
@@ -366,7 +367,7 @@ function render() {
   } else if (askGoal) {
     screen = Views.goalPrompt();
   } else if (route.view === 'home') {
-    screen = summary ? Views.summary(summary) : Views.home(openSets);
+    screen = summary ? Views.summary(summary) : Views.home(openSets, setsInfoOpen);
   } else if (route.view === 'history') {
     screen = Views.history();
   } else if (route.view === 'past') {
@@ -913,6 +914,15 @@ const actions = {
     const el = document.getElementById('sets-strip');
     el.classList.toggle('is-open', strip.open);
     el.querySelector('.strip-bar').setAttribute('aria-expanded', strip.open);
+  },
+
+  // The "i" by planned sets, on the Workouts tab or in the strip.
+  'sets-info'(_, button) {
+    const open = button.getAttribute('aria-expanded') !== 'true';
+    if (button.closest('.sets-strip')) strip.infoOpen = open;
+    else setsInfoOpen = open;
+    document.getElementById('sets-info').hidden = !open;
+    button.setAttribute('aria-expanded', open);
   },
 
   // Its switch between the workout's day and the whole week.
