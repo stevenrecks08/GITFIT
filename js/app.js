@@ -241,11 +241,15 @@ function render() {
   Streak.update(); // decides any week that just ended, and catches a week that was just hit
   const route = currentRoute();
   const setup = !Store.data.settings.setupDone;
+  // Data from before the weekly goal existed: asked once, before anything else.
+  const askGoal = !setup && Store.data.settings.weeklyGoal == null;
   if (summary && !Store.getSession(summary.sessionId)) summary = null; // that workout was deleted
   let screen;
 
   if (setup) {
     screen = Views.setup();
+  } else if (askGoal) {
+    screen = Views.goalPrompt();
   } else if (route.view === 'home') {
     screen = summary ? Views.summary(summary) : Views.home(openSets);
   } else if (route.view === 'history') {
@@ -309,7 +313,7 @@ function render() {
   document.body.classList.toggle('in-workout', Boolean(screen.timer && Store.data.draft));
   // The tab bar only shows on each tab's main screen; deeper screens use Back.
   const here = '#/' + location.hash.replace(/^#\/?/, '');
-  const showTabs = !setup && TABS.some(tab => tab.href === here);
+  const showTabs = !setup && !askGoal && TABS.some(tab => tab.href === here);
   tabBarEl.hidden = !showTabs;
   document.body.classList.toggle('no-tabbar', !showTabs);
   tabBarEl.innerHTML = tabBarHtml(route.tab);
@@ -395,7 +399,7 @@ function hideToast() {
 }
 
 // The workout just finished, kept while its Undo toast shows:
-//   { sessionId, draft (copy from before finishing), hadHit (this week was already hit before) }
+//   { sessionId, draft (copy from before finishing) }
 let lastFinish = null;
 
 // endAt (ms, optional) = end it at that time instead of now ("Use last set time").
@@ -415,7 +419,6 @@ function finishWorkout(endAt = null, checked = false) {
   }
 
   const draft = JSON.parse(JSON.stringify(Store.data.draft));
-  const hadHit = Streak.summary().week.hit;
   const session = Store.finishDraft(endAt);
   if (!session) {
     toast('Fill in at least one set first');
@@ -426,7 +429,7 @@ function finishWorkout(endAt = null, checked = false) {
   if (earlierWeek) Streak.rejudge(session.date);
   summary = Store.sessionSummary(session);
   toast('Workout saved 💪', { label: 'Undo', action: 'undo-finish' }, 5000);
-  lastFinish = { sessionId: session.id, draft, hadHit, rejudgeFrom: earlierWeek ? session.date : null };
+  lastFinish = { sessionId: session.id, draft, rejudgeFrom: earlierWeek ? session.date : null };
   go('#/');
 }
 
@@ -500,6 +503,11 @@ const actions = {
   // but save the box you're still in too.
   'setup-done'() {
     saveSettingsForm(document.getElementById('settings-form'));
+    // The streak needs a goal, so this is the one answer that can't be skipped.
+    if (Store.data.settings.weeklyGoal == null) {
+      toast('Pick how many days a week you\'re trying to go');
+      return;
+    }
     Store.updateSettings({ setupDone: true });
     if (currentRoute().view === 'home') render();
     else go('#/');
@@ -668,12 +676,9 @@ const actions = {
 
   'delete-workout'(id) {
     const workout = Store.getWorkout(id);
-    const lockedOn = Streak.lockedDay(id);
-    const lines = [`${workout.name} will be removed from your week. Workouts you've already finished with it stay in Past workouts and your logs.`];
-    if (lockedOn) lines.push(`${lockedOn} has passed and you haven't done it yet this week, so its sets still count in this week's streak.`);
     showDialog({
       title: `Delete ${workout.name}?`,
-      lines,
+      lines: [`${workout.name} will be removed from your week. Workouts you've already finished with it stay in Past workouts and your logs.`],
       confirm: { label: 'Delete workout', action: 'delete-workout-confirm', id },
       cancel: { label: 'Cancel', action: 'dialog-cancel' },
       danger: true,
@@ -799,7 +804,7 @@ const actions = {
 
   // Tapped an exercise in the swap search: do it instead of the planned one, this workout only.
   // Any sets already typed for this exercise are cleared. A swap into a different muscle group
-  // won't count for the streak, so that asks first.
+  // won't count toward the planned sets, so that asks first.
   'swap-pick'(refId) {
     const workout = Store.getWorkout(currentRoute().workoutId);
     const planned = Library.forExercise(workout.exercises.find(e => e.id === swap.exerciseId));
@@ -808,9 +813,9 @@ const actions = {
     const to = Library.groupOf(picked);
     if (from && to !== from) {
       showDialog({
-        title: 'This swap won\'t count',
+        title: 'Different muscle group',
         lines: [
-          `${picked.name} is ${to ? `a ${to}` : 'not a ' + from} exercise, and ${planned.name} is ${from}. A swap only counts toward your streak when it's in the same muscle group.`,
+          `${picked.name} is ${to ? `a ${to}` : 'not a ' + from} exercise, and ${planned.name} is ${from}. A swap only counts toward the planned sets when it's in the same muscle group.`,
           `Its sets will still be logged (history, maxes and the muscle map), but the planned ${planned.name} sets will count as missed.`,
         ],
         confirm: { label: 'Swap anyway', action: 'swap-confirm', id: refId },
@@ -959,7 +964,7 @@ const actions = {
     if (!lastFinish) return;
     Store.undoFinish(lastFinish.sessionId, lastFinish.draft);
     if (lastFinish.rejudgeFrom) Streak.rejudge(lastFinish.rejudgeFrom); // its earlier week, without it again
-    else if (!lastFinish.hadHit) Streak.undoHit(); // the hit came from this workout
+    else Streak.update(); // takes back this week's hit if that workout made it
     if (overlayEl.classList.contains('is-celebration')) {
       overlayEl.hidden = true;
       overlayEl.innerHTML = '';
@@ -1319,6 +1324,15 @@ function saveSettingsForm(form) {
     heightIn: Units.readHeight({ ft: values.heightFt, in: values.heightIn, cm: values.heightCm }),
     sex: values.sex,
   });
+  // A new weekly goal counts straight away. Any week that has just ended is judged first,
+  // against the goal it ended with. (Setup picks it before anything is logged.)
+  const goal = Number(values.weeklyGoal) || null;
+  if (goal && goal !== Store.data.settings.weeklyGoal) {
+    Streak.update();
+    Store.updateSettings({ weeklyGoal: goal });
+    Streak.update();
+    showOverlay();
+  }
   // Body weight is logged with today's date, so only when the box really changed
   // (not its rounded display value when some other setting changes).
   if (values.bodyWeight.trim() !== Units.showWeight(Store.data.settings.bodyWeightLbs)) {
@@ -1332,6 +1346,14 @@ appEl.addEventListener('change', async event => {
 
   if (input.form && input.form.id === 'settings-form') {
     saveSettingsForm(input.form);
+    return;
+  }
+
+  // The one-time weekly goal question: answered, so on to the app.
+  if (input.name === 'goal-prompt') {
+    Store.updateSettings({ weeklyGoal: Number(input.value) });
+    render();
+    window.scrollTo(0, 0);
     return;
   }
 

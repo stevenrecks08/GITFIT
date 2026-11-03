@@ -305,6 +305,18 @@ function weekdayPicker(name, selected) {
     </div>`;
 }
 
+// The weekly goal: chips 1 to 7, in the same style as the day chips.
+function goalPicker(name, selected) {
+  return `
+    <div class="weekday-pick" role="radiogroup" aria-label="Days a week">
+      ${[1, 2, 3, 4, 5, 6, 7].map(n => `
+        <label class="weekday-chip">
+          <input type="radio" name="${name}" value="${n}" ${n === selected ? 'checked' : ''}>
+          <span>${n}</span>
+        </label>`).join('')}
+    </div>`;
+}
+
 // The small pencil on each workout card (opens its edit screen).
 const PENCIL_SVG = `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"
   stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>`;
@@ -496,16 +508,6 @@ const Views = {
   editWorkout(workout, picker) {
     const editing = workout.exercises.find(e => e.id === picker.exerciseId);
 
-    // A missed workout on a day that has passed still counts this week as it was.
-    const lockedOn = Streak.lockedDay(workout.id);
-    const lockNote = lockedOn ? `
-      <div class="card lock-note">
-        <strong>${lockedOn} has passed</strong>
-        <p>You haven't done this workout yet this week, so this week's streak still counts its sets as they were on ${lockedOn}.
-          Changing or deleting it now won't remove them; changes count from next week.
-          If you still want to do it this week, do it first (you can tap it on any day), then change it.</p>
-      </div>` : '';
-
     const rows = workout.exercises.length ? workout.exercises.map((ex, i) => {
       const info = Library.forExercise(ex);
       return `
@@ -533,7 +535,6 @@ const Views = {
       title: `Edit ${workout.name}`,
       back: '#/',
       html: `
-        ${lockNote}
         <h2>Title</h2>
         <input id="workout-name" value="${esc(workout.name)}" placeholder="e.g. Push, Legs, Upper (arm focus)" autocomplete="off">
 
@@ -885,7 +886,7 @@ const Views = {
       ${workout.exercises.length ? '' : '<p class="muted quick-hint">Add the exercises you do as you go. This workout won\'t be added to your week.</p>'}` : '';
     const quickBottom = quickAdd.creating ? this.customExerciseForm(picker, 'Save and add') : quickAdd.open ? `
       <div class="card stack" id="quick-add-panel">
-        ${quick ? this.missedPicker() : '<p class="muted add-today-note">Just for today: your plan stays the same, and its sets are logged but don\'t count for your streak.</p>'}
+        ${quick ? this.missedPicker() : '<p class="muted add-today-note">Just for today: your plan stays the same.</p>'}
         <input type="search" id="quick-search" value="${esc(quickAdd.query)}"
           placeholder="Search name, muscle or equipment" autocomplete="off" aria-label="Search exercises to add">
         <div id="quick-results" class="lib-results">${this.libraryResults(quickAdd.query, 'quick-pick')}</div>
@@ -1020,11 +1021,10 @@ const Views = {
                 <span class="best-link">Log ${CHEVRON}</span>
               </button>`).join('')}
           </div>` : ''}
-        ${week.planned ? `
-          <div class="card summary-week">
-            <div class="week-sets"><span>Sets this week</span><strong>${week.logged} / ${week.planned}</strong></div>
-            <div class="week-bar ${week.hit ? 'is-full' : ''}"><i style="width:${Math.min(100, week.logged / week.planned * 100)}%"></i></div>
-          </div>` : ''}
+        <div class="card summary-week">
+          <div class="week-sets"><span>Days this week</span><strong>${week.days} / ${week.goal}</strong></div>
+          <div class="week-bar ${week.hit ? 'is-full' : ''}"><i style="width:${Math.min(100, week.days / week.goal * 100)}%"></i></div>
+        </div>
         <div class="finish-bar">
           <button type="button" class="btn btn-primary" data-action="close-summary">Close</button>
         </div>
@@ -1050,26 +1050,34 @@ const Views = {
     };
   },
 
+  // ---------- The one-time question for data from before the weekly goal existed ----------
+  // Tapping a number saves it and carries on (see the change listener in app.js).
+  goalPrompt() {
+    return {
+      title: 'Weekly goal',
+      back: null,
+      html: `
+        <p class="setup-intro">Your streak now counts days instead of sets. A week counts when you work out on enough different days. Any workout counts, and two on the same day count as one.</p>
+        <h2>How many days a week are you trying to go?</h2>
+        <div class="card">${goalPicker('goal-prompt', null)}</div>
+        <p class="muted setup-tip">You can change this any time in Settings.</p>
+      `,
+    };
+  },
+
   // ---------- Weekly streak (on Profile) ----------
   // The flame is gray until this week is hit, then green.
   streakCard() {
     const { started, start, totals, week, recent } = Streak.summary();
-    const fill = week.planned ? Math.min(100, week.logged / week.planned * 100) : 0;
+    const fill = Math.min(100, week.days / week.goal * 100);
     const startLabel = start
       ? fromDayKey(start).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) : '';
     const headline = started ? `${totals.current}-week streak`
-      : start ? `Streak starts ${startLabel}` : 'Plan a workout to start a streak';
+      : start ? `Streak starts ${startLabel}` : 'Log a workout to start a streak';
+    const left = week.goal - week.days;
     const sub = started
-      ? (week.hit ? 'This week is done 🔥' : 'Log every planned set to hit this week')
-      : start ? 'This week is practice' : 'Create a workout on the Workouts tab';
-
-    // How many sets the freeze line (90%) is this week. Only shown when a freeze could
-    // actually save the week: tracking, streak above 0, a freeze held, week not hit yet.
-    // (The tiny subtraction stops 72 × 0.9 = 64.80000001 from rounding up wrong.)
-    const freezeSets = Math.ceil(week.planned * FREEZE_LINE - 1e-9);
-    const freezeHint = !started || week.hit || !week.planned || !totals.freezes || !totals.current ? ''
-      : week.logged >= freezeSets ? 'Freeze line reached. Finish the rest to hit the week.'
-      : `Log ${freezeSets} of ${week.planned} to keep your streak with a freeze.`;
+      ? (week.hit ? 'This week is done 🔥' : `Work out ${left} more day${left === 1 ? '' : 's'} to hit this week`)
+      : start ? 'This week is practice' : `Your goal is ${week.goal} day${week.goal === 1 ? '' : 's'} a week`;
 
     // How to earn the next freeze (one every WEEKS_PER_FREEZE weeks in a row).
     const toNext = WEEKS_PER_FREEZE - totals.current % WEEKS_PER_FREEZE;
@@ -1099,14 +1107,13 @@ const Views = {
         </div>
 
         <div class="week-sets">
-          <span>Sets this week</span>
-          <strong>${week.logged} / ${week.planned}</strong>
+          <span>Days this week</span>
+          <strong>${week.days} / ${week.goal}</strong>
         </div>
         <div class="week-bar ${week.hit ? 'is-full' : ''}" role="img"
-          aria-label="${week.logged} of ${week.planned} planned sets logged">
+          aria-label="${week.days} of ${week.goal} days this week">
           <i style="width:${fill}%"></i>
         </div>
-        ${freezeHint ? `<p class="freeze-hint">❄&#xFE0E; ${freezeHint}</p>` : ''}
 
         <div class="streak-stats">
           <span>Best <strong>${totals.best}</strong></span>
@@ -1122,7 +1129,7 @@ const Views = {
   // The number starts at its final value; app.js counts it up from 0.
   celebration(streak) {
     const milestone = streak % MILESTONE_WEEKS === 0;
-    const messages = ['Every planned set, logged.', 'Another full week in the books.',
+    const messages = ['Weekly goal reached.', 'Another full week in the books.',
       'Consistency wins. Keep it burning.', 'You showed up all week.'];
     const message = streak === 1 ? 'Week one done — your streak has started!'
       : milestone ? `${streak} weeks in a row. That's a milestone!`
@@ -1253,7 +1260,7 @@ const Views = {
       title: session.workoutName || 'Workout',
       back: '#/history',
       html: `
-        ${session.quick ? '<p class="past-quick"><span class="tag tag-quick">Quick</span> Not in your week. Its sets only count for the streak when they make up missed sets.</p>' : ''}
+        ${session.quick ? '<p class="past-quick"><span class="tag tag-quick">Quick</span> Not in your week. It still counts as a day for your streak.</p>' : ''}
         <p class="past-date">${new Date(session.date).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</p>
         ${cards}
         <div class="finish-bar stack">
@@ -1515,7 +1522,7 @@ const Views = {
     };
   },
 
-  // Units and About you, in the form that Settings and the first-time setup share.
+  // Units, About you and the weekly goal, in the form that Settings and the first-time setup share.
   settingsFields() {
     const s = Store.data.settings;
     const metric = Units.isMetric();
@@ -1572,6 +1579,14 @@ const Views = {
                 <span><strong>${value === 'male' ? 'Male' : 'Female'}</strong></span>
               </label>`).join('')}
           </div>
+        </div>
+      </div>
+
+      <h2>Weekly goal</h2>
+      <div class="card stack">
+        <div>
+          <label>How many days a week are you trying to go?</label>
+          ${goalPicker('weeklyGoal', s.weeklyGoal)}
         </div>
       </div>`;
   },

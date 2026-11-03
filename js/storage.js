@@ -6,8 +6,9 @@
 //
 // Shape of the saved data:
 // {
-//   version: 10,
+//   version: 11,
 //   settings: { name, units: 'imperial' | 'metric', heightIn, bodyWeightLbs, sex: 'male' | 'female',
+//               weeklyGoal (days a week you're trying to go, 1 to 7, or null until you've picked),
 //               setupDone (the first-time setup was finished or skipped),
 //               lastBackupAt (ISO, when Export was last used, or null) },
 //   bodyWeightLog: [ { day: 'YYYY-MM-DD', lbs } ],  // oldest first; one per day, for the Profile graph
@@ -28,7 +29,7 @@
 //                                         if "Use last set time" was picked for a workout left running),
 //       durationMs (how long it took, not counting pauses; missing on workouts saved before version 9),
 //       quick (true on a quick workout: a one-off, not in the plan; workoutId is null and plan is []),
-//       plan: [ { exerciseId, refId, sets } ],  // the workout's plan when it was logged (locks it for the streak)
+//       plan: [ { exerciseId, refId, sets } ],  // the workout's plan when it was logged (locks it for the week view)
 //       exercises: [ { exerciseId (the planned workout exercise it covers), refId, name, primary, secondary,
 //                      swappedFrom (the planned refId; only on exercises swapped for today),
 //                      targetSets, targetRepMin, targetRepMax,   // (not on quick workouts)
@@ -46,11 +47,14 @@
 //                    exercises: [ { id, refId, makeupFor?, repMin?, repMax? } ] (in the order added),
 //                    entries, swaps: {} }
 //   streak: {              // the weekly streak; see streak.js
-//     start: 'YYYY-MM-DD' (Monday of the first tracked week) or null until there's a plan,
-//     weeks: [ { week: 'YYYY-MM-DD' (its Monday), result: 'hit' | 'frozen' | 'missed' | 'empty',
-//                logged, planned } ],  // oldest first; changes only when a past workout is changed
-//     locks: { [week]: { [weekday]: { rest, workouts: [ { workoutId, plan } ] } } },  // each day as it was
-//                          // when it passed (3 am the next morning), last 12 weeks; see streak.js
+//     start: 'YYYY-MM-DD' (Monday of the first tracked week) or null until a workout is logged,
+//     weeks: [ { week: 'YYYY-MM-DD' (its Monday), result: 'hit' | 'frozen' | 'missed',
+//                days (different days with a workout), goal (the weekly goal it was judged against) } ],
+//                // oldest first; changes only when a past workout is changed.
+//                // Weeks from before version 11 have logged and planned (sets) instead of days and goal,
+//                // may be 'empty', and are kept as they were.
+//     locks: { [week]: { [weekday]: { rest, workouts: [ { workoutId, plan } ] } } },  // each day of this week
+//                          // as it was when it passed (3 am the next morning), for the week view; see streak.js
 //     notices: [ text ]    // shown once, next time the app opens (freeze used / streak ended)
 //   }
 // }
@@ -64,9 +68,11 @@
 // and session.durationMs (older sessions have no duration).
 // Version 10 added bodyWeightLog (started from the saved body weight), exerciseNotes, draft.added,
 // settings.setupDone (true for anyone who already had saved data) and settings.lastBackupAt.
+// Version 11 made the streak go by days a week: settings.weeklyGoal (older data starts with null,
+// so the app asks once) and days/goal on each new streak week. Old weeks keep their result.
 
 const STORAGE_KEY = 'gitfit-data';
-const DATA_VERSION = 10;
+const DATA_VERSION = 11;
 
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
@@ -83,6 +89,7 @@ const DEFAULT_SETTINGS = {
   heightIn: null,
   bodyWeightLbs: null,
   sex: 'male', // for strength standards: 'male' | 'female'
+  weeklyGoal: null, // days a week, 1 to 7; picked in the first-time setup and changed in Settings
   setupDone: false,
   lastBackupAt: null,
 };
@@ -280,6 +287,9 @@ function normalize(data) {
 
   // Anyone with saved data from before version 10 has no need for the first-time setup.
   const settings = { ...DEFAULT_SETTINGS, setupDone: data.version != null, ...data.settings };
+
+  // Version 11: anything but a whole number from 1 to 7 counts as not picked yet, and the app asks.
+  if (![1, 2, 3, 4, 5, 6, 7].includes(settings.weeklyGoal)) settings.weeklyGoal = null;
 
   // Version 10: the body weight graph starts from the weight already saved.
   const bodyWeightLog = Array.isArray(data.bodyWeightLog) ? data.bodyWeightLog : [];
@@ -726,7 +736,7 @@ const Store = {
       if (sets.length) {
         // Name and muscles are copied in, so history stays right even if the
         // exercise is later changed or removed. A swapped exercise is saved as itself,
-        // under the planned exercise's id so it still counts for the streak.
+        // under the planned exercise's id so it still counts for the planned sets.
         const swapped = draft.swaps[ex.id];
         const refId = swapped || ex.refId;
         const info = Library.forExercise({ refId });

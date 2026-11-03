@@ -4,53 +4,60 @@
 // just after midnight Sunday still counts for that week. A workout counts for the week
 // Finish was tapped in, whichever weekday it was planned for.
 //
-// A week is "hit" when every planned set of every planned workout that week is logged
-// (a set is logged when it has reps). What's planned that week:
+// THE STREAK
+// A week is "hit" when the number of different days with a logged workout reaches the weekly goal
+// (settings.weeklyGoal, 1 to 7). Any finished workout counts: planned, quick or on a rest day.
+// Several workouts on one day count as one day. A workout counts on the day Finish was tapped,
+// and a day runs 3 am → 3 am (daysIn()).
+//
+// The goal can change any time; a week is judged against the goal when it ends, and that goal is
+// saved with its result. So during the week it stays live: this week shows as hit (and celebrates)
+// the moment it reaches the goal, and goes back if the goal is raised past it or a workout is undone.
+//
+// Results:
+//   hit    → streak +1. Every WEEKS_PER_FREEZE (4) weeks in a row (streak 4, 8, 12 …) earns a freeze,
+//            up to MAX_FREEZES held.
+//   frozen → the week ended short, a freeze was held and the streak was above 0: the freeze is used
+//            and the streak stays where it is (a freeze isn't wasted on a streak of 0)
+//   missed → the week ended short with no freeze to use: streak back to 0
+//   empty  → only on weeks from before version 11, when nothing was planned: no change
+// Tracking starts the week the first workout is logged, so that week counts right away.
+//
+// Editing or deleting a past workout re-judges its week and every week after (rejudge()), each
+// against the goal saved with it. Weeks judged before version 11 used the old set-counting rules:
+// they have no saved goal, and they stay exactly as they were, never re-judged.
+//
+// Every number (current, best, freezes) is worked out from the list of results, so they can't drift.
+//
+// THE WEEK VIEW (not the streak)
+// The Workouts tab still shows each workout on a passed day as done, partial, missed or
+// "caught up <day>" (dayStates()), which goes by sets. What's planned that week:
 //   - every workout on the week (each counts once; a day with no workouts is a rest day and plans nothing)
 //   - a workout already finished this week → its plan as it was when it was first logged
 //     this week (saved with the workout), so later plan edits don't change it
-//   - a day that has passed (at 3 am the next morning) is locked as it was then (streak.locks):
-//     its workouts and their plans still count even if they're edited, deleted or moved away.
+//   - a day that has passed (at 3 am the next morning) is locked as it was then (streak.locks).
 //     A workout moved or added onto a day that has already passed still counts.
 //   - otherwise (today and later days) → the current plan
 // Each planned exercise counts at most its planned sets, so extra sets on one exercise
 // don't make up for another. Sets of an exercise swapped for today count for the one it replaced
 // only if both are in the same muscle group (Library.groupOf: Chest, Shoulders, Back, Arms,
-// Forearms, Core or Legs); otherwise they're logged but don't count.
+// Forearms, Core or Legs).
 //
-// Quick workouts (one-offs, not in the plan) only count as makeup sets:
+// Quick workouts (one-offs, not in the plan) can make up missed sets there:
 //   - planned sets still missing (after every planned workout's sets are counted) on a day that
 //     had already passed (3 am the next morning) when the quick workout was finished,
 //   - made up by quick workout sets of an exercise in the same muscle group,
 //   - each missed exercise up to its missing sets. Quick workouts fill in oldest first.
 //     An exercise added for a particular missed one (Catch up / Missed this week, entry.makeupFor)
 //     makes that one up first, then any other missed sets in its group, oldest first.
-// Days that have passed show each workout as done, partial or missed (dayStates()), and
-// "caught up <day>" when its sets were finished after its own day (late, or by makeup sets).
-// Anything else in a quick workout is logged (history, maxes, muscle map) but doesn't count
-// toward the streak. Because planned sets are counted first, doing the planned workout late
-// as well never counts the same sets twice.
-//
-// Each week's result is decided once and only changes if a workout is changed later
-// (editing or deleting a past workout re-judges its week and every week after: rejudge(),
-// and Undo right after finishing takes back a hit that workout made: undoHit()):
-//   hit    → streak +1. Decided the moment it happens. Every WEEKS_PER_FREEZE (4) weeks in a row
-//            (streak 4, 8, 12 …) earns a freeze, up to MAX_FREEZES held.
-//   frozen → the week ended with at least FREEZE_LINE (90%) of planned sets, a freeze was held
-//            and the streak was above 0: the freeze is used and the streak stays where it is
-//   missed → anything else when the week ends: streak back to 0
-//   empty  → nothing was planned: no change
-// Tracking starts the first full week after a plan with at least one exercise exists.
-//
-// Every number (current, best, freezes) is worked out from the list of results, so they can't drift.
+// Because planned sets are counted first, doing the planned workout late as well never counts
+// the same sets twice.
 
 const WEEK_START_HOUR = 3;
-const FREEZE_LINE = 0.9;
 const MAX_FREEZES = 2;
 const WEEKS_PER_FREEZE = 4; // a freeze is earned at streak 4, 8, 12 …
 const MILESTONE_WEEKS = 4;  // a bigger celebration every 4 weeks
 const RECENT_WEEKS = 8;    // past weeks shown in the strip on Profile (plus this week)
-const LOCK_WEEKS = 12;     // day locks kept this many weeks back (re-judging older weeks uses the current plan)
 
 // Monday 3 am of the week a time falls in.
 function weekStartOf(time) {
@@ -121,9 +128,19 @@ const Streak = {
   // Set when a week is hit, to the new streak number; app.js shows the celebration and clears it.
   celebrate: null,
 
-  // Planned and logged sets for one week, counting finished workouts only.
-  // Also returns missed = { [group]: sets } — planned sets on days that have passed (by `now`)
-  // still missing after makeup sets, by muscle group (ready for a "Missed this week" list).
+  // How many different days of a week have a logged workout. The streak goes by this number.
+  // (daysPassed gives a time's day of its week, with the day changing at 3 am.)
+  daysIn(key) {
+    const days = new Set();
+    for (const s of Store.data.sessions) {
+      const time = new Date(s.date).getTime();
+      if (weekKey(time) === key && s.exercises.some(e => e.sets.length)) days.add(daysPassed(time));
+    }
+    return days.size;
+  },
+
+  // Planned and logged sets for one week, counting finished workouts only. For the week view
+  // (dayStates()); the streak doesn't use it.
   progress(key, now = Date.now()) {
     const sessions = Store.data.sessions.filter(s => weekKey(s.date) === key);
     const locks = Store.data.streak.locks[key] || {};
@@ -154,8 +171,6 @@ const Streak = {
     const items = [];
 
     // 1. Planned workouts' own sets (in whichever session of that workout, any day this week).
-    let planned = 0;
-    let logged = 0;
     for (const { workoutId, weekday, plan: dayPlan } of plannedWorkouts) {
       const done = sessions.filter(s => s.workoutId === workoutId)
         .sort((a, b) => new Date(a.date) - new Date(b.date));
@@ -165,7 +180,6 @@ const Streak = {
         const item = { workoutId, weekday, exerciseId: p.exerciseId, refId: p.refId,
           group: Library.groupOf(Library.forExercise(p)), sets: p.sets, short: p.sets, credits: [] };
         items.push(item);
-        planned += p.sets;
         for (const s of done) {
           // A swapped-in exercise only counts if it's in the same group as the planned one.
           const sets = s.exercises.filter(e => e.exerciseId === p.exerciseId
@@ -197,15 +211,10 @@ const Streak = {
         }
       }
     }
-    logged = items.reduce((n, i) => n + i.sets - i.short, 0);
 
-    // 3. What's still missed on days that have passed (a whole ended week has passed).
+    // How many days have passed (a whole ended week has passed).
     const passedNow = key < weekKey(now) ? 7 : key === weekKey(now) ? daysPassed(now) : 0;
-    const missed = {};
-    for (const item of items) {
-      if (item.short && item.group && item.weekday < passedNow) missed[item.group] = (missed[item.group] || 0) + item.short;
-    }
-    return { planned, logged, missed, items, passedNow };
+    return { items, passedNow };
   },
 
   // How each planned workout on a day that has passed this week went, for the week screen
@@ -248,19 +257,6 @@ const Streak = {
     return changed;
   },
 
-  // A workout on a day that has passed this week, not done yet this week, that still counts
-  // as it was (so editing or deleting it won't change this week). Returns that day's name, or null.
-  lockedDay(workoutId, now = Date.now()) {
-    const key = weekKey(now);
-    const locks = Store.data.streak.locks[key] || {};
-    if (Store.data.sessions.some(s => s.workoutId === workoutId && weekKey(s.date) === key)) return null;
-    for (const weekday in locks) {
-      const lock = locks[weekday];
-      if (!lock.rest && lock.workouts.some(w => w.workoutId === workoutId)) return WEEKDAYS[weekday];
-    }
-    return null;
-  },
-
   // Current streak, best streak and freezes held, from the week results so far.
   totals(weeks = Store.data.streak.weeks) {
     let current = 0, best = 0, freezes = 0;
@@ -278,38 +274,48 @@ const Streak = {
     return { current, best, freezes };
   },
 
-  // Brings the streak up to date: starts tracking once there's a plan, decides every
-  // week that has ended, and locks this week as hit as soon as it is.
+  // Brings the streak up to date: decides every week that has ended, and keeps this week's
+  // hit in step with its days and the goal. Waits until there's a goal (data from before
+  // version 11 is asked once, before anything else).
+  // goals = { [week]: goal } when re-judging: the goal each ended week was judged against.
   // Safe to call any time; returns true if anything changed.
-  update(now = Date.now(), { quiet = false } = {}) {
+  update(now = Date.now(), { quiet = false, goals = {} } = {}) {
     const streak = Store.data.streak;
     const thisWeek = weekKey(now);
+    const goal = Store.data.settings.weeklyGoal;
+    if (goal == null) return false;
 
-    if (!streak.start) {
-      const hasPlan = Store.plannedWorkouts().some(w => w.exercises.length);
-      if (!hasPlan) return false;
-      streak.start = addWeeks(thisWeek, 1);
-      Store.save();
-      return true;
+    // Only this week's locks are ever used (the week view), so older ones are dropped.
+    let changed = this.lockDays(thisWeek, daysPassed(now));
+    for (const key in streak.locks) {
+      if (key < thisWeek) {
+        delete streak.locks[key];
+        changed = true;
+      }
     }
 
-    let changed = false;
+    if (!streak.start) {
+      if (!this.daysIn(thisWeek)) {
+        if (changed) Store.save();
+        return changed;
+      }
+      streak.start = thisWeek;
+      changed = true;
+    }
+
     const last = streak.weeks[streak.weeks.length - 1];
     for (let key = last ? addWeeks(last.week, 1) : streak.start; key < thisWeek; key = addWeeks(key, 1)) {
-      // Days of an ended week not locked yet (the app was closed) are as they are now.
-      // (When re-judging, older weeks keep whatever locks they have.)
-      if (!quiet && this.lockDays(key, 7)) changed = true;
-      const { planned, logged } = this.progress(key);
+      const days = this.daysIn(key);
+      const weekGoal = goals[key] ?? goal;
       const before = this.totals();
       let result;
-      if (!planned) result = 'empty';
-      else if (logged >= planned) result = 'hit';
+      if (days >= weekGoal) result = 'hit';
       // (A freeze isn't wasted on a streak of 0.)
-      else if (logged / planned >= FREEZE_LINE && before.freezes > 0 && before.current > 0) result = 'frozen';
+      else if (before.freezes > 0 && before.current > 0) result = 'frozen';
       else result = 'missed';
-      streak.weeks.push({ week: key, result, logged, planned });
+      streak.weeks.push({ week: key, result, days, goal: weekGoal });
 
-      const done = `${weekRange(key)}: you logged ${logged} of ${planned} sets (${percent(logged, planned)}%).`;
+      const done = `${weekRange(key)}: you worked out on ${days} of ${weekGoal} day${weekGoal === 1 ? '' : 's'}.`;
       if (quiet) {
         // Re-judged after a past workout was edited: no notice.
       } else if (result === 'frozen') {
@@ -317,24 +323,28 @@ const Streak = {
         streak.notices.push(`${done} A streak freeze was used, so your ${before.current}-week streak is safe. `
           + `${left} freeze${left === 1 ? '' : 's'} left.`);
       } else if (result === 'missed' && before.current > 0) {
-        const why = logged / planned >= FREEZE_LINE ? ' You were over 90%, but had no freezes left.' : '';
-        streak.notices.push(`${done}${why} Your ${before.current}-week streak ended — start a new one this week!`);
+        streak.notices.push(`${done} Your ${before.current}-week streak ended — start a new one this week!`);
       }
       changed = true;
     }
 
     if (thisWeek >= streak.start) {
-      if (this.lockDays(thisWeek, daysPassed(now))) changed = true;
-      const oldest = addWeeks(thisWeek, -LOCK_WEEKS);
-      for (const key in streak.locks) if (key < oldest) delete streak.locks[key];
-    }
-
-    if (thisWeek >= streak.start && !streak.weeks.some(w => w.week === thisWeek)) {
-      const { planned, logged } = this.progress(thisWeek);
-      if (planned && logged >= planned) {
-        streak.weeks.push({ week: thisWeek, result: 'hit', logged, planned });
+      const days = this.daysIn(thisWeek);
+      const record = streak.weeks.find(w => w.week === thisWeek);
+      if (!record && days >= goal) {
+        streak.weeks.push({ week: thisWeek, result: 'hit', days, goal });
         this.celebrate = this.totals().current;
         changed = true;
+      } else if (record && record.goal != null) { // (a hit from before version 11 stays as it is)
+        if (days < goal) {
+          // The goal went up past it, or a workout was undone or deleted: not hit after all.
+          streak.weeks = streak.weeks.filter(w => w !== record);
+          changed = true;
+        } else if (record.days !== days || record.goal !== goal) {
+          record.days = days;
+          record.goal = goal;
+          changed = true;
+        }
       }
     }
 
@@ -342,32 +352,26 @@ const Streak = {
     return changed;
   },
 
-  // Undo of a finished workout that hit this week: takes the hit back off,
-  // so it can be hit again once the workout is finished for real.
-  // A past workout was edited or deleted: that week and every week after it are judged
-  // again from the workouts as they are now, so the streak and freezes match them.
+  // A past workout was edited or deleted: that week and every week after it are judged again
+  // from the workouts as they are now, each against the goal it had, so the streak and freezes
+  // match them. Weeks from before version 11 (no saved goal) stay as they were.
   // Re-judged weeks don't show notices. This week only celebrates if it wasn't already hit.
   rejudge(sessionDate, now = Date.now()) {
     const streak = Store.data.streak;
     const from = weekKey(new Date(sessionDate).getTime());
     const thisWeek = weekKey(now);
     const wasHit = streak.weeks.some(w => w.week === thisWeek && w.result === 'hit');
-    streak.weeks = streak.weeks.filter(w => w.week < from);
-    this.update(now, { quiet: true });
+    const goals = {};
+    for (const w of streak.weeks) if (w.goal != null) goals[w.week] = w.goal;
+    streak.weeks = streak.weeks.filter(w => w.week < from || w.goal == null);
+    this.update(now, { quiet: true, goals });
     if (wasHit) this.celebrate = null;
-    Store.save();
-  },
-
-  undoHit(now = Date.now()) {
-    const streak = Store.data.streak;
-    streak.weeks = streak.weeks.filter(w => !(w.week === weekKey(now) && w.result === 'hit'));
-    this.celebrate = null;
     Store.save();
   },
 
   // Everything the Profile shows:
   //   started (false until the first tracked week), start (its key), totals,
-  //   week = this week's { planned, logged, hit },
+  //   week = this week's { days, goal, hit },
   //   recent = the last RECENT_WEEKS weeks + this one, oldest first: [{ key, status }]
   //     status: 'hit' | 'frozen' | 'missed' | 'empty' | 'current' (this week, not hit yet) | 'untracked'
   summary(now = Date.now()) {
@@ -385,16 +389,11 @@ const Streak = {
       started: Boolean(streak.start) && thisWeek >= streak.start,
       start: streak.start,
       totals: this.totals(),
-      week: { ...this.progress(thisWeek), hit: record(thisWeek)?.result === 'hit' },
+      week: { days: this.daysIn(thisWeek), goal: Store.data.settings.weeklyGoal, hit: record(thisWeek)?.result === 'hit' },
       recent,
     };
   },
 };
-
-// Whole percent, rounded down so 89.9% never shows as 90%.
-function percent(part, whole) {
-  return Math.floor(part / whole * 100);
-}
 
 // "Oct 26 – Nov 1" for a week key.
 function weekRange(key) {
