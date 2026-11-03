@@ -37,16 +37,17 @@ const Stats = {
   MIN_WEEKS: 3, // an exercise needs this many different weeks logged to count for growth
 
   // { muscleId: % change in estimated max over the last 6 weeks }
-  // A bodyweight exercise uses its max reps instead of an estimated max (8 → 10 reps = +25%).
+  // A bodyweight exercise uses its max reps instead of an estimated max (8 → 10 reps = +25%),
+  // and a timed one its longest hold (40 → 50 sec = +25%).
   // For each exercise: its first vs. latest best set in that time. A muscle's number is
   // the average over its exercises (secondary ones count half). Muscles without
   // enough data are left out.
   muscleGrowth(now = Date.now()) {
     const exercises = {};
     for (const entry of loggedSince(now - this.GROWTH_WEEKS * WEEK_MS)) {
-      if (Library.isTimed(entry.refId)) continue; // seconds, not a max
-      const repsOnly = Library.isRepsOnly(entry.refId);
-      const best = Math.max(0, ...entry.sets.map(set => (repsOnly ? set.reps : estimateMax(set)) || 0));
+      // A plank's seconds are saved as its reps, so this covers both.
+      const noEstimate = Library.isRepsOnly(entry.refId) || Library.isTimed(entry.refId);
+      const best = Math.max(0, ...entry.sets.map(set => (noEstimate ? set.reps : estimateMax(set)) || 0));
       if (!best) continue; // no reps, or no weight to estimate a max from
       if (!exercises[entry.refId]) exercises[entry.refId] = { entry, points: [] };
       exercises[entry.refId].points.push({ time: entry.time, best });
