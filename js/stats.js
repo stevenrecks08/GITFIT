@@ -133,4 +133,9 @@ const Stats = {
   weekPlannedSets() {
     return this.plannedSets(Store.plannedWorkouts().flatMap(w => w.exercises));
   },
+
+  // Planned sets for one day: every workout on that weekday.
+  dayPlannedSets(weekday) {
+    return this.plannedSets(Store.workoutsOn(weekday).flatMap(w => w.exercises));
+  },
 };

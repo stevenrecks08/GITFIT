@@ -110,9 +110,9 @@ function setsRow(action, id, isOpen, label, fraction, sets, extraClass = '') {
     </button>`;
 }
 
-// Planned sets per muscle group for the week, each with a bar. Tapping a group shows
+// Planned sets per muscle group for the week or one day, each with a bar. Tapping a group shows
 // its muscles; tapping a muscle shows the exercises behind its number.
-//   planned = Stats.weekPlannedSets()   open = { groups: Set of names, muscles: Set of ids }
+//   planned = Stats.weekPlannedSets() or dayPlannedSets()   open = { groups: Set of names, muscles: Set of ids }
 // Group bars fill at SETS_SCALE sets. Muscle bars share one scale across every group
 // (the most-trained muscle fills its bar), so any two muscles can be compared.
 function plannedSetsTable(planned, open) {
@@ -719,7 +719,8 @@ const Views = {
   // ---------- A planned workout before it's started: a look only, nothing to type in ----------
   // Shows what you did last time, each exercise's note and log. Start workout is what starts it
   // (and its timer). Dashed cards make it look different from the real thing.
-  workoutPreview(workout) {
+  // openSets = which rows of the day's planned sets card are expanded (shared with the week's card).
+  workoutPreview(workout, openSets) {
     if (!workout.exercises.length) {
       return {
         title: workout.name,
@@ -759,6 +760,9 @@ const Views = {
         </div>
         ${cards}
         <p class="muted preview-tip">Only log your working sets, not your warm-ups.</p>
+
+        <h2>Planned sets on ${WEEKDAYS[workout.weekday]}</h2>
+        ${plannedSetsTable(Stats.dayPlannedSets(workout.weekday), openSets)}
       `,
     };
   },

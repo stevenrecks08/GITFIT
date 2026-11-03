@@ -99,8 +99,9 @@ function goAndReturn(hash) {
 // stays on the Workouts tab until Close, or until the app is fully closed.
 let summary = null;
 
-// Planned sets card on the Workouts tab: which groups and muscles are expanded.
-// Kept while the app is open, so going into a day and back leaves them as they were.
+// Planned sets cards (the week's on the Workouts tab, a day's on a workout's preview): which
+// groups and muscles are expanded. Kept while the app is open, so going into a day and back
+// leaves them as they were.
 const openSets = { groups: new Set(), muscles: new Set() };
 
 // Swap for today on the workout screen: whose exercise search is open, and what's typed.
@@ -301,7 +302,7 @@ function render() {
       screen = Views.workout(Store.draftWorkout(), draft, openExerciseId, swap, quickAdd, picker);
     } else {
       // Not started: just a look. Start workout is what starts it (and the timer).
-      screen = Views.workoutPreview(workout);
+      screen = Views.workoutPreview(workout, openSets);
     }
   }
 
