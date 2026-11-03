@@ -1073,9 +1073,9 @@ const Views = {
       title: 'Welcome to GitFit',
       back: null,
       html: `
-        <p class="setup-intro">A few quick details. You can change these any time in Settings.</p>
+        <p class="setup-intro">A few quick details. You can change these any time.</p>
         <form id="settings-form">
-          ${this.settingsFields()}
+          ${this.settingsFields(true)}
         </form>
         <p class="muted setup-tip">When you work out, only log your working sets, not your warm-ups.</p>
         <div class="finish-bar stack">
@@ -1558,7 +1558,8 @@ const Views = {
   },
 
   // Units, About you and the weekly goal, in the form that Settings and the first-time setup share.
-  settingsFields() {
+  // withBodyWeight = also ask for body weight (first-time setup only; after that it's on Profile).
+  settingsFields(withBodyWeight = false) {
     const s = Store.data.settings;
     const metric = Units.isMetric();
     const height = Units.showHeight(s.heightIn);
@@ -1597,6 +1598,15 @@ const Views = {
           <label for="height">Height</label>
           ${heightFields}
         </div>
+        ${withBodyWeight ? `
+        <div>
+          <label for="body-weight">Body weight</label>
+          <div class="row range-row">
+            <input id="body-weight" name="bodyWeight" type="text" inputmode="decimal"
+              value="${Units.showWeight(s.bodyWeightLbs)}" placeholder="0">
+            <span class="range-sep">${Units.weightUnit()}</span>
+          </div>
+        </div>` : ''}
         <div>
           <label>Sex <span class="muted">(for strength levels)</span></label>
           <div class="choices">

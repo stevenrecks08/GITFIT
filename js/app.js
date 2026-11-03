@@ -1371,6 +1371,13 @@ function saveSettingsForm(form) {
     Streak.update();
     showOverlay();
   }
+  // The body weight box is only on the first-time setup. It's logged under today, and only when
+  // the box really changed (not its rounded display value). Emptied again: nothing is logged.
+  if (values.bodyWeight !== undefined && values.bodyWeight.trim() !== Units.showWeight(Store.data.settings.bodyWeightLbs)) {
+    const lbs = Units.readWeight(values.bodyWeight);
+    if (lbs > 0) Store.setBodyWeight(lbs);
+    else Store.deleteBodyWeight(dayKey(new Date()));
+  }
 }
 
 // Saves when you leave a box (or pick an option).
