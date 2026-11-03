@@ -983,7 +983,42 @@ const Views = {
           <input name="weight" type="text" inputmode="decimal" placeholder="Today's weight (${unit})" autocomplete="off" aria-label="Today's body weight in ${unit}">
           <button class="btn btn-primary btn-small">Log</button>
         </form>
+        <a class="btn bw-log-link" href="#/body-weight">Body weight log</a>
       </div>`;
+  },
+
+  // ---------- Body weight log: every weight entered, newest first, each can be edited or deleted ----------
+  // editDay = the day whose weight is open for editing (null = none)
+  bodyWeightLog(editDay) {
+    const unit = Units.weightUnit();
+    const row = entry => {
+      const date = fromDayKey(entry.day).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+      if (entry.day === editDay) {
+        return `
+          <div class="custom-row bw-editing">
+            <span class="custom-info"><span>${date}</span></span>
+            <form id="bw-edit-form" class="bw-form">
+              <input id="bw-edit-weight" name="weight" type="text" inputmode="decimal" value="${Units.showWeight(entry.lbs)}" autocomplete="off" aria-label="Body weight in ${unit}">
+              <button class="btn btn-primary btn-small">Save</button>
+              <button type="button" class="btn btn-small" data-action="bw-edit-cancel">Cancel</button>
+            </form>
+          </div>`;
+      }
+      return `
+        <div class="custom-row">
+          <span class="custom-info"><strong>${Units.showWeight(entry.lbs)} ${unit}</strong><span>${date}</span></span>
+          <button type="button" class="btn btn-small" data-action="bw-edit" data-id="${entry.day}">Edit</button>
+          <button type="button" class="btn btn-small btn-danger" data-action="bw-delete" data-id="${entry.day}">Delete</button>
+        </div>`;
+    };
+    const log = [...Store.data.bodyWeightLog].reverse();
+    return {
+      title: 'Body weight log',
+      back: '#/profile',
+      html: log.length
+        ? `<div class="card custom-list">${log.map(row).join('')}</div>`
+        : '<p class="empty">No weights logged yet. Log your weight on Profile to start.</p>',
+    };
   },
 
   // ---------- After finishing a workout: stays up until closed (or the app is closed) ----------
@@ -1328,7 +1363,7 @@ const Views = {
     if (mode === 'level') {
       caption = Store.data.settings.bodyWeightLbs
         ? `Strength level vs. published standards (${STANDARDS_SOURCE})`
-        : 'Add your body weight in Settings to see levels';
+        : 'Log your body weight above to see levels';
       legend = `
         <div class="legend-levels">${LEVELS.map((label, i) =>
           `<span><i style="background:${LEVEL_COLORS[i]}"></i>${label}</span>`).join('')}</div>
@@ -1359,7 +1394,7 @@ const Views = {
   musclePopup(id, mode) {
     const name = MUSCLES[id];
     if (mode === 'level') {
-      if (!Store.data.settings.bodyWeightLbs) return `${name}: add your body weight in Settings`;
+      if (!Store.data.settings.bodyWeightLbs) return `${name}: log your body weight to see levels`;
       const value = Stats.muscleLevels()[id];
       if (value) return `${name}: ${LEVELS[value.level]} (${value.exercise})`;
       return Stats.hasStandards(id) ? `${name}: no logged exercise with a standard yet` : `${name}: no exercises with standards`;
@@ -1561,14 +1596,6 @@ const Views = {
         <div>
           <label for="height">Height</label>
           ${heightFields}
-        </div>
-        <div>
-          <label for="body-weight">Body weight</label>
-          <div class="row range-row">
-            <input id="body-weight" name="bodyWeight" type="text" inputmode="decimal"
-              value="${Units.showWeight(s.bodyWeightLbs)}" placeholder="0">
-            <span class="range-sep">${Units.weightUnit()}</span>
-          </div>
         </div>
         <div>
           <label>Sex <span class="muted">(for strength levels)</span></label>

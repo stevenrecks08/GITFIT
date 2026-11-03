@@ -14,6 +14,7 @@
 //   (Profile also shows the muscle map; see bodymap.js and stats.js)
 //   #/log              → search exercises to see their log [Profile tab]
 //   #/log/<exercise>   → one exercise's log         [Profile tab]
+//   #/body-weight      → every body weight logged, to edit or delete [Profile tab]
 // Using the URL means the browser/phone Back gesture works for free.
 
 const appEl = document.getElementById('app');
@@ -117,6 +118,9 @@ let logState = { month: null, day: null, range: 'all' };
 
 // What the muscle map on Profile shows: 'growth' or 'level'.
 let mapMode = 'growth';
+
+// Body weight log: the day whose weight is open for editing (null = none).
+let bwEditDay = null;
 
 // A past workout being edited (nothing is saved until Save changes):
 //   { sessionId, exercises: [{ entry (the saved exercise, without its sets), rows: [{ weight (lbs or null), reps (text) }] }],
@@ -225,6 +229,7 @@ function currentRoute() {
   }
   if (parts[0] === 'profile') return { view: 'profile', tab: 'profile' };
   if (parts[0] === 'settings') return { view: 'settings', tab: 'profile' };
+  if (parts[0] === 'body-weight') return { view: 'body-weight', tab: 'profile' };
   if (parts[0] === 'log') {
     return parts[1]
       ? { view: 'exercise-log', refId: decodeURIComponent(parts[1]), tab: 'profile' }
@@ -263,6 +268,8 @@ function render() {
     screen = Views.profile(mapMode);
   } else if (route.view === 'settings') {
     screen = Views.settings();
+  } else if (route.view === 'body-weight') {
+    screen = Views.bodyWeightLog(bwEditDay);
   } else if (route.view === 'log') {
     screen = Views.logSearch(logQuery);
   } else if (route.view === 'exercise-log') {
@@ -535,6 +542,37 @@ const actions = {
     Store.deleteCustomExercise(id);
     picker = newPicker();
     toast(`Deleted ${name}`);
+    render();
+  },
+
+  // Body weight log: opens one day's weight in a box, ready to type over.
+  'bw-edit'(day) {
+    bwEditDay = day;
+    render();
+    document.getElementById('bw-edit-weight').select();
+  },
+
+  'bw-edit-cancel'() {
+    bwEditDay = null;
+    render();
+  },
+
+  'bw-delete'(day) {
+    const entry = Store.data.bodyWeightLog.find(e => e.day === day);
+    showDialog({
+      title: `Delete ${Units.showWeight(entry.lbs)} ${Units.weightUnit()}?`,
+      lines: [`This removes the weight logged on ${shortDate(fromDayKey(day))} from your log and graph.`],
+      confirm: { label: 'Delete weight', action: 'bw-delete-confirm', id: day },
+      cancel: { label: 'Cancel', action: 'dialog-cancel' },
+      danger: true,
+    });
+  },
+
+  'bw-delete-confirm'(day) {
+    hideDialog();
+    Store.deleteBodyWeight(day);
+    bwEditDay = null;
+    toast('Weight deleted');
     render();
   },
 
@@ -1333,11 +1371,6 @@ function saveSettingsForm(form) {
     Streak.update();
     showOverlay();
   }
-  // Body weight is logged with today's date, so only when the box really changed
-  // (not its rounded display value when some other setting changes).
-  if (values.bodyWeight.trim() !== Units.showWeight(Store.data.settings.bodyWeightLbs)) {
-    Store.setBodyWeight(Units.readWeight(values.bodyWeight));
-  }
 }
 
 // Saves when you leave a box (or pick an option).
@@ -1406,6 +1439,24 @@ appEl.addEventListener('submit', event => {
     }
     Store.setBodyWeight(lbs);
     toast('Body weight logged');
+    render();
+    return;
+  }
+
+  // Fixing one weight on the body weight log. Only saved if the box really changed
+  // (not its rounded display value, e.g. in kg).
+  if (form.id === 'bw-edit-form') {
+    const lbs = Units.readWeight(values.weight);
+    if (!(lbs > 0)) {
+      toast('Type your weight first');
+      return;
+    }
+    const entry = Store.data.bodyWeightLog.find(e => e.day === bwEditDay);
+    if (values.weight.trim() !== Units.showWeight(entry.lbs)) {
+      Store.editBodyWeight(bwEditDay, lbs);
+      toast('Weight updated');
+    }
+    bwEditDay = null;
     render();
     return;
   }
@@ -1512,6 +1563,7 @@ window.addEventListener('hashchange', () => {
   quickAdd = { open: false, query: '' };
   logState = back ? back.logState : { month: null, day: null, range: 'all' };
   newForm = null;
+  bwEditDay = null;
   // Unsaved edits to a past workout are kept while one of its Log buttons is being looked at.
   if (view !== 'past' && !returnStack.some(entry => entry.hash.startsWith('#/history/'))) pastEdit = null;
   render();

@@ -75,7 +75,7 @@ const Stats = {
   // { muscleId: { level: 0–4, exercise: 'Incline Barbell Bench Press' } }
   // Each exercise with published standards (standards.js) is placed into a level from its
   // latest estimated max, your body weight and sex. A muscle takes the best level among the
-  // exercises that train it as a primary muscle. Empty without a body weight in Settings.
+  // exercises that train it as a primary muscle. Empty without a logged body weight.
   muscleLevels() {
     const { sex, bodyWeightLbs } = Store.data.settings;
     const levels = {};

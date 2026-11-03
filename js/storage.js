@@ -515,7 +515,7 @@ const Store = {
     this.save();
   },
 
-  // The weight a new set starts with (lbs or null): your body weight from Settings on a
+  // The weight a new set starts with (lbs or null): your latest logged body weight on a
   // bodyweight exercise, otherwise last time's weight. It's only a starting value, so
   // a weighted pull-up can just be typed over. A timed exercise (plank) never has a weight.
   startWeight(refId, lastWeight) {
@@ -789,7 +789,7 @@ const Store = {
   // What's still empty in the workout in progress, shown before finishing:
   //   [{ name: 'Barbell Bench Press', problems: ['Set 3: no reps', 'Set 2: no weight'] }]
   // A set with no reps won't be saved. A missing weight is only flagged on
-  // non-bodyweight exercises (a bodyweight set can have none, if no body weight is in Settings).
+  // non-bodyweight exercises (a bodyweight set can have none, if no body weight is logged).
   draftGaps() {
     const draft = this.data.draft;
     const workout = this.draftWorkout();
@@ -890,16 +890,36 @@ const Store = {
   },
 
   // Changes your body weight and logs it under today (a second change today replaces the first).
-  // Emptying it clears the setting but leaves the graph as it was.
   setBodyWeight(lbs) {
     this.data.settings.bodyWeightLbs = lbs;
-    if (lbs != null) {
-      const today = dayKey(new Date());
-      const log = this.data.bodyWeightLog;
-      if (log[log.length - 1]?.day === today) log[log.length - 1].lbs = lbs;
-      else log.push({ day: today, lbs });
-    }
+    const today = dayKey(new Date());
+    const log = this.data.bodyWeightLog;
+    if (log[log.length - 1]?.day === today) log[log.length - 1].lbs = lbs;
+    else log.push({ day: today, lbs });
     this.save();
+  },
+
+  // Fixes the weight logged on one day.
+  editBodyWeight(day, lbs) {
+    const entry = this.data.bodyWeightLog.find(e => e.day === day);
+    if (!entry) return;
+    entry.lbs = lbs;
+    this.syncBodyWeight();
+    this.save();
+  },
+
+  // Removes the weight logged on one day.
+  deleteBodyWeight(day) {
+    this.data.bodyWeightLog = this.data.bodyWeightLog.filter(e => e.day !== day);
+    this.syncBodyWeight();
+    this.save();
+  },
+
+  // "Your body weight" (used for levels and bodyweight exercises) is always the newest entry
+  // in the log, or none once the log is empty.
+  syncBodyWeight() {
+    const log = this.data.bodyWeightLog;
+    this.data.settings.bodyWeightLbs = log.length ? log[log.length - 1].lbs : null;
   },
 
   // ---------- Backup ----------
