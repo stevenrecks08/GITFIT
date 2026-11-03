@@ -766,12 +766,21 @@ main.is-searching { padding-bottom: 100vh; }
 .workout-status.is-live [data-sets-done] { font-weight: 700; font-variant-numeric: tabular-nums; }
 .status-bar { flex: 0 0 100%; height: 6px; margin-top: 6px; border-radius: 999px; background: rgba(255, 255, 255, 0.12); overflow: hidden; }
 .status-bar i { display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width 0.25s ease-out; }
-.workout-status.is-preview { border: 1px dashed var(--muted); color: var(--muted); }
-.workout-status.is-preview strong { color: var(--text); }
 
-/* The look at a workout before it's started: dashed cards with nothing to type in */
+/* The look at a workout before it's started: Start workout and the pencil on top,
+   then dashed cards with nothing to type in. Past workouts use the same cards. */
+.start-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.start-row .btn { flex: 1; }
+.start-row .icon-btn { margin-right: 0; }
 .preview-ex { border-style: dashed; }
 .preview-ex + .preview-ex { margin-top: 8px; }
+/* Past workouts: the sets sit right under the heading; the exercise being edited gets a solid green edge */
+.past-sets { margin-top: 12px; }
+.past-date { margin-bottom: 12px; }
+.preview-ex.is-editing { border-style: solid; border-color: var(--accent); }
+.preview-ex.is-editing .icon-btn { color: var(--accent); }
+.preview-ex .past-hint { margin: 10px 0 8px; }
+.preview-head .swap-note { color: var(--rest); }
 .preview-head { display: flex; align-items: center; gap: 10px; }
 .preview-last { margin: 12px 0 6px; font-size: 13px; color: var(--muted); }
 .preview-tip { margin: 14px 0 0; font-size: 14px; }

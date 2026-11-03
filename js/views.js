@@ -716,7 +716,7 @@ const Views = {
 
   // ---------- A planned workout before it's started: a look only, nothing to type in ----------
   // Shows what you did last time, each exercise's note and log. Start workout is what starts it
-  // (and its timer). Dashed cards and a "Not started" strip make it look different from the real thing.
+  // (and its timer). Dashed cards make it look different from the real thing.
   workoutPreview(workout) {
     if (!workout.exercises.length) {
       return {
@@ -751,13 +751,12 @@ const Views = {
       title: workout.name,
       back: '#/',
       html: `
-        <div class="workout-status is-preview"><strong>Not started</strong><span>Looking only. Nothing is being logged.</span></div>
+        <div class="start-row">
+          <button type="button" class="btn btn-primary" data-action="start-workout" data-id="${workout.id}">Start workout</button>
+          <button type="button" class="icon-btn" data-action="edit-workout" data-id="${workout.id}" aria-label="Edit ${esc(workout.name)}">${PENCIL_SVG}</button>
+        </div>
         ${cards}
         <p class="muted preview-tip">Only log your working sets, not your warm-ups.</p>
-        <div class="finish-bar stack">
-          <button type="button" class="btn btn-primary" data-action="start-workout" data-id="${workout.id}">Start workout</button>
-          <button type="button" class="btn" data-action="edit-workout" data-id="${workout.id}">Edit workout</button>
-        </div>
       `,
     };
   },
@@ -1200,13 +1199,16 @@ const Views = {
     };
   },
 
-  // ---------- One past workout, opened to fix its weights and reps ----------
-  // edit = the changes being made (see pastEdit in app.js): { exercises: [{ entry, rows }] }
+  // ---------- One past workout: looks like the workout start page, with a pencil on each exercise ----------
+  // The pencil opens that exercise's boxes, to fix its weights and reps or fill in a forgotten set.
+  // edit = the changes being made (see pastEdit in app.js): { exercises: [{ entry, rows }], editing (index or null) }
   pastWorkout(session, edit) {
     const unit = Units.weightUnit();
     const cards = edit.exercises.map((e, x) => {
       const timed = Library.isTimed(e.entry.refId);
       const info = Library.forExercise(e.entry);
+      const isEditing = edit.editing === x;
+      const logged = e.rows.filter(set => set.reps !== '');
       const rows = e.rows.map((set, i) => `
         <div class="set-num">${i + 1}</div>
         ${timed ? LOCKED_WEIGHT : `<input type="text" inputmode="decimal" value="${Units.showWeight(set.weight)}" placeholder="${unit}"
@@ -1215,25 +1217,35 @@ const Views = {
           data-past="${x}" data-set="${i}" data-field="reps" aria-label="Set ${i + 1} ${timed ? 'seconds' : 'reps'}">`).join('');
       const swappedFrom = e.entry.swappedFrom ? Library.forExercise({ refId: e.entry.swappedFrom }).name : '';
       return `
-        <div class="card workout-ex is-open">
-          <div class="ex-toggle">
+        <div class="card preview-ex ${isEditing ? 'is-editing' : ''}">
+          <div class="preview-head">
             <span class="ex-num">${x + 1}</span>
             <span class="ex-toggle-main">
               <span class="ex-title">${esc(e.entry.name)}</span>
               ${swappedFrom ? `<span class="ex-sub swap-note">Swapped · planned: ${esc(swappedFrom)}</span>` : ''}
+              ${e.entry.targetRepMin ? `<span class="ex-sub">Target ${targetText({ sets: e.entry.targetSets, repMin: e.entry.targetRepMin, repMax: e.entry.targetRepMax }, timed)}</span>` : ''}
             </span>
             ${e.entry.refId ? logButton(e.entry.refId) : ''}
+            <button type="button" class="icon-btn" data-action="past-edit-exercise" data-id="${x}"
+              aria-label="Edit ${esc(e.entry.name)}" aria-pressed="${isEditing}">${PENCIL_SVG}</button>
           </div>
-          <div class="ex-body">
+          ${isEditing ? `
+            <p class="muted past-hint">Sets with no ${timed ? 'time' : 'reps'} aren't saved.</p>
             <div class="set-grid">
               <div class="col-head">Set</div>
               ${weightHead(info, unit)}
               <div class="col-head">${timed ? 'Seconds' : 'Reps'}</div>
               ${rows}
-            </div>
-          </div>
+            </div>`
+            : logged.length ? setsList(logged, timed).replace('class="log-sets"', 'class="log-sets past-sets"')
+            : '<p class="preview-last">No sets logged</p>'}
         </div>`;
     }).join('');
+
+    // Save and Discard only show once there's something to save or discard.
+    const editButtons = edit.editing != null || pastEditChanged() ? `
+      <button class="btn btn-primary" data-action="past-save">Save changes</button>
+      <button class="btn" data-action="past-discard">Discard changes</button>` : '';
 
     return {
       title: session.workoutName || 'Workout',
@@ -1241,11 +1253,9 @@ const Views = {
       html: `
         ${session.quick ? '<p class="past-quick"><span class="tag tag-quick">Quick</span> Not in your week. Its sets only count for the streak when they make up missed sets.</p>' : ''}
         <p class="past-date">${new Date(session.date).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</p>
-        <p class="muted past-hint">Sets with no reps aren't saved.</p>
         ${cards}
         <div class="finish-bar stack">
-          <button class="btn btn-primary" data-action="past-save">Save changes</button>
-          <button class="btn" data-action="past-discard">Discard changes</button>
+          ${editButtons}
           <button class="btn btn-danger" data-action="past-delete">Delete workout</button>
         </div>
       `,

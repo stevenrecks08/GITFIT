@@ -120,7 +120,8 @@ let mapMode = 'growth';
 
 // A past workout being edited (nothing is saved until Save changes):
 //   { sessionId, exercises: [{ entry (the saved exercise, without its sets), rows: [{ weight (lbs or null), reps (text) }] }],
-//     original (rows as they started, to tell if anything changed) }
+//     original (rows as they started, to tell if anything changed),
+//     editing (index of the exercise with its boxes open, or null) }
 let pastEdit = null;
 
 // Every exercise the workout planned, in plan order, with its saved sets plus empty rows up
@@ -147,7 +148,7 @@ function startPastEdit(session) {
     while (rows.length < (entry.targetSets || 0)) rows.push({ weight: Store.startWeight(entry.refId, null), reps: '' });
     return { entry, rows };
   });
-  return { sessionId: session.id, exercises, original: JSON.stringify(exercises.map(e => e.rows)) };
+  return { sessionId: session.id, exercises, original: JSON.stringify(exercises.map(e => e.rows)), editing: null };
 }
 
 function pastEditChanged() {
@@ -885,6 +886,14 @@ const actions = {
   'open-session'(id) {
     if (currentRoute().view === 'exercise-log') goAndReturn(`#/history/${id}`);
     else go(`#/history/${id}`);
+  },
+
+  // The pencil on a past workout's exercise: opens its boxes (closing any other), or closes them.
+  // What's typed stays in pastEdit until Save changes.
+  'past-edit-exercise'(index) {
+    const x = Number(index);
+    pastEdit.editing = pastEdit.editing === x ? null : x;
+    render();
   },
 
   // Saves the edited sets, then re-checks the streak from that workout's week.
