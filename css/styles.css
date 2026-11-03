@@ -1000,19 +1000,73 @@ main.is-searching { padding-bottom: 100vh; }
 .muscle.is-selected { stroke: var(--text); stroke-width: 2; }
 .body-line { fill: none; stroke: var(--surface); stroke-width: 1.2; pointer-events: none; }
 
-.map-pop {
-  position: absolute;
-  z-index: 2;
-  padding: 7px 12px;
+/* The small "i" next to the map's caption, and what it opens */
+.info-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  margin: -8px -8px -8px -4px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text);
+  vertical-align: middle;
+}
+.info-btn span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+.info-btn[aria-expanded="true"] { color: var(--accent); }
+.map-info { margin: 8px 0 10px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); font-size: 14px; line-height: 1.4; }
+.map-info[hidden] { display: none; }
+.map-info p { margin: 0; }
+.map-info p + p { margin-top: 8px; }
+
+/* The card under the map for a tapped muscle: its number and the exercises behind it */
+.muscle-card {
+  margin-top: 12px;
+  padding: 4px 12px 6px;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: var(--bg);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
-  font-size: 14px;
-  font-weight: 600;
-  white-space: nowrap;
-  pointer-events: none;
+  background: var(--surface-2);
+  scroll-margin-bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 12px);
 }
+.muscle-card-head { display: flex; align-items: center; gap: 8px; min-height: 44px; }
+.muscle-card-head strong { flex: 1; min-width: 0; font-size: 16px; }
+.muscle-card-head span { font-weight: 600; font-size: 14px; }
+.muscle-card-head .icon-btn { width: 36px; height: 36px; margin-right: -8px; color: var(--text); font-size: 14px; }
+.muscle-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 52px;
+  padding: 6px 0;
+  border: none;
+  border-top: 1px solid var(--border);
+  background: none;
+  color: var(--text);
+  text-align: left;
+}
+.muscle-row:active { opacity: 0.6; }
+.muscle-row-main { flex: 1; min-width: 0; }
+.muscle-row-main strong { display: block; font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
+.muscle-row-main span { display: block; margin-top: 1px; font-size: 13px; color: var(--muted); }
+.muscle-row-result { font-weight: 700; font-size: 14px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.muscle-row .chev { flex: 0 0 auto; }
+.muscle-sub { margin: 8px 0 4px; padding-top: 8px; border-top: 1px solid var(--border); font-size: 13px; color: var(--muted); }
+.muscle-sub + .muscle-row { border-top: none; }
+.muscle-note { margin: 0 0 8px; font-size: 14px; line-height: 1.4; }
 
 .legend { margin-top: 12px; }
 .legend-bar { height: 8px; border-radius: 999px; }

@@ -93,6 +93,17 @@ function initials(name) {
 
 const BACKUP_REMINDER_DAYS = 30;
 
+// What the "i" next to the muscle map's caption says.
+const MAP_INFO = {
+  growth: `
+    <p>For each exercise, your best in its first 2 weeks is compared with your best in its last 2 weeks, within the last 6 weeks. So one bad workout won't pull it down.</p>
+    <p>A muscle's percent is the average of the exercises with it as a primary muscle. An exercise counts once it's logged in 3 different weeks.</p>
+    <p>Best means estimated max: weight × (1 + reps ÷ 30). Bodyweight exercises use max reps, and planks use the longest hold.</p>`,
+  level: `
+    <p>Each exercise's latest estimated max is compared with published standards for your body weight and sex.</p>
+    <p>A muscle shows the best level among the exercises with it as a primary muscle.</p>`,
+};
+
 // The streak flame. Its colors come from CSS (.flame-outer / .flame-inner).
 const FLAME_SVG = `
   <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -957,8 +968,8 @@ const Views = {
   },
 
   // ---------- Profile: avatar + name. Settings open from the gear in the top bar. ----------
-  // mapMode = which numbers the muscle map shows: 'growth' or 'level'
-  profile(mapMode) {
+  // map = the muscle map: { mode ('growth' or 'level'), muscle (the tapped muscle or null), infoOpen }
+  profile(map) {
     const s = Store.data.settings;
     const name = profileName();
     const height = Units.showHeight(s.heightIn);
@@ -981,7 +992,7 @@ const Views = {
         ${this.streakCard()}
         <a class="btn" href="#/log">Log</a>
         ${this.bodyWeightCard()}
-        ${this.muscleMap(mapMode)}
+        ${this.muscleMap(map)}
       `,
     };
   },
@@ -1385,7 +1396,7 @@ const Views = {
   },
 
   // ---------- Muscle map (on Profile) ----------
-  muscleMap(mode) {
+  muscleMap({ mode, muscle, infoOpen }) {
     const values = mode === 'level' ? Stats.muscleLevels() : Stats.muscleGrowth();
     const colors = {};
     for (const id in MUSCLES) colors[id] = MapColors[mode](values[id]);
@@ -1417,30 +1428,75 @@ const Views = {
       <h2>Muscle map</h2>
       <div class="card">
         <div class="segmented">${toggle}</div>
-        <p class="map-caption">${caption}</p>
+        <p class="map-caption">${caption}
+          <button type="button" class="info-btn" data-action="map-info" aria-label="How this is worked out" aria-expanded="${infoOpen}"><span>i</span></button>
+        </p>
+        <div class="map-info" id="map-info" ${infoOpen ? '' : 'hidden'}>${MAP_INFO[mode]}</div>
         <div class="body-map" id="body-map">
-          ${bodyMapSvg(colors, null)}
-          <div class="map-pop" id="map-pop" role="status" hidden></div>
+          ${bodyMapSvg(colors, muscle)}
         </div>
+        ${muscle ? `<div class="muscle-card" id="muscle-card">${this.muscleCard(muscle, mode)}</div>` : ''}
         <div class="legend">${legend}</div>
       </div>`;
   },
 
-  // Popup text for a tapped muscle: "Biceps: +8% in 6 weeks"
-  // or "Upper chest: Intermediate (Incline Barbell Bench Press)"
-  musclePopup(id, mode) {
-    const name = MUSCLES[id];
+  // The card under the map for a tapped muscle: its number and the exercises behind it,
+  // best first, each opening its log. It also says why a muscle has no number.
+  muscleCard(id, mode) {
+    const head = result => `
+      <div class="muscle-card-head">
+        <strong>${MUSCLES[id]}</strong>
+        <span>${result}</span>
+        <button type="button" class="icon-btn" data-action="muscle-close" aria-label="Close">✕</button>
+      </div>`;
+    const row = (refId, name, detail, result = '') => `
+      <button type="button" class="muscle-row" data-action="view-log" data-id="${esc(refId)}">
+        <span class="muscle-row-main"><strong>${esc(name)}</strong><span>${detail}</span></span>
+        <span class="muscle-row-result">${result}</span>
+        ${CHEVRON}
+      </button>`;
+    const percent = pct => {
+      const rounded = Math.round(pct);
+      return `${rounded > 0 ? '+' : rounded < 0 ? '−' : ''}${Math.abs(rounded)}%`;
+    };
+    const note = text => `<p class="muscle-note">${text}</p>`;
+
     if (mode === 'level') {
-      if (!Store.data.settings.bodyWeightLbs) return `${name}: log your body weight to see levels`;
-      if (!Store.data.settings.sex) return `${name}: pick your sex in Settings to see levels`;
-      const value = Stats.muscleLevels()[id];
-      if (value) return `${name}: ${LEVELS[value.level]} (${value.exercise})`;
-      return Stats.hasStandards(id) ? `${name}: no logged exercise with a standard yet` : `${name}: no exercises with standards`;
+      const { bodyWeightLbs, sex } = Store.data.settings;
+      if (!bodyWeightLbs) return head('—') + note('Log your body weight to see levels.');
+      if (!sex) return head('—') + note('Pick your sex in Settings to see levels.');
+      const list = Stats.exerciseLevels().filter(e => e.primary.includes(id)).sort((a, b) => b.level - a.level || b.max - a.max);
+      if (!list.length) {
+        return head('—') + note(Stats.hasStandards(id) ? 'No logged exercise with a standard trains this yet.'
+          : 'No exercise with published standards trains this as a primary muscle.');
+      }
+      return head(LEVELS[list[0].level]) + list.map(e =>
+        row(e.refId, e.name, `${Math.round(Number(Units.showWeight(e.max)))} ${Units.weightUnit()} estimated max`, LEVELS[e.level])).join('');
     }
-    const pct = Stats.muscleGrowth()[id];
-    if (pct == null) return `${name}: not enough data yet`;
-    const rounded = Math.round(pct);
-    return `${name}: ${rounded > 0 ? '+' : rounded < 0 ? '−' : ''}${Math.abs(rounded)}% in ${Stats.GROWTH_WEEKS} weeks`;
+
+    const all = Stats.exerciseGrowth().filter(e => e.primary.includes(id));
+    const counted = all.filter(e => e.counts).sort((a, b) => b.change - a.change);
+    const waiting = all.filter(e => !e.counts);
+    const fromTo = e => Library.isTimed(e.refId) ? `${e.early} → ${e.recent} sec`
+      : Library.isRepsOnly(e.refId) ? `${e.early} → ${e.recent} reps`
+      : `${Math.round(Number(Units.showWeight(e.early)))} → ${Math.round(Number(Units.showWeight(e.recent)))} ${Units.weightUnit()}`;
+    const countedRows = counted.map(e => row(e.refId, e.name, fromTo(e), percent(e.change))).join('');
+    const waitingRows = waiting.length ? `
+      <p class="muscle-sub">Not counted yet (needs ${Stats.MIN_WEEKS} weeks):</p>
+      ${waiting.map(e => row(e.refId, e.name, `Logged ${e.weeks} week${e.weeks === 1 ? '' : 's'}`)).join('')}` : '';
+    const average = counted.reduce((sum, e) => sum + e.change, 0) / counted.length;
+    if (all.length) {
+      return head(counted.length ? `${percent(average)} in ${Stats.GROWTH_WEEKS} weeks` : 'Not enough data') + countedRows + waitingRows;
+    }
+    // Nothing logged that trains it as a primary muscle: say so, and what's in the plan for it.
+    const planned = Stats.weekPlannedSets().sources[id] || [];
+    const secondary = planned.filter(s => s.role === 'secondary').map(s => s.name);
+    const primary = planned.filter(s => s.role === 'primary').map(s => s.name);
+    const named = names => esc(names.length > 1 ? `${names[0]} and others` : names[0]);
+    return head('Not enough data')
+      + note(`No exercise you've logged in the last ${Stats.GROWTH_WEEKS} weeks trains this as a primary muscle.`)
+      + (primary.length ? note(`${named(primary)} in your plan will count once logged in ${Stats.MIN_WEEKS} different weeks.`) : '')
+      + (secondary.length ? note(`It gets sets from ${named(secondary)}, but those only count toward its planned sets.`) : '');
   },
 
   // ---------- Log: search for an exercise to see its history ----------

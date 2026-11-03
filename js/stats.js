@@ -18,6 +18,7 @@ function loggedSince(since) {
       list.push({
         time,
         refId: entry.refId || entry.exerciseId,
+        name: info.name || entry.name,
         sets: entry.sets,
         primary: info.primary || [],
       });
@@ -35,14 +36,15 @@ function forEachMuscle(entry, add) {
 const Stats = {
   GROWTH_WEEKS: 6,
   MIN_WEEKS: 3, // an exercise needs this many different weeks logged to count for growth
+  ENDS_WEEKS: 2, // growth compares the best of an exercise's first and last this-many weeks
 
-  // { muscleId: % change in estimated max over the last 6 weeks }
+  // Every exercise logged in the last 6 weeks and how it's going:
+  //   [{ refId, name, primary, weeks (different weeks logged), counts (enough weeks to count),
+  //      early, recent (its best in its first and last 2 weeks), change (% from early to recent) }]
+  // Comparing bests means one bad workout, or even one bad week, doesn't look like getting weaker.
   // A bodyweight exercise uses its max reps instead of an estimated max (8 → 10 reps = +25%),
   // and a timed one its longest hold (40 → 50 sec = +25%).
-  // For each exercise: its first vs. latest best set in that time. A muscle's number is
-  // the average over the exercises that train it as a primary muscle: getting stronger at a
-  // bench press doesn't prove the triceps grew. Muscles without enough data are left out.
-  muscleGrowth(now = Date.now()) {
+  exerciseGrowth(now = Date.now()) {
     const exercises = {};
     for (const entry of loggedSince(now - this.GROWTH_WEEKS * WEEK_MS)) {
       // A plank's seconds are saved as its reps, so this covers both.
@@ -53,16 +55,27 @@ const Stats = {
       exercises[entry.refId].points.push({ time: entry.time, best });
     }
 
+    return Object.values(exercises).map(({ entry, points }) => {
+      const times = points.map(p => p.time);
+      const ends = this.ENDS_WEEKS * WEEK_MS;
+      const bestWhere = test => Math.max(...points.filter(p => test(p.time)).map(p => p.best));
+      const early = bestWhere(t => t < Math.min(...times) + ends);
+      const recent = bestWhere(t => t > Math.max(...times) - ends);
+      const weeks = new Set(times.map(t => Math.floor((now - t) / WEEK_MS))).size;
+      return { refId: entry.refId, name: entry.name, primary: entry.primary, weeks, counts: weeks >= this.MIN_WEEKS,
+        early, recent, change: (recent - early) / early * 100 };
+    });
+  },
+
+  // { muscleId: % change over the last 6 weeks }: the average over the exercises that train it as
+  // a primary muscle (getting stronger at a bench press doesn't prove the triceps grew).
+  // Muscles without enough data are left out.
+  muscleGrowth(now = Date.now()) {
     const sums = {};
-    for (const { entry, points } of Object.values(exercises)) {
-      const weeks = new Set(points.map(p => Math.floor((now - p.time) / WEEK_MS)));
-      if (weeks.size < this.MIN_WEEKS) continue;
-      points.sort((a, b) => a.time - b.time);
-      const first = points[0].best;
-      const change = (points[points.length - 1].best - first) / first * 100;
-      for (const m of entry.primary) {
+    for (const ex of this.exerciseGrowth(now).filter(e => e.counts)) {
+      for (const m of ex.primary) {
         if (!sums[m]) sums[m] = { total: 0, count: 0 };
-        sums[m].total += change;
+        sums[m].total += ex.change;
         sums[m].count += 1;
       }
     }
@@ -72,22 +85,30 @@ const Stats = {
     return growth;
   },
 
-  // { muscleId: { level: 0–4, exercise: 'Incline Barbell Bench Press' } }
-  // Each exercise with published standards (standards.js) is placed into a level from its
-  // latest estimated max, your body weight and sex. A muscle takes the best level among the
-  // exercises that train it as a primary muscle. Empty without a logged body weight and a sex.
-  muscleLevels() {
+  // Each logged exercise with published standards (standards.js), placed into a level from its
+  // latest estimated max, your body weight and sex: [{ refId, name, primary, level: 0–4, max }]
+  // Empty without a logged body weight and a sex.
+  exerciseLevels() {
     const { sex, bodyWeightLbs } = Store.data.settings;
-    const levels = {};
-    if (!bodyWeightLbs || !sex) return levels;
+    if (!bodyWeightLbs || !sex) return [];
+    const list = [];
     for (const refId in STANDARDS) {
       const weighted = Store.exerciseHistory(refId).filter(h => h.best);
       if (!weighted.length) continue;
       const max = weighted[weighted.length - 1].best.max;
-      const level = Standards.levelOf(max, Standards.thresholds(refId, sex, bodyWeightLbs));
-      const info = Library.get(refId);
-      for (const m of info.primary) {
-        if (!levels[m] || level > levels[m].level) levels[m] = { level, exercise: info.name };
+      const { name, primary } = Library.get(refId);
+      list.push({ refId, name, primary, max, level: Standards.levelOf(max, Standards.thresholds(refId, sex, bodyWeightLbs)) });
+    }
+    return list;
+  },
+
+  // { muscleId: { level: 0–4, exercise: 'Incline Barbell Bench Press' } }
+  // A muscle takes the best level among the exercises that train it as a primary muscle.
+  muscleLevels() {
+    const levels = {};
+    for (const ex of this.exerciseLevels()) {
+      for (const m of ex.primary) {
+        if (!levels[m] || ex.level > levels[m].level) levels[m] = { level: ex.level, exercise: ex.name };
       }
     }
     return levels;

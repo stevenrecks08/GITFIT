@@ -124,8 +124,9 @@ let quickAdd = { open: false, query: '' };
 let logQuery = '';
 let logState = { month: null, day: null, range: 'all' };
 
-// What the muscle map on Profile shows: 'growth' or 'level'.
-let mapMode = 'growth';
+// The muscle map on Profile: what it shows ('growth' or 'level'), the tapped muscle (its card
+// shows under the map, and stays when you open a log and come Back), and whether the "i" is open.
+const map = { mode: 'growth', muscle: null, infoOpen: false };
 
 // Body weight log: the day whose weight is open for editing (null = none).
 let bwEditDay = null;
@@ -353,7 +354,7 @@ function render() {
     if (!pastEdit || pastEdit.sessionId !== session.id) pastEdit = startPastEdit(session);
     screen = Views.pastWorkout(session, pastEdit);
   } else if (route.view === 'profile') {
-    screen = Views.profile(mapMode);
+    screen = Views.profile(map);
   } else if (route.view === 'settings') {
     screen = Views.settings();
   } else if (route.view === 'body-weight') {
@@ -1256,29 +1257,28 @@ const actions = {
 
   // Muscle map toggle: Growth or Sets.
   'map-mode'(mode) {
-    mapMode = mode;
+    map.mode = mode;
     render();
   },
 
-  // Tapped a muscle on the map: highlight it (front and back) and show its number
-  // in a small popup above it. Tapping it again closes the popup.
-  'muscle'(id, shape) {
-    const map = document.getElementById('body-map');
-    const pop = document.getElementById('map-pop');
-    const wasSelected = shape.classList.contains('is-selected');
-    closeMusclePopup();
-    if (wasSelected) return;
+  // Tapped a muscle on the map: highlight it (front and back) and show its card under the map.
+  // Tapping it again closes the card.
+  'muscle'(id) {
+    map.muscle = map.muscle === id ? null : id;
+    render();
+    document.getElementById('muscle-card')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  },
 
-    map.querySelectorAll(`[data-id="${id}"]`).forEach(s => s.classList.add('is-selected'));
-    pop.textContent = Views.musclePopup(id, mapMode);
-    pop.hidden = false;
+  'muscle-close'() {
+    map.muscle = null;
+    render();
+  },
 
-    const box = shape.getBoundingClientRect();
-    const area = map.getBoundingClientRect();
-    const left = box.left + box.width / 2 - area.left - pop.offsetWidth / 2;
-    const above = box.top - area.top - pop.offsetHeight - 6;
-    pop.style.left = `${Math.max(0, Math.min(area.width - pop.offsetWidth, left))}px`;
-    pop.style.top = `${above >= 0 ? above : box.bottom - area.top + 6}px`;
+  // The "i" next to the map's caption: how the numbers are worked out.
+  'map-info'(_, button) {
+    map.infoOpen = !map.infoOpen;
+    document.getElementById('map-info').hidden = !map.infoOpen;
+    button.setAttribute('aria-expanded', map.infoOpen);
   },
 
   // Tap anywhere on the celebration to close it (not in the first moment, so a
@@ -1318,17 +1318,9 @@ function toggleSetsBlock(openSet, id, button) {
   button.closest('.sets-block').classList.toggle('is-open', isOpen);
 }
 
-function closeMusclePopup() {
-  const pop = document.getElementById('map-pop');
-  if (!pop) return;
-  pop.hidden = true;
-  document.querySelectorAll('#body-map .is-selected').forEach(s => s.classList.remove('is-selected'));
-}
-
 document.addEventListener('click', event => {
   const button = event.target.closest('[data-action]');
-  if (!button || button.dataset.action !== 'muscle') closeMusclePopup(); // tap anywhere else closes it
-  if (!event.target.closest('.fab-menu, .fab')) setFabMenu(false);      // same for the + menu
+  if (!event.target.closest('.fab-menu, .fab')) setFabMenu(false); // tap anywhere else closes the + menu
   if (!button) return;
   actions[button.dataset.action](button.dataset.id, button);
 });
@@ -1844,6 +1836,7 @@ window.addEventListener('hashchange', () => {
   const { view } = currentRoute();
   if (!back && !['past', 'exercise-log'].includes(view)) returnStack = [];
 
+  if (!['profile', 'exercise-log'].includes(view)) map.muscle = null;
   picker = newPicker();
   plannedChanged = new Set();
   strip.open = false;
