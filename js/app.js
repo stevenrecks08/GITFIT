@@ -4,8 +4,7 @@
 //   #/                 → home (the week)          [Workouts tab]
 //   #/new              → new workout (the + button) [Workouts tab]
 //   #/new/<id>         → copy of a workout          [Workouts tab]
-//   #/workout/<id>/edit → edit a workout            [Workouts tab]
-//   #/workout/<id>     → a workout: a look at it until it's started, then the real thing [Workouts tab]
+//   #/workout/<id>     → a workout: look at it and change it until it's started, then the real thing [Workouts tab]
 //   #/quick           → the quick workout in progress (+ button → Quick workout) [Workouts tab]
 //   #/history          → past workouts (link at the top of Workouts) [Workouts tab]
 //   #/history/<id>     → fix or delete one past workout [Workouts tab]
@@ -51,15 +50,16 @@ const LONG_WORKOUT_MS = 3 * 60 * 60 * 1000;
 // null until that screen opens; kept while it's open so a redraw doesn't lose what's typed.
 let newForm = null;
 
-// The add/edit exercise panel on the edit-workout screen:
-//   exerciseId = the workout's exercise being edited (null when adding a new one)
+// The add/edit exercise panel on a workout's screen:
+//   exerciseId = the workout's exercise being edited, in its own card (null when not editing one)
+//   adding     = true while + Add exercise is open at the end of the list
 //   refId      = the library/custom exercise picked
 //   mode       = 'pick' (search library), 'custom' (create custom), 'details' (sets & reps)
 //   query      = text in the search box
 //   custom     = the custom exercise being created: { name, equipment, primary: [], secondary: [] }
 let picker = newPicker();
-function newPicker() {
-  return { exerciseId: null, refId: null, mode: 'pick', query: '', custom: null };
+function newPicker(adding = false) {
+  return { exerciseId: null, adding, refId: null, mode: 'pick', query: '', custom: null };
 }
 
 // Redraws just the muscle chips and suggestions on the custom exercise form,
@@ -73,9 +73,10 @@ function refreshMusclePickers() {
   }
 }
 
-// Scrolls the add/edit panel into view (after picking, the form can be far down).
+// Scrolls the add/edit panel into view: the exercise's whole card, or the panel at the end of the list.
 function showPanel() {
-  document.getElementById('exercise-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const panel = document.getElementById('exercise-panel');
+  (panel.closest('.preview-ex') || panel).scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 // Which exercise is expanded on the workout screen (null = all collapsed).
@@ -99,10 +100,16 @@ function goAndReturn(hash) {
 // stays on the Workouts tab until Close, or until the app is fully closed.
 let summary = null;
 
-// Planned sets cards (the week's on the Workouts tab, a day's on a workout's preview): which
-// groups and muscles are expanded. Kept while the app is open, so going into a day and back
-// leaves them as they were.
-const openSets = { groups: new Set(), muscles: new Set() };
+// The week's planned sets card on the Workouts tab: which muscles are expanded. Kept while the
+// app is open, so going into a workout and back leaves them as they were.
+const openSets = new Set();
+
+// The planned sets strip on a workout's screen: whether it's opened up and whether it shows the
+// workout's day or the whole week, which muscles are expanded in it, and which muscles the last
+// edit changed (shown in green until you leave the screen or edit something else).
+const strip = { open: false, mode: 'day' };
+const stripRows = new Set();
+let plannedChanged = new Set();
 
 // Swap for today on the workout screen: whose exercise search is open, and what's typed.
 // creating = true while its custom exercise form is showing (the form itself uses picker).
@@ -160,16 +167,25 @@ function pastEditChanged() {
   return Boolean(pastEdit) && JSON.stringify(pastEdit.exercises.map(e => e.rows)) !== pastEdit.original;
 }
 
-// Saves the title box on the edit-workout screen (an empty title keeps the old one).
-function saveWorkoutName() {
-  const input = document.getElementById('workout-name');
-  const name = input?.value.trim();
-  if (!name) return;
-  Store.renameWorkout(currentRoute().workoutId, name);
-  titleEl.textContent = `Edit ${name}`;
+// Saves the title and day in a workout's pop-up (an empty title keeps the old one).
+function saveWorkoutDetails() {
+  const { workoutId } = currentRoute();
+  const name = document.getElementById('workout-name').value.trim();
+  if (name) Store.renameWorkout(workoutId, name);
+  const weekday = Number(overlayEl.querySelector('input[name="workout-day"]:checked').value);
+  if (weekday !== Store.getWorkout(workoutId).weekday) Store.moveWorkout(workoutId, weekday);
 }
 
-// What's in the sets & reps form on the edit-workout screen.
+// Makes a change to the workout's exercises, and notes which muscles' planned sets it changed.
+function trackPlanned(change) {
+  const { weekday } = Store.getWorkout(currentRoute().workoutId);
+  const before = Stats.dayPlannedSets(weekday).muscles;
+  change();
+  const after = Stats.dayPlannedSets(weekday).muscles;
+  plannedChanged = new Set(Object.keys({ ...before, ...after }).filter(m => (before[m] || 0) !== (after[m] || 0)));
+}
+
+// What's in the sets & reps form on a workout's screen.
 function exerciseFormFields(form) {
   const values = Object.fromEntries(new FormData(form));
   const repA = Math.max(1, parseInt(values.repMin, 10) || 1);
@@ -187,43 +203,40 @@ function saveExerciseForm(form) {
   const fields = exerciseFormFields(form);
   const workoutId = currentRoute().workoutId;
   const name = Library.forExercise(fields).name;
-  if (picker.exerciseId) {
-    Store.updateExercise(workoutId, picker.exerciseId, fields);
-    toast(`Saved ${name}`);
-  } else {
-    Store.addExercise(workoutId, fields);
-    toast(`Added ${name}`);
-  }
+  trackPlanned(() => {
+    if (picker.exerciseId) Store.updateExercise(workoutId, picker.exerciseId, fields);
+    else Store.addExercise(workoutId, fields);
+  });
+  toast(picker.exerciseId ? `Saved ${name}` : `Added ${name}`);
 }
 
-// Leaving the edit-workout screen (Done, Back, Copy workout) with the sets & reps form still open.
-// Everything else on this screen saves as it changes, so changes to an exercise save here too.
+// Doing something else (Back, Start workout, another pencil, …) with the sets & reps form still
+// open. Everything on this screen saves as it changes, so changes to an exercise save here too.
 // An exercise only picked so far might just have been looked at, so that one asks first.
-function leaveEditScreen(hash) {
-  saveWorkoutName();
+// `then` is what was tapped; it runs once that's settled.
+function withFormSaved(then) {
   const form = document.getElementById('exercise-form');
-  if (form) {
-    if (!form.reportValidity()) return; // e.g. the sets box was left empty: says so and stays
-    if (!picker.exerciseId) {
-      const { name } = Library.forExercise({ refId: picker.refId });
-      showDialog({
-        title: `Add ${name}?`,
-        lines: [`You picked ${name} but didn't add it to this workout.`],
-        confirm: { label: 'Add to workout', action: 'leave-add' },
-        cancel: { label: 'Don\'t add', action: 'leave-skip' },
-      });
-      leavingTo = hash;
-      return;
-    }
-    const before = Store.getWorkout(currentRoute().workoutId).exercises.find(e => e.id === picker.exerciseId);
-    const after = exerciseFormFields(form);
-    if (['refId', 'sets', 'repMin', 'repMax'].some(key => before[key] !== after[key])) saveExerciseForm(form);
+  if (!form) return then();
+  if (!form.reportValidity()) return; // e.g. the sets box was left empty: says so and stays
+  if (!picker.exerciseId) {
+    const { name } = Library.forExercise({ refId: picker.refId });
+    afterFormQuestion = then;
+    showDialog({
+      title: `Add ${name}?`,
+      lines: [`You picked ${name} but didn't add it to this workout.`],
+      confirm: { label: 'Add to workout', action: 'leave-add' },
+      cancel: { label: 'Don\'t add', action: 'leave-skip' },
+    });
+    return;
   }
-  go(hash);
+  const before = Store.getWorkout(currentRoute().workoutId).exercises.find(e => e.id === picker.exerciseId);
+  const after = exerciseFormFields(form);
+  if (['refId', 'sets', 'repMin', 'repMax'].some(key => before[key] !== after[key])) saveExerciseForm(form);
+  then();
 }
 
-// Where to go once the "Add this exercise?" question above is answered.
-let leavingTo = null;
+// What to do once the "Add this exercise?" question above is answered.
+let afterFormQuestion = null;
 
 // Only one workout can be in progress. Asks before throwing away the one there is;
 // returns true if it was discarded (or there was none).
@@ -273,7 +286,7 @@ function hideDialog() {
 function currentRoute() {
   const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
   if (parts[0] === 'workout' && parts[1]) {
-    return { view: parts[2] === 'edit' ? 'edit' : 'workout', workoutId: parts[1], tab: 'workouts' };
+    return { view: 'workout', workoutId: parts[1], tab: 'workouts' };
   }
   if (parts[0] === 'quick') return { view: 'quick', tab: 'workouts' };
   if (parts[0] === 'new') {
@@ -348,17 +361,15 @@ function render() {
   } else {
     const workout = Store.getWorkout(route.workoutId);
     if (!workout) return go('#/');
-    if (route.view === 'edit') {
-      screen = Views.editWorkout(workout, picker);
-    } else if (Store.data.draft?.workoutId === workout.id && (workout.exercises.length || Store.data.draft.added.length)) {
+    if (Store.data.draft?.workoutId === workout.id && (workout.exercises.length || Store.data.draft.added.length)) {
       // This workout has been started: the real thing.
       const draft = Store.ensureDraft(workout);
       if (autoOpenExercise) openExerciseId = Store.firstUnfinished();
       autoOpenExercise = false;
       screen = Views.workout(Store.draftWorkout(), draft, openExerciseId, swap, quickAdd, picker);
     } else {
-      // Not started: just a look. Start workout is what starts it (and the timer).
-      screen = Views.workoutPreview(workout, openSets);
+      // Not started: look at it and change it. Start workout is what starts it (and the timer).
+      screen = Views.workoutPreview(workout, { picker, strip, stripRows, changed: plannedChanged });
     }
   }
 
@@ -508,19 +519,22 @@ const actions = {
 
   // Start workout: asks first, since this starts the timer (and replaces any other workout in progress).
   'start-workout'(id) {
-    const other = Store.data.draft && Store.draftWorkout();
-    const lines = ['The timer starts now, and you can log your sets.'];
-    if (Store.data.draft) lines.push(`Your unfinished "${other ? other.name : 'workout'}" will be discarded.`);
-    showDialog({
-      title: `Start ${Store.getWorkout(id).name}?`,
-      lines,
-      confirm: { label: 'Start workout', action: 'start-workout-confirm', id },
-      cancel: { label: 'Not yet', action: 'dialog-cancel' },
+    withFormSaved(() => {
+      const other = Store.data.draft && Store.draftWorkout();
+      const lines = ['The timer starts now, and you can log your sets.'];
+      if (Store.data.draft) lines.push(`Your unfinished "${other ? other.name : 'workout'}" will be discarded.`);
+      showDialog({
+        title: `Start ${Store.getWorkout(id).name}?`,
+        lines,
+        confirm: { label: 'Start workout', action: 'start-workout-confirm', id },
+        cancel: { label: 'Not yet', action: 'dialog-cancel' },
+      });
     });
   },
 
   'start-workout-confirm'(id) {
     hideDialog();
+    picker = newPicker();
     Store.discardDraft();
     Store.ensureDraft(Store.getWorkout(id));
     autoOpenExercise = true;
@@ -547,7 +561,7 @@ const actions = {
 
   // A Log button: opens that exercise's log, and Back returns here.
   'view-log'(refId) {
-    goAndReturn(`#/log/${encodeURIComponent(refId)}`);
+    withFormSaved(() => goAndReturn(`#/log/${encodeURIComponent(refId)}`));
   },
 
   // A muscle group chip in an exercise search: shows that group (tap again to go back).
@@ -736,9 +750,21 @@ const actions = {
     render();
   },
 
-  'edit-workout'(id) {
-    if (dragJustEnded()) return;
-    go(`#/workout/${id}/edit`);
+  // The pencil at the top of a workout's screen: its title, day, Copy and Delete, in a pop-up.
+  'workout-details'(id) {
+    withFormSaved(() => {
+      picker = newPicker();
+      render();
+      overlayEl.innerHTML = Views.workoutDetails(Store.getWorkout(id));
+      overlayEl.className = 'overlay is-notice';
+      overlayEl.hidden = false;
+    });
+  },
+
+  'details-done'() {
+    saveWorkoutDetails();
+    hideDialog();
+    render();
   },
 
   // The + button on the week.
@@ -752,32 +778,71 @@ const actions = {
   },
 
   'copy-workout'(id) {
-    leaveEditScreen(`#/new/${id}`);
+    saveWorkoutDetails();
+    hideDialog();
+    go(`#/new/${id}`);
   },
 
-  // Tapped one of the workout's exercises: open it for editing at the sets & reps step.
+  // The pencil on an exercise: opens its sets & reps inside its card, or closes them if they're open.
   'edit-exercise'(id) {
-    const ex = Store.getWorkout(currentRoute().workoutId).exercises.find(e => e.id === id);
-    picker = { exerciseId: id, refId: ex.refId, mode: 'details', query: '' };
+    const wasOpen = picker.exerciseId === id;
+    withFormSaved(() => {
+      const ex = Store.getWorkout(currentRoute().workoutId).exercises.find(e => e.id === id);
+      picker = wasOpen ? newPicker() : { ...newPicker(), exerciseId: id, refId: ex.refId, mode: 'details' };
+      render();
+      if (!wasOpen) showPanel();
+    });
+  },
+
+  // + Add exercise at the end of the list.
+  'add-exercise'() {
+    withFormSaved(() => {
+      picker = newPicker(true);
+      render();
+      showPanel();
+    });
+  },
+
+  'close-add'() {
+    picker = newPicker();
     render();
-    showPanel();
   },
 
-  // Done on the edit screen. Everything is saved as you change it, so this mostly just goes back.
-  'save-workout'() {
-    leaveEditScreen('#/');
+  // The − and + beside the sets box.
+  'sets-step'(step) {
+    const input = document.getElementById('ex-sets');
+    input.value = Math.min(20, Math.max(1, (parseInt(input.value, 10) || 0) + Number(step)));
   },
 
-  // The answers to "Add this exercise?" when leaving the edit screen.
+  // The answers to "Add this exercise?" (see withFormSaved).
   'leave-add'() {
     saveExerciseForm(document.getElementById('exercise-form'));
+    picker = newPicker();
     hideDialog();
-    go(leavingTo);
+    render();
+    afterFormQuestion();
   },
 
   'leave-skip'() {
+    picker = newPicker();
     hideDialog();
-    go(leavingTo);
+    render();
+    afterFormQuestion();
+  },
+
+  // The planned sets strip: open or close it (only its class changes, so it slides smoothly).
+  'strip-toggle'() {
+    strip.open = !strip.open;
+    const el = document.getElementById('sets-strip');
+    el.classList.toggle('is-open', strip.open);
+    el.querySelector('.strip-bar').setAttribute('aria-expanded', strip.open);
+  },
+
+  // Its switch between the workout's day and the whole week.
+  'strip-mode'(mode) {
+    strip.mode = mode;
+    document.getElementById('sets-strip').outerHTML =
+      plannedStrip(Store.getWorkout(currentRoute().workoutId), strip, stripRows, plannedChanged);
   },
 
   'delete-workout'(id) {
@@ -801,9 +866,11 @@ const actions = {
     go('#/');
   },
 
+  // Cancel in the panel. While adding, that's back to the search; on an exercise, it closes.
   'cancel-edit'() {
-    picker = newPicker();
+    picker = newPicker(!picker.exerciseId);
     render();
+    if (picker.adding) showPanel();
   },
 
   // Tapped an exercise in the library search results.
@@ -862,14 +929,21 @@ const actions = {
     render();
   },
 
-  'move-exercise'(id, button) {
-    Store.moveExercise(currentRoute().workoutId, id, Number(button.dataset.dir));
-    render();
+  'delete-exercise'(id) {
+    const ex = Store.getWorkout(currentRoute().workoutId).exercises.find(e => e.id === id);
+    const { name } = Library.forExercise(ex);
+    showDialog({
+      title: `Delete ${name}?`,
+      lines: ['It comes out of this workout. Workouts you\'ve already finished keep it, and so does its log.'],
+      confirm: { label: 'Delete exercise', action: 'delete-exercise-confirm', id },
+      cancel: { label: 'Cancel', action: 'dialog-cancel' },
+      danger: true,
+    });
   },
 
-  'delete-exercise'(id) {
-    if (!confirm('Delete this exercise from the day? (Past workouts stay saved.)')) return;
-    Store.deleteExercise(currentRoute().workoutId, id);
+  'delete-exercise-confirm'(id) {
+    trackPlanned(() => Store.deleteExercise(currentRoute().workoutId, id));
+    hideDialog();
     picker = newPicker();
     render();
   },
@@ -883,14 +957,10 @@ const actions = {
     document.getElementById(`ex-${id}`).scrollIntoView({ block: 'nearest' });
   },
 
-  // Planned sets card: tap a group to show its muscles, a muscle to show its exercises.
+  // Planned sets: tap a muscle to show the exercises behind its number.
   // Only the row's class changes (no redraw), so CSS can slide it open smoothly.
-  'toggle-group'(name, button) {
-    toggleSetsBlock(openSets.groups, name, button);
-  },
-
   'toggle-muscle'(id, button) {
-    toggleSetsBlock(openSets.muscles, id, button);
+    toggleSetsBlock(button.closest('.sets-strip') ? stripRows : openSets, id, button);
   },
 
   // Swap for today: open the exercise search under this exercise.
@@ -1205,18 +1275,20 @@ backBtn.addEventListener('click', () => {
     });
     return;
   }
-  if (currentRoute().view === 'edit') return leaveEditScreen(backBtn.dataset.href);
-  go(backBtn.dataset.href);
+  withFormSaved(() => go(backBtn.dataset.href));
 });
 
-// ---------- Dragging a workout to another day (Workouts tab) ----------
-// Press and hold a workout (HOLD_MS) to pick it up, then drag it onto another day and let go.
+// ---------- Dragging a workout to another day, or an exercise to another place in its workout ----------
+// Press and hold a card (HOLD_MS) to pick it up, then drag it and let go.
 // Moving your finger before then scrolls the page as usual. A copy of the card follows
 // your finger (moved with transform only, so it stays smooth on iPhone) and the day under
 // it lights up. Near the top or bottom of the screen the page scrolls.
+// An exercise's card is tall, so while one is held every card shrinks to its name
+// (body.is-reordering) and the other cards make room as you go.
 const HOLD_MS = 350;
 const EDGE_PX = 90;
-let drag = null; // { id, card, ghost, startX, startY, x, y, offsetX, offsetY, active, timer, overDay }
+// { id, card, exercise (true for an exercise), ghost, startX, startY, x, y, offsetX, offsetY, active, timer, overDay }
+let drag = null;
 let dragEndedAt = 0;
 
 // True just after a drag, so letting go doesn't also count as a tap on the workout.
@@ -1225,12 +1297,65 @@ function dragJustEnded() {
 }
 
 appEl.addEventListener('pointerdown', event => {
+  if (event.button > 0) return;
+  const exercise = event.target.closest('#plan-list .preview-ex');
+  if (exercise) {
+    // Buttons and notes work as usual, and nothing moves while an exercise is being edited.
+    if (picker.exerciseId || event.target.closest('button, input, textarea, summary, a')) return;
+    if (exercise.parentElement.children.length < 2) return;
+    drag = { id: exercise.dataset.planEx, card: exercise, exercise: true, startX: event.clientX, startY: event.clientY,
+      x: event.clientX, y: event.clientY, active: false };
+    drag.timer = setTimeout(pickUpExercise, HOLD_MS);
+    return;
+  }
   const card = event.target.closest('.workout-card');
-  if (!card || !card.dataset.workout || event.button > 0) return; // (quick workout cards don't move)
+  if (!card || !card.dataset.workout) return; // (quick workout cards don't move)
   drag = { id: card.dataset.workout, card, startX: event.clientX, startY: event.clientY,
     x: event.clientX, y: event.clientY, active: false, overDay: null };
   drag.timer = setTimeout(pickUp, HOLD_MS);
 });
+
+// Picks up an exercise: every card shrinks to its name, and the page moves so that the held
+// card is back under the finger.
+function pickUpExercise() {
+  drag.active = true;
+  drag.startOrder = planOrder();
+  document.body.classList.add('is-dragging', 'is-reordering');
+  let rect = drag.card.getBoundingClientRect();
+  window.scrollBy(0, rect.top + rect.height / 2 - drag.y);
+  rect = drag.card.getBoundingClientRect();
+  drag.offsetX = drag.startX - rect.left;
+  drag.offsetY = rect.height / 2;
+  drag.ghost = drag.card.cloneNode(true);
+  drag.ghost.classList.add('drag-ghost');
+  drag.ghost.style.width = `${rect.width}px`;
+  document.body.append(drag.ghost);
+  drag.card.classList.add('is-dragging');
+  navigator.vibrate?.(15); // a small buzz where supported
+  moveGhost();
+  requestAnimationFrame(edgeScroll);
+}
+
+// The workout's exercises, in the order they're on the screen.
+function planOrder() {
+  return [...document.getElementById('plan-list').children].map(card => card.dataset.planEx);
+}
+
+// Makes room for the held exercise where the finger is. Only the other cards are moved:
+// moving the card under the finger could make the iPhone lose track of the touch.
+function reorderUnderFinger() {
+  const list = document.getElementById('plan-list');
+  const others = [...list.children].filter(card => card !== drag.card);
+  const after = others.findIndex(card => {
+    const rect = card.getBoundingClientRect();
+    return drag.y < rect.top + rect.height / 2;
+  });
+  const place = after === -1 ? others.length : after;
+  if ([...list.children].indexOf(drag.card) === place) return;
+  others.slice(0, place).forEach(card => list.insertBefore(card, drag.card));
+  others.slice(place).forEach(card => list.append(card));
+  [...list.children].forEach((card, i) => { card.querySelector('.ex-num').textContent = i + 1; });
+}
 
 function pickUp() {
   const rect = drag.card.getBoundingClientRect();
@@ -1250,6 +1375,7 @@ function pickUp() {
 
 function moveGhost() {
   drag.ghost.style.transform = `translate(${drag.x - drag.offsetX}px, ${drag.y - drag.offsetY}px) scale(1.03)`;
+  if (drag.exercise) return reorderUnderFinger();
   // The day under the finger (the ghost ignores taps, so it doesn't get in the way).
   const day = document.elementFromPoint(drag.x, drag.y)?.closest('.day-block');
   if (day !== drag.overDay) {
@@ -1277,14 +1403,23 @@ function endDrag(drop) {
     dragEndedAt = Date.now();
     drag.ghost.remove();
     drag.card.classList.remove('is-dragging');
-    drag.overDay?.classList.remove('is-drop-target');
-    document.body.classList.remove('is-dragging');
-    const weekday = drop && drag.overDay ? Number(drag.overDay.dataset.weekday) : null;
-    const workout = Store.getWorkout(drag.id);
-    if (weekday != null && workout && workout.weekday !== weekday) {
-      Store.moveWorkout(drag.id, weekday);
-      toast(`Moved ${workout.name} to ${WEEKDAYS[weekday]}`);
+    document.body.classList.remove('is-dragging', 'is-reordering');
+    if (drag.exercise) {
+      const order = planOrder();
+      if (drop && order.join() !== drag.startOrder.join()) Store.setExerciseOrder(currentRoute().workoutId, order);
+      // The cards open back up: keep the one that was moved under the finger.
       render();
+      const rect = document.querySelector(`[data-plan-ex="${drag.id}"]`).getBoundingClientRect();
+      window.scrollBy(0, rect.top - drag.y + 30);
+    } else {
+      drag.overDay?.classList.remove('is-drop-target');
+      const weekday = drop && drag.overDay ? Number(drag.overDay.dataset.weekday) : null;
+      const workout = Store.getWorkout(drag.id);
+      if (weekday != null && workout && workout.weekday !== weekday) {
+        Store.moveWorkout(drag.id, weekday);
+        toast(`Moved ${workout.name} to ${WEEKDAYS[weekday]}`);
+        render();
+      }
     }
   }
   drag = null;
@@ -1300,9 +1435,9 @@ window.addEventListener('pointermove', event => {
 window.addEventListener('pointerup', () => endDrag(true));
 window.addEventListener('pointercancel', () => endDrag(false));
 
-// Holding a workout picks it up; don't also open the long-press menu.
+// Holding a card picks it up; don't also open the long-press menu.
 appEl.addEventListener('contextmenu', event => {
-  if (event.target.closest('.workout-card')) event.preventDefault();
+  if (event.target.closest('.workout-card, #plan-list .preview-ex')) event.preventDefault();
 });
 
 // Once a workout is picked up, the page mustn't scroll under the finger
@@ -1468,14 +1603,6 @@ appEl.addEventListener('change', async event => {
     return;
   }
 
-  // Workout title on the edit screen (an empty title keeps the old one).
-  if (input.id === 'workout-name') saveWorkoutName();
-
-  // Day chips on the edit screen: moves the workout to that day.
-  if (input.name === 'workout-day') {
-    Store.moveWorkout(currentRoute().workoutId, Number(input.value));
-  }
-
   // Day chips on the New workout form.
   if (input.name === 'new-workout-day') newForm.weekday = Number(input.value);
 
@@ -1549,15 +1676,17 @@ appEl.addEventListener('submit', event => {
     const source = newForm.copyFrom && Store.getWorkout(newForm.copyFrom);
     const workout = Store.addWorkout(name, newForm.weekday, source ? source.exercises : []);
     toast(source ? `Copied to ${WEEKDAYS[workout.weekday]}` : `Created ${name}`);
-    go(`#/workout/${workout.id}/edit`);
+    go(`#/workout/${workout.id}`);
     return;
   }
 
   // Sets & reps for the picked exercise → add it to the workout (or save changes).
+  // After adding, the search stays open for the next one.
   if (form.id === 'exercise-form') {
     saveExerciseForm(form);
-    picker = newPicker();
+    picker = newPicker(!picker.exerciseId);
     render();
+    if (picker.adding) showPanel();
   }
 
   // New custom exercise → save it, then go on to sets & reps.
@@ -1619,6 +1748,8 @@ window.addEventListener('hashchange', () => {
   if (!back && !['past', 'exercise-log'].includes(view)) returnStack = [];
 
   picker = newPicker();
+  plannedChanged = new Set();
+  strip.open = false;
   openExerciseId = back ? back.openExerciseId : null;
   autoOpenExercise = !back;
   swap = { exerciseId: null, query: '' };

@@ -80,7 +80,6 @@ function initials(name) {
   return name.split(/\s+/).map(word => word[0]).slice(0, 2).join('').toUpperCase();
 }
 
-const SETS_SCALE = 16; // a full bar = 16+ sets a week
 const BACKUP_REMINDER_DAYS = 30;
 
 // The streak flame. Its colors come from CSS (.flame-outer / .flame-inner).
@@ -110,22 +109,22 @@ function setsRow(action, id, isOpen, label, fraction, sets, extraClass = '') {
     </button>`;
 }
 
-// Planned sets per muscle group for the week or one day, each with a bar. Tapping a group shows
-// its muscles; tapping a muscle shows the exercises behind its number.
-//   planned = Stats.weekPlannedSets() or dayPlannedSets()   open = { groups: Set of names, muscles: Set of ids }
-// Group bars fill at SETS_SCALE sets. Muscle bars share one scale across every group
-// (the most-trained muscle fills its bar), so any two muscles can be compared.
-function plannedSetsTable(planned, open) {
-  const { groups, muscles, sources } = planned;
-  const shown = MUSCLE_GROUPS.filter(g => groups[g.name]);
-  if (!shown.length) return '<p class="empty">No exercises planned yet.</p>';
-  const muscleScale = Math.max(...Object.values(muscles));
+// Planned sets for the week or one day: a row with a bar for each muscle, under a small heading
+// for its group. Tapping a muscle shows the exercises behind its number.
+//   planned = Stats.weekPlannedSets() or dayPlannedSets()   open = Set of muscle ids that are expanded
+//   hideEmpty = leave out muscles with no sets (a single day, which would be full of zeros)
+//   changed = Set of muscle ids that just changed (shown in green)
+// All the bars share one scale (the most-trained muscle fills its bar), so any two can be compared.
+function plannedSetsTable(planned, open, { hideEmpty = false, changed = new Set() } = {}) {
+  const { muscles, sources } = planned;
+  const values = Object.values(muscles);
+  if (!values.length) return '<p class="empty">No exercises planned yet.</p>';
+  const scale = Math.max(...values);
 
-  const blocks = shown.map(group => {
-    const groupOpen = open.groups.has(group.name);
-    const muscleBlocks = Object.entries(group.muscles).map(([id, name]) => {
+  const blocks = MUSCLE_GROUPS.map(group => {
+    const rows = Object.entries(group.muscles).filter(([id]) => !hideEmpty || muscles[id]).map(([id, name]) => {
       const sets = muscles[id] || 0;
-      const muscleOpen = open.muscles.has(id);
+      const isOpen = open.has(id);
       const list = sources[id] || [];
       const detail = list.length
         ? `<ul class="sets-sources">${list.map(s => `
@@ -134,18 +133,45 @@ function plannedSetsTable(planned, open) {
               <span class="src-num">${setsText(s.sets)}</span></li>`).join('')}</ul>`
         : '<p class="sets-none">No planned exercise trains this.</p>';
       return `
-        <div class="sets-block ${muscleOpen ? 'is-open' : ''}" data-block="${id}">
-          ${setsRow('toggle-muscle', id, muscleOpen, name, sets / muscleScale, sets, 'is-muscle')}
+        <div class="sets-block ${isOpen ? 'is-open' : ''}" data-block="${id}">
+          ${setsRow('toggle-muscle', id, isOpen, name, sets / scale, sets, `is-muscle ${changed.has(id) ? 'is-changed' : ''}`)}
           <div class="collapse"><div class="collapse-inner">${detail}</div></div>
         </div>`;
     }).join('');
-    return `
-      <div class="sets-block ${groupOpen ? 'is-open' : ''}" data-block="${group.name}">
-        ${setsRow('toggle-group', group.name, groupOpen, group.name, groups[group.name] / SETS_SCALE, groups[group.name], 'is-group')}
-        <div class="collapse"><div class="collapse-inner">${muscleBlocks}</div></div>
-      </div>`;
+    return rows ? `<p class="sets-heading">${group.name}</p>${rows}` : '';
   }).join('');
   return `<div class="card sets-table">${blocks}</div>`;
+}
+
+// The thin planned sets strip pinned to the bottom of a workout's screen. Closed: one line of
+// numbers, the muscles that just changed first (in green), then the most-trained. Tapping it opens
+// the full list, with a switch between the workout's day and the whole week.
+//   strip = { open, mode: 'day' or 'week' }   openRows = Set of muscle ids expanded in its list
+//   changed = Set of muscle ids changed by the last edit
+function plannedStrip(workout, strip, openRows, changed) {
+  const week = strip.mode === 'week';
+  const planned = week ? Stats.weekPlannedSets() : Stats.dayPlannedSets(workout.weekday);
+  const { muscles } = planned;
+  const order = Object.keys(muscles).sort((a, b) => muscles[b] - muscles[a]).filter(id => !changed.has(id));
+  const line = [...changed, ...order].map(id =>
+    `<span class="${changed.has(id) ? 'is-changed' : ''}">${MUSCLES[id]} ${setsText(muscles[id] || 0)}</span>`).join(' · ');
+  const dayName = WEEKDAYS[workout.weekday];
+  const segment = (id, label) => `
+    <button type="button" class="segment ${strip.mode === id ? 'is-active' : ''}" data-action="strip-mode" data-id="${id}"
+      aria-pressed="${strip.mode === id}">${label}</button>`;
+  return `
+    <div class="sets-strip ${strip.open ? 'is-open' : ''}" id="sets-strip">
+      <button type="button" class="strip-bar" data-action="strip-toggle" aria-expanded="${strip.open}">
+        <strong>${week ? 'Week' : dayName.slice(0, 3)}</strong>
+        <span class="strip-line">${line || 'No exercises planned yet'}</span>
+        ${CHEVRON}
+      </button>
+      <div class="collapse"><div class="collapse-inner"><div class="strip-panel">
+        <p class="strip-title">Planned sets</p>
+        <div class="segmented">${segment('day', dayName)}${segment('week', 'This week')}</div>
+        ${plannedSetsTable(planned, openRows, { hideEmpty: !week, changed })}
+      </div></div></div>
+    </div>`;
 }
 
 // "Oct 30"
@@ -317,7 +343,7 @@ function goalPicker(name, selected) {
     </div>`;
 }
 
-// The small pencil on each workout card (opens its edit screen).
+// The small pencil on a workout's screen.
 const PENCIL_SVG = `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"
   stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>`;
 
@@ -364,7 +390,7 @@ function formatHoursMinutes(ms) {
 const Views = {
 
   // ---------- Home: the week, Monday to Sunday, with each day's workouts ----------
-  // openSets = which planned-sets rows are expanded: { groups: Set, muscles: Set }
+  // openSets = which planned-sets rows are expanded (a Set of muscle ids)
   // A day with no workouts is a rest day automatically; tap a workout to start it (any day);
   // hold a workout and drag it to move it to another day (see the drag code in app.js).
   home(openSets) {
@@ -430,7 +456,6 @@ const Views = {
               </button>
               ${catchUp}
             </div>
-            <button type="button" class="icon-btn" data-action="edit-workout" data-id="${w.id}" aria-label="Edit ${esc(w.name)}">${PENCIL_SVG}</button>
           </div>`;
       }).join('');
       // An empty day is a rest day: its label, and a small link to add a workout (making it a training day).
@@ -490,7 +515,7 @@ const Views = {
     const count = source ? source.exercises.length : 0;
     return {
       title: source ? 'Copy workout' : 'New workout',
-      back: source ? `#/workout/${source.id}/edit` : '#/',
+      back: source ? `#/workout/${source.id}` : '#/',
       html: `
         <form id="new-workout-form" class="stack" autocomplete="off">
           <h2>Title</h2>
@@ -503,68 +528,44 @@ const Views = {
     };
   },
 
-  // ---------- Edit a workout: title, day, exercise list, copy, delete ----------
-  // picker = what the add/edit exercise panel shows (see app.js)
-  editWorkout(workout, picker) {
-    const editing = workout.exercises.find(e => e.id === picker.exerciseId);
+  // The add/edit exercise panel, in a card on a workout's screen or at the end of its list.
+  // It has three steps: pick from library → (or create custom) → sets & reps.
+  // picker = what it shows (see app.js); canClose = the search has a way to close it
+  exercisePanel(picker, editing, canClose) {
+    if (picker.mode === 'custom') return this.customExerciseForm(picker);
+    if (picker.mode === 'details') return this.exerciseDetailsForm(picker, editing);
+    return this.exercisePicker(picker, editing, canClose);
+  },
 
-    const rows = workout.exercises.length ? workout.exercises.map((ex, i) => {
-      const info = Library.forExercise(ex);
-      return `
-        <div class="card ex-row ${ex.id === picker.exerciseId ? 'is-editing' : ''}">
-          <span class="ex-num">${i + 1}</span>
-          <button class="ex-info" data-action="edit-exercise" data-id="${ex.id}">
-            <span class="ex-name">${esc(info.name)}</span>
-            <span class="ex-meta">${targetText(ex, Library.isTimed(ex.refId))} · ${esc(Library.primaryLabel(info))}</span>
-          </button>
-          <button class="btn btn-small" data-action="move-exercise" data-id="${ex.id}" data-dir="-1"
-            aria-label="Move up" ${i === 0 ? 'disabled' : ''}>↑</button>
-          <button class="btn btn-small" data-action="move-exercise" data-id="${ex.id}" data-dir="1"
-            aria-label="Move down" ${i === workout.exercises.length - 1 ? 'disabled' : ''}>↓</button>
-        </div>`;
-    }).join('')
-      : `<p class="empty">No exercises yet.</p>`;
-
-    // The add/edit panel has three steps: pick from library → (or create custom) → sets & reps.
-    let panel;
-    if (picker.mode === 'custom') panel = this.customExerciseForm(picker);
-    else if (picker.mode === 'details') panel = this.exerciseDetailsForm(picker, editing);
-    else panel = this.exercisePicker(picker, editing);
-
-    return {
-      title: `Edit ${workout.name}`,
-      back: '#/',
-      html: `
-        <h2>Title</h2>
-        <input id="workout-name" value="${esc(workout.name)}" placeholder="e.g. Push, Legs, Upper (arm focus)" autocomplete="off">
-
-        <h2>Day</h2>
-        ${weekdayPicker('workout-day', workout.weekday)}
-
-        <h2>Exercises</h2>
-        ${rows}
-
-        <h2>${editing ? 'Edit exercise' : 'Add exercise'}</h2>
-        <div id="exercise-panel">${panel}</div>
-
-        <div class="finish-bar stack">
-          <button type="button" class="btn btn-primary" data-action="save-workout">Done</button>
-          <button type="button" class="btn" data-action="copy-workout" data-id="${workout.id}">Copy workout</button>
-          <button type="button" class="btn btn-danger" data-action="delete-workout" data-id="${workout.id}">Delete workout</button>
+  // The title, day, Copy and Delete of a workout (the pencil at the top of its screen).
+  // It's a pop-up, so what's typed is saved by Done (see 'details-done' in app.js).
+  workoutDetails(workout) {
+    return `
+      <div class="card notice stack" role="dialog" aria-label="Edit ${esc(workout.name)}">
+        <div>
+          <label for="workout-name">Title</label>
+          <input id="workout-name" value="${esc(workout.name)}" placeholder="e.g. Push, Legs, Upper (arm focus)" autocomplete="off">
         </div>
-      `,
-    };
+        <div>
+          <label>Day</label>
+          ${weekdayPicker('workout-day', workout.weekday)}
+        </div>
+        <button type="button" class="btn btn-primary" data-action="details-done">Done</button>
+        <button type="button" class="btn" data-action="copy-workout" data-id="${workout.id}">Copy workout</button>
+        <button type="button" class="btn btn-danger" data-action="delete-workout" data-id="${workout.id}">Delete workout</button>
+      </div>`;
   },
 
   // Step 1: search the library and tap an exercise.
-  exercisePicker(picker, editing) {
+  exercisePicker(picker, editing, canClose) {
     return `
       <div class="card stack">
         <input type="search" id="lib-search" value="${esc(picker.query)}"
           placeholder="Search name, muscle or equipment" autocomplete="off" aria-label="Search exercises">
         <div id="lib-results" class="lib-results">${this.libraryResults(picker.query)}</div>
         <button type="button" class="btn" data-action="new-custom">+ Create custom exercise</button>
-        ${editing ? '<button type="button" class="btn" data-action="cancel-edit">Cancel</button>' : ''}
+        ${editing ? '<button type="button" class="btn" data-action="cancel-edit">Cancel</button>'
+          : canClose ? '<button type="button" class="btn" data-action="close-add">Done adding</button>' : ''}
       </div>`;
   },
 
@@ -611,17 +612,21 @@ const Views = {
       <form id="exercise-form" class="card stack">
         <div class="picked">
           <div class="picked-info">
-            <strong>${esc(info.name)}</strong>
+            ${editing?.refId === picker.refId ? '' : `<strong>${esc(info.name)}</strong>`}
             <span class="muted">${esc(info.equipment)}</span>
             <span class="muscle-line"><b>Primary:</b> ${esc(muscleNames(info.primary) || '—')}</span>
             ${info.secondary.length ? `<span class="muscle-line"><b>Secondary:</b> ${esc(muscleNames(info.secondary))}</span>` : ''}
           </div>
-          <button type="button" class="btn btn-small" data-action="change-exercise">Change</button>
         </div>
+        <button type="button" class="btn" data-action="change-exercise">${editing ? 'Change exercise' : 'Pick a different exercise'}</button>
         ${info.custom ? `<button type="button" class="btn" data-action="edit-custom">Edit custom exercise</button>` : ''}
         <div>
           <label for="ex-sets">Sets</label>
-          <input id="ex-sets" name="sets" type="number" inputmode="numeric" min="1" max="20" value="${form.sets}" required>
+          <div class="row range-row">
+            <button type="button" class="btn sets-step" data-action="sets-step" data-id="-1" aria-label="One set less">−</button>
+            <input id="ex-sets" name="sets" type="number" inputmode="numeric" min="1" max="20" value="${form.sets}" required>
+            <button type="button" class="btn sets-step" data-action="sets-step" data-id="1" aria-label="One set more">+</button>
+          </div>
         </div>
         <div>
           <label for="ex-rep-min">${timed ? 'Target seconds (e.g. 30 to 60)' : 'Target reps (e.g. 8 to 12)'}</label>
@@ -716,26 +721,27 @@ const Views = {
       </div>`;
   },
 
-  // ---------- A planned workout before it's started: a look only, nothing to type in ----------
-  // Shows what you did last time, each exercise's note and log. Start workout is what starts it
+  // ---------- A planned workout before it's started: look at it and change it, on one screen ----------
+  // Shows what you did last time, each exercise's note and log. Each exercise has a pencil that
+  // opens its sets & reps inside its card; hold and drag a card to change the order (app.js).
+  // The pencil at the top has the title, day, copy and delete. Start workout is what starts it
   // (and its timer). Dashed cards make it look different from the real thing.
-  // openSets = which rows of the day's planned sets card are expanded (shared with the week's card).
-  workoutPreview(workout, openSets) {
-    if (!workout.exercises.length) {
-      return {
-        title: workout.name,
-        back: '#/',
-        html: `
-          <p class="empty">This workout has no exercises yet.</p>
-          <button class="btn btn-primary" data-action="edit-workout" data-id="${workout.id}">Add exercises</button>`,
-      };
-    }
+  //   ui = { picker (the add/edit panel, see app.js), strip and stripRows (the planned sets strip),
+  //          changed (muscles changed by the last edit) }
+  workoutPreview(workout, ui) {
+    const { picker } = ui;
+    const hasExercises = workout.exercises.length > 0;
+    const editing = workout.exercises.find(e => e.id === picker.exerciseId);
+    // A workout with nothing in it opens ready to add to.
+    const adding = !editing && (picker.adding || !hasExercises);
+
     const cards = workout.exercises.map((ex, i) => {
       const info = Library.forExercise(ex);
       const timed = Library.isTimed(ex.refId);
       const last = Store.lastResult(ex);
+      const isEditing = ex === editing;
       return `
-        <div class="card preview-ex">
+        <div class="card preview-ex ${isEditing ? 'is-editing' : ''}" data-plan-ex="${ex.id}">
           <div class="preview-head">
             <span class="ex-num">${i + 1}</span>
             <span class="ex-toggle-main">
@@ -743,26 +749,32 @@ const Views = {
               <span class="ex-sub">Target ${targetText(ex, timed)}</span>
             </span>
             ${logButton(ex.refId)}
+            <button type="button" class="icon-btn" data-action="edit-exercise" data-id="${ex.id}"
+              aria-label="Edit ${esc(info.name)}" aria-pressed="${isEditing}">${PENCIL_SVG}</button>
           </div>
-          ${last
-            ? `<p class="preview-last">Last time · ${formatDate(last.date)}</p>${setsList(last.sets, timed)}`
-            : '<p class="preview-last">No history yet</p>'}
-          ${noteBox(ex.refId)}
+          ${isEditing ? `<div id="exercise-panel">${this.exercisePanel(picker, editing, false)}</div>` : `
+            ${last
+              ? `<p class="preview-last">Last time · ${formatDate(last.date)}</p>${setsList(last.sets, timed)}`
+              : '<p class="preview-last">No history yet</p>'}
+            ${noteBox(ex.refId)}`}
         </div>`;
     }).join('');
+
     return {
       title: workout.name,
       back: '#/',
       html: `
-        <div class="start-row">
-          <button type="button" class="btn btn-primary" data-action="start-workout" data-id="${workout.id}">Start workout</button>
-          <button type="button" class="icon-btn" data-action="edit-workout" data-id="${workout.id}" aria-label="Edit ${esc(workout.name)}">${PENCIL_SVG}</button>
+        <div class="start-row ${hasExercises ? '' : 'is-empty'}">
+          ${hasExercises ? `<button type="button" class="btn btn-primary" data-action="start-workout" data-id="${workout.id}">Start workout</button>` : ''}
+          <button type="button" class="icon-btn" data-action="workout-details" data-id="${workout.id}" aria-label="Edit ${esc(workout.name)}">${PENCIL_SVG}</button>
         </div>
-        ${cards}
-        <p class="muted preview-tip">Only log your working sets, not your warm-ups.</p>
-
-        <h2>Planned sets on ${WEEKDAYS[workout.weekday]}</h2>
-        ${plannedSetsTable(Stats.dayPlannedSets(workout.weekday), openSets)}
+        <div id="plan-list">${cards}</div>
+        <div class="plan-end">
+          ${adding ? `<h2>Add exercise</h2><div id="exercise-panel">${this.exercisePanel(picker, null, hasExercises)}</div>`
+            : '<button type="button" class="btn btn-add-ex" data-action="add-exercise">+ Add exercise</button>'}
+          ${hasExercises ? '<p class="muted preview-tip">Only log your working sets, not your warm-ups.</p>' : ''}
+        </div>
+        ${plannedStrip(workout, ui.strip, ui.stripRows, ui.changed)}
       `,
     };
   },

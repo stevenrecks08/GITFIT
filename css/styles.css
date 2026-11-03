@@ -401,7 +401,32 @@ button, .btn {
   border-color: var(--accent);
   opacity: 0.95;
 }
-.workout-card.is-dragging { opacity: 0.3; }
+.workout-card.is-dragging, .preview-ex.is-dragging { opacity: 0.3; }
+
+/* While an exercise is held: every card shrinks to its name, so the whole list fits on screen */
+body.is-reordering #plan-list .preview-last,
+body.is-reordering #plan-list .log-sets,
+body.is-reordering #plan-list .ex-note,
+body.is-reordering #plan-list .btn,
+body.is-reordering #plan-list .icon-btn,
+body.is-reordering .plan-end,
+body.is-reordering .sets-strip { display: none; }
+body.is-reordering .drag-ghost .preview-last,
+body.is-reordering .drag-ghost .log-sets,
+body.is-reordering .drag-ghost .ex-note,
+body.is-reordering .drag-ghost .btn,
+body.is-reordering .drag-ghost .icon-btn { display: none; }
+/* Holding a card picks it up; don't select its text or show the iPhone callout menu */
+#plan-list .preview-ex { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; scroll-margin-top: calc(var(--topbar-h) + env(safe-area-inset-top) + 12px); }
+#plan-list input, #plan-list textarea { -webkit-user-select: text; user-select: text; }
+#plan-list .preview-ex #exercise-panel { margin-top: 12px; }
+/* The panel inside an exercise's card doesn't need a card of its own */
+#plan-list .preview-ex #exercise-panel > .card { padding: 0; border: none; background: none; }
+#exercise-panel { scroll-margin-top: calc(var(--topbar-h) + env(safe-area-inset-top) + 12px); }
+.plan-end { margin-top: 12px; }
+.start-row.is-empty { justify-content: flex-end; }
+.sets-step { flex: 0 0 56px; padding: 0; font-size: 22px; font-weight: 600; }
+.row.range-row #ex-sets { flex: 1; min-width: 0; text-align: center; }
 .day-block.is-drop-target { background: #16331f; border-left-color: var(--accent); opacity: 1; }
 body.is-dragging { -webkit-user-select: none; user-select: none; }
 
@@ -568,26 +593,6 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1p
 .choice:has(input:checked) { border-color: var(--accent); background: #16331f; }
 .choice:has(input:focus-visible) { outline: 2px solid var(--accent); }
 
-/* ---------- Day editor: exercise rows ---------- */
-.ex-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.ex-row .ex-info {
-  flex: 1;
-  min-width: 0;
-  min-height: var(--tap);
-  padding: 0;
-  background: none;
-  border: none;
-  color: var(--text);
-  text-align: left;
-}
-.ex-row .ex-name { display: block; font-weight: 600; overflow-wrap: anywhere; }
-.ex-row .ex-meta { display: block; font-size: 14px; color: var(--muted); margin-top: 2px; }
-.ex-row.is-editing { outline: 2px solid var(--accent); }
-
 /* Order number on the left of each exercise (edit day and workout) */
 .ex-num {
   flex: 0 0 26px;
@@ -602,8 +607,6 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1p
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
-.ex-row .ex-num { margin-right: 6px; }
-
 /* ---------- Exercise library (edit-day screen) ---------- */
 input[type="search"] { -webkit-appearance: none; appearance: none; }
 
@@ -1011,12 +1014,14 @@ main.is-searching { padding-bottom: 100vh; }
 .legend-levels span { display: flex; align-items: center; gap: 5px; }
 .legend-levels i { width: 12px; height: 12px; border-radius: 3px; }
 
-/* Planned sets per muscle group (Workouts tab) */
-/* Group rows open to muscle rows, muscle rows open to the exercises behind them */
+/* Planned sets per muscle (Workouts tab, and the strip on a workout's screen) */
+/* Muscle rows open to the exercises behind them, under a small heading for each group */
 .sets-table { padding: 6px 14px; }
+.sets-heading { margin: 12px 0 2px; font-size: 13px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
+.sets-table > .sets-heading:first-child { margin-top: 6px; }
 .sets-row {
   display: grid;
-  grid-template-columns: 16px 140px 1fr 2.6em; /* px, so group and muscle bars line up */
+  grid-template-columns: 16px 140px 1fr 2.6em; /* px, so all the bars line up */
   align-items: center;
   column-gap: 10px;
   width: 100%;
@@ -1028,15 +1033,11 @@ main.is-searching { padding-bottom: 100vh; }
   text-align: left;
 }
 .sets-row:active { opacity: 0.6; }
-.sets-row.is-group .sets-label { font-weight: 600; }
 .sets-row.is-muscle { min-height: 44px; font-size: 15px; }
-.sets-row.is-muscle .sets-label { padding-left: 10px; color: var(--muted); }
-.sets-block.is-open > .sets-row.is-muscle .sets-label { color: var(--text); }
+.sets-row.is-changed .sets-label, .sets-row.is-changed .sets-num { color: var(--accent); font-weight: 600; }
 .sets-label { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .sets-bar { height: 6px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
 .sets-bar i { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
-.is-muscle .sets-bar { height: 5px; }
-.is-muscle .sets-bar i { background: #2f9e5a; }
 .sets-num { text-align: right; font-variant-numeric: tabular-nums; }
 
 .chev { width: 16px; height: 16px; fill: none; stroke: var(--muted); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; transition: transform 0.25s ease; }
@@ -1049,6 +1050,42 @@ main.is-searching { padding-bottom: 100vh; }
 .sets-block.is-open > .collapse { grid-template-rows: 1fr; }
 .sets-table > .sets-block + .sets-block { border-top: 1px solid var(--border); }
 .sets-table > .sets-block.is-open > .collapse > .collapse-inner { padding-bottom: 6px; }
+
+/* The thin planned sets strip, pinned to the bottom of a workout's screen. It opens upward. */
+.sets-strip {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 15;
+  background: var(--surface);
+  border-top: 1px solid var(--accent);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.strip-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 48px;
+  padding: 0 16px;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-size: 14px;
+  text-align: left;
+}
+.strip-line { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.strip-line .is-changed { color: var(--accent); font-weight: 600; }
+.strip-bar .chev { flex: 0 0 auto; transform: rotate(-90deg); }
+.sets-strip.is-open > .strip-bar .chev { transform: rotate(90deg); }
+.sets-strip.is-open > .collapse { grid-template-rows: 1fr; }
+.strip-panel { max-height: 70vh; padding: 0 16px 12px; overflow-y: auto; overscroll-behavior: contain; }
+.strip-title { margin: 4px 0 8px; font-size: 13px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
+.strip-panel .sets-table { margin-top: 8px; padding: 0; border: none; background: none; }
+/* Room so the strip doesn't cover the end of the page or the pop-up messages */
+main:has(.sets-strip):not(.is-searching) { padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
+body:has(.sets-strip) .toast { bottom: calc(60px + env(safe-area-inset-bottom)); }
 
 .sets-sources { margin: 0 0 6px 26px; padding: 8px 12px; list-style: none; border-radius: 10px; background: var(--surface-2); font-size: 14px; }
 .sets-sources li { display: flex; align-items: baseline; gap: 8px; padding: 3px 0; }

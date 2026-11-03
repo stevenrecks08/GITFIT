@@ -459,13 +459,10 @@ const Store = {
     draft.entries[id] = logged.map(({ extra, ...set }) => set);
   },
 
-  // direction: -1 moves up, +1 moves down
-  moveExercise(workoutId, exerciseId, direction) {
-    const list = this.getWorkout(workoutId).exercises;
-    const from = list.findIndex(e => e.id === exerciseId);
-    const to = from + direction;
-    if (to < 0 || to >= list.length) return;
-    [list[from], list[to]] = [list[to], list[from]];
+  // Puts a workout's exercises in this order (a list of their ids), after dragging one.
+  setExerciseOrder(workoutId, exerciseIds) {
+    const workout = this.getWorkout(workoutId);
+    workout.exercises.sort((a, b) => exerciseIds.indexOf(a.id) - exerciseIds.indexOf(b.id));
     this.save();
   },
 

@@ -100,33 +100,25 @@ const Stats = {
 
   // Planned sets from your week (not logged workouts), for a list of day exercises:
   //   muscles = { muscleId: sets }       each exercise's target sets × 1 (primary) or × 0.5 (secondary)
-  //   groups  = { 'Chest': sets, … }    per muscle group; an exercise counts once per group,
-  //                                      at its biggest share there (a row hitting lats and upper back
-  //                                      as primary adds its sets to Back once, not twice)
   //   sources = { muscleId: [ { name, sets, role: 'primary' | 'secondary' } ] }
   //                                      the exercises behind each muscle's number, most sets first
   //                                      (an exercise on several days is listed once, with its sets added up)
   plannedSets(exercises) {
     const muscles = {};
-    const groups = {};
     const sources = {};
     for (const ex of exercises) {
       const info = Library.forExercise(ex);
-      const groupShare = {};
       forEachMuscle(info, (m, share) => {
         muscles[m] = (muscles[m] || 0) + ex.sets * share;
-        const g = MUSCLE_GROUP_OF[m];
-        groupShare[g] = Math.max(groupShare[g] || 0, share);
 
         const list = sources[m] || (sources[m] = []);
         const same = list.find(s => s.refId === ex.refId);
         if (same) same.sets += ex.sets * share;
         else list.push({ refId: ex.refId, name: info.name, sets: ex.sets * share, role: share === 1 ? 'primary' : 'secondary' });
       });
-      for (const g in groupShare) groups[g] = (groups[g] || 0) + ex.sets * groupShare[g];
     }
     for (const m in sources) sources[m].sort((a, b) => b.sets - a.sets || a.name.localeCompare(b.name));
-    return { muscles, groups, sources };
+    return { muscles, sources };
   },
 
   // Planned sets for the whole week (workouts on rest days don't count).
