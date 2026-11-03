@@ -533,6 +533,14 @@ const Store = {
     this.save();
   },
 
+  // Puts a quick workout's exercises in this order (a list of their ids), after dragging one.
+  // It's only for this workout: a quick workout isn't in the plan.
+  setQuickOrder(exerciseIds) {
+    const draft = this.data.draft;
+    draft.exercises.sort((a, b) => exerciseIds.indexOf(a.id) - exerciseIds.indexOf(b.id));
+    this.save();
+  },
+
   // The weight a new set starts with (lbs or null): your latest logged body weight on a
   // bodyweight exercise, otherwise last time's weight. It's only a starting value, so
   // a weighted pull-up can just be typed over. A timed exercise (plank) never has a weight.

@@ -878,7 +878,7 @@ const Views = {
       const makeupNote = ex.makeupFor
         ? `<span class="ex-sub makeup-note">Catching up${makeupWorkout ? ` ${WEEKDAYS[Streak.dayStates()[makeupWorkout.id]?.weekday ?? makeupWorkout.weekday].slice(0, 3)} · ${esc(makeupWorkout.name)}` : ''}</span>` : '';
       return `
-        <div class="card workout-ex ${isOpen ? 'is-open' : ''}" id="ex-${ex.id}">
+        <div class="card workout-ex ${isOpen ? 'is-open' : ''}" id="ex-${ex.id}" ${ex.today ? '' : `data-plan-ex="${ex.id}"`}>
           <button class="ex-toggle" data-action="toggle-exercise" data-id="${ex.id}" aria-expanded="${isOpen}">
             <span class="ex-num">${i + 1}</span>
             <span class="ex-toggle-main">
@@ -893,7 +893,11 @@ const Views = {
           </button>
           ${body}
         </div>`;
-    }).join('');
+    });
+    // Hold and drag reorders the exercises in #exercise-list (see app.js). One added for today
+    // only isn't in the plan, so it has no place to save: it stays below the list.
+    const planCards = cards.filter((_, i) => !workout.exercises[i].today).join('');
+    const todayCards = cards.filter((_, i) => workout.exercises[i].today).join('');
 
     // Quick workout: the title box at the top, and "+ Add exercise" (or its search) below the exercises.
     const quickTop = quick ? `
@@ -927,7 +931,8 @@ const Views = {
       html: `
         ${status}
         ${quickTop}
-        ${cards}
+        <div id="exercise-list">${planCards}</div>
+        ${todayCards}
         ${quickBottom}
         <div class="finish-bar stack">
           <button class="btn btn-primary" data-action="finish">Finish workout</button>

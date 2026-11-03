@@ -950,6 +950,7 @@ const actions = {
 
   // Opens this exercise (closing any other), or closes it if it's already open.
   'toggle-exercise'(id) {
+    if (dragJustEnded()) return;
     openExerciseId = openExerciseId === id ? null : id;
     swap = { exerciseId: null, query: '' };
     render();
@@ -1284,10 +1285,13 @@ backBtn.addEventListener('click', () => {
 // your finger (moved with transform only, so it stays smooth on iPhone) and the day under
 // it lights up. Near the top or bottom of the screen the page scrolls.
 // An exercise's card is tall, so while one is held every card shrinks to its name
-// (body.is-reordering) and the other cards make room as you go.
+// (body.is-reordering) and the other cards make room as you go. That works on a workout's screen
+// and during the workout, where the order saves to the plan too (only its heading row can be held,
+// since the rest of an open exercise is boxes to type in).
 const HOLD_MS = 350;
 const EDGE_PX = 90;
-// { id, card, exercise (true for an exercise), ghost, startX, startY, x, y, offsetX, offsetY, active, timer, overDay }
+// { id, card, exercise (true for an exercise), list (the cards it moves among), startOrder, ghost,
+//   startX, startY, x, y, offsetX, offsetY, active, timer, overDay }
 let drag = null;
 let dragEndedAt = 0;
 
@@ -1298,16 +1302,18 @@ function dragJustEnded() {
 
 appEl.addEventListener('pointerdown', event => {
   if (event.button > 0) return;
-  const exercise = event.target.closest('#plan-list .preview-ex');
+  const planned = event.target.closest('#plan-list .preview-ex');
+  // Buttons and notes work as usual, and nothing moves while an exercise is being edited.
+  const canHoldPlanned = planned && !picker.exerciseId && !event.target.closest('button, input, textarea, summary, a');
+  const exercise = canHoldPlanned ? planned : event.target.closest('#exercise-list .ex-toggle')?.parentElement;
   if (exercise) {
-    // Buttons and notes work as usual, and nothing moves while an exercise is being edited.
-    if (picker.exerciseId || event.target.closest('button, input, textarea, summary, a')) return;
     if (exercise.parentElement.children.length < 2) return;
-    drag = { id: exercise.dataset.planEx, card: exercise, exercise: true, startX: event.clientX, startY: event.clientY,
-      x: event.clientX, y: event.clientY, active: false };
+    drag = { id: exercise.dataset.planEx, card: exercise, exercise: true, list: exercise.parentElement,
+      startX: event.clientX, startY: event.clientY, x: event.clientX, y: event.clientY, active: false };
     drag.timer = setTimeout(pickUpExercise, HOLD_MS);
     return;
   }
+  if (planned) return;
   const card = event.target.closest('.workout-card');
   if (!card || !card.dataset.workout) return; // (quick workout cards don't move)
   drag = { id: card.dataset.workout, card, startX: event.clientX, startY: event.clientY,
@@ -1336,15 +1342,22 @@ function pickUpExercise() {
   requestAnimationFrame(edgeScroll);
 }
 
-// The workout's exercises, in the order they're on the screen.
+// The exercises being reordered, in the order they're on the screen.
 function planOrder() {
-  return [...document.getElementById('plan-list').children].map(card => card.dataset.planEx);
+  return [...drag.list.children].map(card => card.dataset.planEx);
+}
+
+// Saves the order after a drag: to the plan, or just this workout if it's a quick workout.
+function savePlanOrder(order) {
+  if (currentRoute().view === 'quick') return Store.setQuickOrder(order);
+  Store.setExerciseOrder(currentRoute().workoutId, order);
+  if (Store.data.draft?.workoutId === currentRoute().workoutId) toast('Order saved');
 }
 
 // Makes room for the held exercise where the finger is. Only the other cards are moved:
 // moving the card under the finger could make the iPhone lose track of the touch.
 function reorderUnderFinger() {
-  const list = document.getElementById('plan-list');
+  const { list } = drag;
   const others = [...list.children].filter(card => card !== drag.card);
   const after = others.findIndex(card => {
     const rect = card.getBoundingClientRect();
@@ -1406,7 +1419,7 @@ function endDrag(drop) {
     document.body.classList.remove('is-dragging', 'is-reordering');
     if (drag.exercise) {
       const order = planOrder();
-      if (drop && order.join() !== drag.startOrder.join()) Store.setExerciseOrder(currentRoute().workoutId, order);
+      if (drop && order.join() !== drag.startOrder.join()) savePlanOrder(order);
       // The cards open back up: keep the one that was moved under the finger.
       render();
       const rect = document.querySelector(`[data-plan-ex="${drag.id}"]`).getBoundingClientRect();
@@ -1437,7 +1450,7 @@ window.addEventListener('pointercancel', () => endDrag(false));
 
 // Holding a card picks it up; don't also open the long-press menu.
 appEl.addEventListener('contextmenu', event => {
-  if (event.target.closest('.workout-card, #plan-list .preview-ex')) event.preventDefault();
+  if (event.target.closest('.workout-card, #plan-list .preview-ex, #exercise-list .ex-toggle')) event.preventDefault();
 });
 
 // Once a workout is picked up, the page mustn't scroll under the finger

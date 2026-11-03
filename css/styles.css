@@ -410,7 +410,14 @@ body.is-reordering #plan-list .ex-note,
 body.is-reordering #plan-list .btn,
 body.is-reordering #plan-list .icon-btn,
 body.is-reordering .plan-end,
-body.is-reordering .sets-strip { display: none; }
+body.is-reordering .sets-strip,
+body.is-reordering .ex-body,
+body.is-reordering .btn-add-ex,
+body.is-reordering #quick-add-panel,
+body.is-reordering .finish-bar { display: none; }
+#exercise-list .ex-toggle { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+/* Exercises added for today only sit just below the ones that can be dragged */
+#exercise-list:not(:empty) + .workout-ex { margin-top: 8px; }
 body.is-reordering .drag-ghost .preview-last,
 body.is-reordering .drag-ghost .log-sets,
 body.is-reordering .drag-ghost .ex-note,
