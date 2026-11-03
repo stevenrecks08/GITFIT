@@ -169,6 +169,62 @@ function saveWorkoutName() {
   titleEl.textContent = `Edit ${name}`;
 }
 
+// What's in the sets & reps form on the edit-workout screen.
+function exerciseFormFields(form) {
+  const values = Object.fromEntries(new FormData(form));
+  const repA = Math.max(1, parseInt(values.repMin, 10) || 1);
+  const repB = Math.max(1, parseInt(values.repMax, 10) || repA);
+  return {
+    refId: picker.refId,
+    sets: Math.max(1, parseInt(values.sets, 10) || 1),
+    repMin: Math.min(repA, repB), // swapped if typed backwards
+    repMax: Math.max(repA, repB),
+  };
+}
+
+// Saves the sets & reps form: the exercise being edited, or a new one added to the workout.
+function saveExerciseForm(form) {
+  const fields = exerciseFormFields(form);
+  const workoutId = currentRoute().workoutId;
+  const name = Library.forExercise(fields).name;
+  if (picker.exerciseId) {
+    Store.updateExercise(workoutId, picker.exerciseId, fields);
+    toast(`Saved ${name}`);
+  } else {
+    Store.addExercise(workoutId, fields);
+    toast(`Added ${name}`);
+  }
+}
+
+// Leaving the edit-workout screen (Done, Back, Copy workout) with the sets & reps form still open.
+// Everything else on this screen saves as it changes, so changes to an exercise save here too.
+// An exercise only picked so far might just have been looked at, so that one asks first.
+function leaveEditScreen(hash) {
+  saveWorkoutName();
+  const form = document.getElementById('exercise-form');
+  if (form) {
+    if (!form.reportValidity()) return; // e.g. the sets box was left empty: says so and stays
+    if (!picker.exerciseId) {
+      const { name } = Library.forExercise({ refId: picker.refId });
+      showDialog({
+        title: `Add ${name}?`,
+        lines: [`You picked ${name} but didn't add it to this workout.`],
+        confirm: { label: 'Add to workout', action: 'leave-add' },
+        cancel: { label: 'Don\'t add', action: 'leave-skip' },
+      });
+      leavingTo = hash;
+      return;
+    }
+    const before = Store.getWorkout(currentRoute().workoutId).exercises.find(e => e.id === picker.exerciseId);
+    const after = exerciseFormFields(form);
+    if (['refId', 'sets', 'repMin', 'repMax'].some(key => before[key] !== after[key])) saveExerciseForm(form);
+  }
+  go(hash);
+}
+
+// Where to go once the "Add this exercise?" question above is answered.
+let leavingTo = null;
+
 // Only one workout can be in progress. Asks before throwing away the one there is;
 // returns true if it was discarded (or there was none).
 function discardOtherDraft() {
@@ -294,7 +350,7 @@ function render() {
     if (!workout) return go('#/');
     if (route.view === 'edit') {
       screen = Views.editWorkout(workout, picker);
-    } else if (Store.data.draft?.workoutId === workout.id && workout.exercises.length) {
+    } else if (Store.data.draft?.workoutId === workout.id && (workout.exercises.length || Store.data.draft.added.length)) {
       // This workout has been started: the real thing.
       const draft = Store.ensureDraft(workout);
       if (autoOpenExercise) openExerciseId = Store.firstUnfinished();
@@ -519,6 +575,7 @@ const actions = {
     Store.updateSettings({ setupDone: true });
     if (currentRoute().view === 'home') render();
     else go('#/');
+    window.scrollTo(0, 0); // Get started is far down the page; the week opens at the top
   },
 
   // Delete a custom exercise: it comes out of search and any workout using it, so that's said first.
@@ -695,7 +752,7 @@ const actions = {
   },
 
   'copy-workout'(id) {
-    go(`#/new/${id}`);
+    leaveEditScreen(`#/new/${id}`);
   },
 
   // Tapped one of the workout's exercises: open it for editing at the sets & reps step.
@@ -707,17 +764,29 @@ const actions = {
   },
 
   // Done on the edit screen. Everything is saved as you change it, so this mostly just goes back.
-  // The title box saves when you leave it; save it here too in case you're still in it.
   'save-workout'() {
-    saveWorkoutName();
-    go('#/');
+    leaveEditScreen('#/');
+  },
+
+  // The answers to "Add this exercise?" when leaving the edit screen.
+  'leave-add'() {
+    saveExerciseForm(document.getElementById('exercise-form'));
+    hideDialog();
+    go(leavingTo);
+  },
+
+  'leave-skip'() {
+    hideDialog();
+    go(leavingTo);
   },
 
   'delete-workout'(id) {
     const workout = Store.getWorkout(id);
+    const lines = [`${workout.name} will be removed from your week. Workouts you've already finished with it stay in Past workouts and your logs.`];
+    if (Store.data.draft?.workoutId === id) lines.push('You\'re in the middle of this workout: what you\'ve logged today will be discarded.');
     showDialog({
       title: `Delete ${workout.name}?`,
-      lines: [`${workout.name} will be removed from your week. Workouts you've already finished with it stay in Past workouts and your logs.`],
+      lines,
       confirm: { label: 'Delete workout', action: 'delete-workout-confirm', id },
       cancel: { label: 'Cancel', action: 'dialog-cancel' },
       danger: true,
@@ -1136,6 +1205,7 @@ backBtn.addEventListener('click', () => {
     });
     return;
   }
+  if (currentRoute().view === 'edit') return leaveEditScreen(backBtn.dataset.href);
   go(backBtn.dataset.href);
 });
 
@@ -1485,23 +1555,7 @@ appEl.addEventListener('submit', event => {
 
   // Sets & reps for the picked exercise → add it to the workout (or save changes).
   if (form.id === 'exercise-form') {
-    const repA = Math.max(1, parseInt(values.repMin, 10) || 1);
-    const repB = Math.max(1, parseInt(values.repMax, 10) || repA);
-    const fields = {
-      refId: picker.refId,
-      sets: Math.max(1, parseInt(values.sets, 10) || 1),
-      repMin: Math.min(repA, repB), // swapped if typed backwards
-      repMax: Math.max(repA, repB),
-    };
-    const workoutId = currentRoute().workoutId;
-    const name = Library.forExercise(fields).name;
-    if (picker.exerciseId) {
-      Store.updateExercise(workoutId, picker.exerciseId, fields);
-      toast(`Saved ${name}`);
-    } else {
-      Store.addExercise(workoutId, fields);
-      toast(`Added ${name}`);
-    }
+    saveExerciseForm(form);
     picker = newPicker();
     render();
   }

@@ -398,6 +398,7 @@ const Store = {
   deleteCustomExercise(id) {
     this.data.customExercises.find(e => e.id === id).deleted = true;
     for (const workout of this.data.workouts) {
+      workout.exercises.filter(e => e.refId === id).forEach(e => this.keepLoggedSets(workout.id, e));
       workout.exercises = workout.exercises.filter(e => e.refId !== id);
     }
     this.save();
@@ -428,14 +429,34 @@ const Store = {
 
   updateExercise(workoutId, exerciseId, fields) {
     const exercise = this.getWorkout(workoutId).exercises.find(e => e.id === exerciseId);
+    // Changed to a different exercise: sets already logged today stay with the old one.
+    if (fields.refId && fields.refId !== exercise.refId) this.keepLoggedSets(workoutId, exercise);
     Object.assign(exercise, fields);
     this.save();
   },
 
   deleteExercise(workoutId, exerciseId) {
     const workout = this.getWorkout(workoutId);
+    const exercise = workout.exercises.find(e => e.id === exerciseId);
+    if (exercise) this.keepLoggedSets(workoutId, exercise);
     workout.exercises = workout.exercises.filter(e => e.id !== exerciseId);
     this.save();
+  },
+
+  // An exercise is leaving the plan while its workout is in progress. Sets already logged today
+  // shouldn't be lost, so they carry on as an exercise added for today only (draft.added), which
+  // is saved with the workout as usual. Sets with no reps yet just go.
+  keepLoggedSets(workoutId, exercise) {
+    const draft = this.data.draft;
+    if (!draft || draft.quick || draft.workoutId !== workoutId) return;
+    const logged = (draft.entries[exercise.id] || []).filter(s => s.reps !== '');
+    const refId = draft.swaps[exercise.id] || exercise.refId;
+    delete draft.entries[exercise.id];
+    delete draft.swaps[exercise.id];
+    if (!logged.length) return;
+    const id = newId();
+    draft.added.push({ id, refId });
+    draft.entries[id] = logged.map(({ extra, ...set }) => set);
   },
 
   // direction: -1 moves up, +1 moves down
@@ -614,9 +635,11 @@ const Store = {
       const refId = this.swappedRef(ex.id) || ex.refId;
       const rows = draft.entries[ex.id] || [];
       const planned = rows.filter(r => !r.extra);
-      // Keeps rows already typed in; adds or trims if the set count was edited. Extra sets stay after them.
+      // Keeps rows already typed in; adds or trims if the set count was edited (a set that's
+      // already logged isn't trimmed: it stays as an extra set). Extra sets stay after them.
       draft.entries[ex.id] = [
         ...Array.from({ length: ex.sets }, (_, i) => planned[i] || { weight: this.startWeight(refId, lastSets[i]?.weight), reps: '' }),
+        ...planned.slice(ex.sets).filter(r => r.reps !== '').map(r => ({ ...r, extra: true })),
         ...rows.filter(r => r.extra),
       ];
     }
