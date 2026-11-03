@@ -868,7 +868,7 @@ main.is-searching { padding-bottom: 100vh; }
 .bw-form input { flex: 1; min-width: 0; }
 .bw-form .btn { flex: 0 0 auto; min-height: var(--tap); padding: 0 18px; }
 .bw-log-link { margin-top: 10px; }
-.bw-editing { display: block; padding: 12px 0; }
+.custom-row.bw-editing { display: block; padding: 12px 0; }
 .bw-editing .bw-form { margin-top: 8px; }
 
 /* Custom exercises in Settings */
