@@ -70,9 +70,11 @@
 // settings.setupDone (true for anyone who already had saved data) and settings.lastBackupAt.
 // Version 11 made the streak go by days a week: settings.weeklyGoal (older data starts with null,
 // so the app asks once) and days/goal on each new streak week. Old weeks keep their result.
+// Version 12: a set's weight on a bodyweight exercise is now only the added weight (null = none).
+// Older sets held the body weight there, and none had added weight, so those weights are cleared.
 
 const STORAGE_KEY = 'gitfit-data';
-const DATA_VERSION = 11;
+const DATA_VERSION = 12;
 
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
@@ -283,6 +285,22 @@ function normalize(data) {
   for (const custom of customExercises) {
     custom.primary = renameMuscles(custom.primary);
     custom.secondary = renameMuscles(custom.secondary).filter(id => !custom.primary.includes(id));
+  }
+
+  // Version 12: bodyweight exercises only keep added weight (see the top of this file).
+  if ((data.version ?? 0) < 12) {
+    const isBodyweight = refId => [...LIBRARY, ...customExercises].find(e => e.id === refId)?.equipment === 'Bodyweight';
+    const clearWeights = sets => (sets || []).forEach(set => { set.weight = null; });
+    for (const session of sessions) {
+      for (const entry of session.exercises) if (isBodyweight(entry.refId)) clearWeights(entry.sets);
+    }
+    if (draft) {
+      const listed = [...draft.added, ...(draft.exercises || [])];
+      for (const id in draft.entries) {
+        const refId = draft.swaps[id] || refIds[id] || listed.find(e => e.id === id)?.refId;
+        if (isBodyweight(refId)) clearWeights(draft.entries[id]);
+      }
+    }
   }
 
   // Anyone with saved data from before version 10 has no need for the first-time setup.
@@ -565,14 +583,18 @@ const Store = {
     this.save();
   },
 
-  // The weight a new set starts with (lbs or null): your latest logged body weight on a
-  // bodyweight exercise, otherwise last time's weight. It's only a starting value, so
-  // a weighted pull-up can just be typed over. A timed exercise (plank) never has a weight.
+  // The weight a new set starts with (lbs or null): last time's weight (on a bodyweight exercise,
+  // that's last time's added weight). A timed exercise (plank) never has a weight.
   startWeight(refId, lastWeight) {
     if (Library.isTimed(refId)) return null;
-    const bodyWeight = this.data.settings.bodyWeightLbs;
-    if (bodyWeight != null && Library.forExercise({ refId }).equipment === 'Bodyweight') return bodyWeight;
     return lastWeight ?? null;
+  },
+
+  // Your body weight on a date (lbs): the latest logged by then, or the first ever logged. 0 if none.
+  bodyWeightOn(date) {
+    const log = this.data.bodyWeightLog;
+    const day = dayKey(new Date(date));
+    return ([...log].reverse().find(e => e.day <= day) || log[0])?.lbs || 0;
   },
 
   // Adds an exercise (one set, or `sets`), weights prefilled from the last time it was done. Returns its id.
@@ -1039,9 +1061,10 @@ const Store = {
   // Every finished workout that included this exercise, oldest first:
   //   [{ sessionId, workoutName, date (ISO), dayKey ('YYYY-MM-DD', local), sets: [{weight, reps}],
   //      best: {set, max} or null, hold: longest seconds (timed exercises only),
-  //      topReps: most reps in one set (bodyweight exercises only) }]
-  // best = the set with the highest estimated 1-rep max (null if no set had a weight,
-  // or it's timed or bodyweight, which are tracked by hold and reps instead).
+  //      topReps: most reps in one set with no added weight (bodyweight exercises only; 0 if none) }]
+  // best = the set with the highest estimated 1-rep max (null if no set had a weight, or it's timed).
+  // On a bodyweight exercise, that's from the added weight: sets with and without it are tracked
+  // separately, so 6 reps with 25 lbs added doesn't look like fewer reps than 10 with none.
   exerciseHistory(refId) {
     const timed = Library.isTimed(refId);
     const repsOnly = Library.isRepsOnly(refId);
@@ -1051,13 +1074,13 @@ const Store = {
       if (!sets.length) continue;
       let best = null;
       for (const set of sets) {
-        const max = timed || repsOnly ? null : estimateMax(set);
+        const max = timed ? null : estimateMax(set);
         if (max != null && (!best || max > best.max)) best = { set, max };
       }
       history.push({ sessionId: session.id, workoutName: session.workoutName, date: session.date,
         dayKey: dayKey(session.date), sets, best,
         ...(timed ? { hold: Math.max(0, ...sets.map(s => s.reps || 0)) } : {}),
-        ...(repsOnly ? { topReps: Math.max(0, ...sets.map(s => s.reps || 0)) } : {}) });
+        ...(repsOnly ? { topReps: Math.max(0, ...sets.filter(s => !s.weight).map(s => s.reps || 0)) } : {}) });
     }
     return history.sort((a, b) => new Date(a.date) - new Date(b.date));
   },
@@ -1087,18 +1110,26 @@ const Store = {
     // Dumbbell weights are per dumbbell, so they count twice here: you lifted both.
     const volumeOf = s => s.exercises.reduce((sum, e) => {
       const each = Library.get(e.refId)?.equipment === 'Dumbbell' ? 2 : 1;
-      return sum + each * e.sets.reduce((n, set) => n + (Library.isTimed(e.refId) ? 0 : (set.weight || 0) * (set.reps || 0)), 0);
+      // A bodyweight exercise lifts your body weight as well as any added weight.
+      const body = Library.isRepsOnly(e.refId) ? this.bodyWeightOn(s.date) : 0;
+      return sum + each * e.sets.reduce((n, set) => n + (Library.isTimed(e.refId) ? 0 : ((set.weight || 0) + body) * (set.reps || 0)), 0);
     }, 0);
     const bests = [];
     for (const entry of session.exercises) {
       if (!entry.refId) continue;
       const timed = Library.isTimed(entry.refId);
-      const repsOnly = Library.isRepsOnly(entry.refId);
-      const score = sets => Math.max(0, ...sets.map(s => (timed || repsOnly ? s.reps : estimateMax(s)) || 0));
-      const after = score(entry.sets);
       const earlier = this.exerciseHistory(entry.refId).filter(h => new Date(h.date) < new Date(session.date));
-      const before = Math.max(0, ...earlier.map(h => score(h.sets)));
-      if (before && after > before) bests.push({ refId: entry.refId, name: entry.name, before, after, timed, repsOnly });
+      // A bodyweight exercise has two separate bests: reps with no added weight, and with added weight.
+      const reps = sets => Math.max(0, ...sets.filter(s => !s.weight).map(s => s.reps || 0));
+      const estimate = sets => Math.max(0, ...sets.map(s => estimateMax(s) || 0));
+      const tracks = timed ? [{ score: sets => Math.max(0, ...sets.map(s => s.reps || 0)), timed }]
+        : Library.isRepsOnly(entry.refId) ? [{ score: reps, repsOnly: true }, { score: estimate, label: ' (weighted)' }]
+        : [{ score: estimate }];
+      for (const { score, label = '', ...kind } of tracks) {
+        const after = score(entry.sets);
+        const before = Math.max(0, ...earlier.map(h => score(h.sets)));
+        if (before && after > before) bests.push({ refId: entry.refId, name: entry.name + label, before, after, ...kind });
+      }
     }
     const previous = session.workoutId && [...this.data.sessions].reverse()
       .find(s => s.workoutId === session.workoutId && new Date(s.date) < new Date(session.date));

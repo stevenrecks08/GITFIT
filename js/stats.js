@@ -52,30 +52,39 @@ const Stats = {
   ENDS_WEEKS: 2, // growth compares the best of an exercise's first and last this-many weeks
 
   // Every exercise logged in the last 6 weeks and how it's going:
-  //   [{ refId, name, primary, weeks (different weeks logged), counts (enough weeks to count),
-  //      early, recent (its best in its first and last 2 weeks), change (% from early to recent) }]
+  //   [{ refId, name, primary, kind ('weight', 'reps' or 'hold'), weeks (different weeks logged),
+  //      counts (enough weeks to count), early, recent (its best in its first and last 2 weeks),
+  //      change (% from early to recent) }]
   // Comparing bests means one bad workout, or even one bad week, doesn't look like getting weaker.
-  // A bodyweight exercise uses its max reps instead of an estimated max (8 → 10 reps = +25%),
-  // and a timed one its longest hold (40 → 50 sec = +25%).
+  // A bodyweight exercise counts as two separate exercises: sets with no added weight use max reps
+  // (8 → 10 reps = +25%), and sets with added weight an estimated max like any other exercise.
+  // A timed one uses its longest hold (40 → 50 sec = +25%).
   exerciseGrowth(now = Date.now()) {
     const exercises = {};
+    const add = (entry, kind, best, suffix = '') => {
+      if (!best) return; // no reps, or no weight to estimate a max from
+      const key = entry.refId + suffix;
+      if (!exercises[key]) exercises[key] = { entry, kind, name: entry.name + suffix, points: [] };
+      exercises[key].points.push({ time: entry.time, best });
+    };
     for (const entry of loggedSince(now - this.GROWTH_WEEKS * WEEK_MS)) {
-      // A plank's seconds are saved as its reps, so this covers both.
-      const noEstimate = Library.isRepsOnly(entry.refId) || Library.isTimed(entry.refId);
-      const best = Math.max(0, ...entry.sets.map(set => (noEstimate ? set.reps : estimateMax(set)) || 0));
-      if (!best) continue; // no reps, or no weight to estimate a max from
-      if (!exercises[entry.refId]) exercises[entry.refId] = { entry, points: [] };
-      exercises[entry.refId].points.push({ time: entry.time, best });
+      const estimate = Math.max(0, ...entry.sets.map(set => estimateMax(set) || 0));
+      // A plank's seconds are saved as its reps.
+      if (Library.isTimed(entry.refId)) add(entry, 'hold', Math.max(0, ...entry.sets.map(set => set.reps || 0)));
+      else if (Library.isRepsOnly(entry.refId)) {
+        add(entry, 'reps', Math.max(0, ...entry.sets.filter(set => !set.weight).map(set => set.reps || 0)));
+        add(entry, 'weight', estimate, ' (weighted)');
+      } else add(entry, 'weight', estimate);
     }
 
-    return Object.values(exercises).map(({ entry, points }) => {
+    return Object.values(exercises).map(({ entry, kind, name, points }) => {
       const times = points.map(p => p.time);
       const ends = this.ENDS_WEEKS * WEEK_MS;
       const bestWhere = test => Math.max(...points.filter(p => test(p.time)).map(p => p.best));
       const early = bestWhere(t => t < Math.min(...times) + ends);
       const recent = bestWhere(t => t > Math.max(...times) - ends);
       const weeks = new Set(times.map(t => Math.floor((now - t) / WEEK_MS))).size;
-      return { refId: entry.refId, name: entry.name, primary: entry.primary, weeks, counts: weeks >= this.MIN_WEEKS,
+      return { refId: entry.refId, name, kind, primary: entry.primary, weeks, counts: weeks >= this.MIN_WEEKS,
         early, recent, change: (recent - early) / early * 100 };
     });
   },

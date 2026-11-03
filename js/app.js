@@ -714,6 +714,13 @@ const actions = {
     render();
   },
 
+  // The switch on a bodyweight exercise's log: reps with no added weight, or Weighted.
+  'log-tab'(tab) {
+    logState.weighted = tab === 'weighted';
+    logState.day = null;
+    render();
+  },
+
   // Show all, under the list of times an exercise was done.
   'log-show-all'() {
     logState.showAll = true;

@@ -745,6 +745,10 @@ main.is-searching { padding-bottom: 100vh; }
 }
 .set-grid .col-head { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
 .set-num { font-weight: 700; color: var(--muted); text-align: center; }
+/* A bodyweight exercise's added weight box, with "BW +" in front of it */
+.bw-box { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.bw-box span { flex: 0 0 auto; font-size: 13px; font-weight: 600; white-space: nowrap; }
+.bw-box input { flex: 1; min-width: 0; }
 .set-grid input { text-align: center; padding: 0 6px; }
 .set-grid input::placeholder { color: #5d6573; }
 .set-grid .col-head { align-self: end; }
@@ -1225,6 +1229,8 @@ body:has(.sets-strip) .toast { bottom: calc(60px + env(safe-area-inset-bottom));
 .chart-hit { fill: transparent; cursor: pointer; }
 .log-range { margin-bottom: 10px; }
 .log-range .segment { min-height: 36px; font-size: 14px; }
+.log-switch { margin-bottom: 12px; }
+.log-switch .segment { min-height: 40px; font-size: 14px; }
 .log-day-links { margin-top: 12px; }
 .log-day-links .btn { width: 100%; height: auto; padding: 8px 12px; }
 .chart-single-line { fill: none; stroke: var(--text); stroke-opacity: 0.7; stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }

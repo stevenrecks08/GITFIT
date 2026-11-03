@@ -18,8 +18,10 @@ function formatDate(iso) {
 
 // One set as "20×10" (weight in the chosen unit × reps). BW = bodyweight (no weight entered).
 // On a timed exercise (plank): "60 sec".
-function formatSet(set, timed = false) {
+// On a bodyweight exercise (bw), the weight is added weight: "BW×10", or "BW+25×8".
+function formatSet(set, timed = false, bw = false) {
   if (timed) return `${set.reps} sec`;
+  if (bw && set.weight) return `BW+${Units.showWeight(set.weight)}×${set.reps}`;
   const weight = set.weight == null ? 'BW' : Units.showWeight(set.weight);
   return `${weight}×${set.reps}`;
 }
@@ -35,8 +37,8 @@ function targetText(ex, timed) {
 }
 
 // "Last: 20×10, 20×8, 20×7" or "No history yet"
-function lastSummary(last, timed = false) {
-  return last ? `Last: ${last.sets.map(set => formatSet(set, timed)).join(', ')}` : 'No history yet';
+function lastSummary(last, timed = false, bw = false) {
+  return last ? `Last: ${last.sets.map(set => formatSet(set, timed, bw)).join(', ')}` : 'No history yet';
 }
 
 // Going heavier: the next weight up from `lbs`, as "140 lbs" (5 lbs more, or 2.5 kg).
@@ -60,7 +62,13 @@ function madeUpNote(workout) {
 
 // The column heading over the weight boxes. Dumbbell weights are per dumbbell, said quietly underneath.
 function weightHead(info, unit) {
-  return `<div class="col-head">Weight (${unit})${info.equipment === 'Dumbbell' ? '<span class="col-note">per dumbbell</span>' : ''}</div>`;
+  const label = Library.isRepsOnly(info.id) ? 'Added weight' : 'Weight';
+  return `<div class="col-head">${label} (${unit})${info.equipment === 'Dumbbell' ? '<span class="col-note">per dumbbell</span>' : ''}</div>`;
+}
+
+// A bodyweight exercise's weight box has "BW +" in front of it, since it's only added weight.
+function bwBox(bw, box) {
+  return bw ? `<div class="bw-box"><span>BW +</span>${box}</div>` : box;
 }
 
 // The weight box on a timed exercise (plank): still there, but clearly not for typing in.
@@ -107,7 +115,7 @@ const MAP_INFO = {
   growth: `
     <p>For each exercise, your best in its first 2 weeks is compared with your best in its last 2 weeks, within the last 6 weeks. So one bad workout won't pull it down.</p>
     <p>A muscle's percent is the average of the exercises with it as a primary muscle. An exercise counts once it's logged in 3 different weeks.</p>
-    <p>Best means estimated max: weight × (1 + reps ÷ 30). Bodyweight exercises use max reps, and planks use the longest hold.</p>`,
+    <p>Best means estimated max: weight × (1 + reps ÷ 30). Bodyweight exercises use max reps, and planks use the longest hold. A bodyweight exercise with added weight counts separately, using its estimated max.</p>`,
   level: `
     <p>Each exercise's latest estimated max is compared with published standards for your body weight and sex.</p>
     <p>A muscle shows the best level among the exercises with it as a primary muscle.</p>`,
@@ -359,13 +367,13 @@ function progressLine(points) {
 // Each time an exercise was done, newest first, each opening that workout.
 // With a lot of them, only the newest show until Show all is tapped.
 const LOG_LIST_SIZE = 10;
-function logList(history, timed, showAll) {
+function logList(history, timed, showAll, bw) {
   const newest = [...history].reverse();
   const rows = (showAll ? newest : newest.slice(0, LOG_LIST_SIZE)).map(h => `
     <button type="button" class="muscle-row" data-action="open-session" data-id="${esc(h.sessionId)}">
       <span class="muscle-row-main">
         <strong>${shortDate(h.date)}</strong>
-        <span>${h.sets.map(set => formatSet(set, timed)).join(', ')}</span>
+        <span>${h.sets.map(set => formatSet(set, timed, bw)).join(', ')}</span>
       </span>
       ${CHEVRON}
     </button>`).join('');
@@ -378,11 +386,12 @@ function logList(history, timed, showAll) {
 }
 
 // A list of sets: Set, Weight, Reps. A timed exercise (plank) has Set and Seconds, with no weight.
-function setsList(sets, timed) {
+// On a bodyweight exercise (bw), a set's weight shows as "BW" or "BW+25 lbs".
+function setsList(sets, timed, bw = false) {
   const unit = Units.weightUnit();
   const rows = sets.map((set, i) => `
     <span>${i + 1}</span>
-    <span>${timed ? '—' : set.weight == null ? 'BW' : `${Units.showWeight(set.weight)} ${unit}`}</span>
+    <span>${timed ? '—' : set.weight == null ? 'BW' : `${bw ? 'BW+' : ''}${Units.showWeight(set.weight)} ${unit}`}</span>
     <span>${set.reps}</span>`).join('');
   return `
     <div class="log-sets">
@@ -392,19 +401,21 @@ function setsList(sets, timed) {
 }
 
 // The sets done on one day (all workouts that day), that day's estimated max (or longest hold,
-// or max reps on a bodyweight exercise), and a way into each workout it was part of.
-function logDayCard(entries, key, timed) {
+// or max reps on a bodyweight exercise, plus an estimated max if it had added weight),
+// and a way into each workout it was part of.
+function logDayCard(entries, key, timed, bw) {
   const sets = entries.flatMap(h => h.sets);
   const maxes = entries.filter(h => h.best).map(h => h.best.max);
   const unit = Units.weightUnit();
+  const topReps = Math.max(0, ...entries.map(h => h.topReps || 0));
   const summary = timed ? `Longest hold: <strong>${Math.max(...entries.map(h => h.hold))} sec</strong>`
-    : entries[0].topReps != null ? `Max reps: <strong>${Math.max(...entries.map(h => h.topReps))}</strong>`
-    : maxes.length ? `Estimated max: <strong>${Units.showWeight(Math.max(...maxes))} ${unit}</strong>` : '';
+    : [topReps ? `Max reps: <strong>${topReps}</strong>` : '',
+      maxes.length ? `Estimated max: <strong>${Units.showWeight(Math.max(...maxes))} ${unit}</strong>` : ''].filter(Boolean).join(' · ');
 
   return `
     <div class="card log-day">
       <p class="log-day-date">${fromDayKey(key).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</p>
-      ${setsList(sets, timed)}
+      ${setsList(sets, timed, bw)}
       ${summary ? `<p class="log-day-max">${summary}</p>` : ''}
       <div class="stack log-day-links">
         ${entries.map(h => `<button type="button" class="btn btn-small" data-action="open-session" data-id="${esc(h.sessionId)}">See full workout: ${esc(h.workoutName || 'Workout')}</button>`).join('')}
@@ -869,7 +880,7 @@ const Views = {
           </div>
           ${isEditing ? `<div id="exercise-panel">${this.exercisePanel(picker, editing, false)}</div>` : `
             ${last
-              ? `<p class="preview-last">Last time · ${formatDate(last.date)}</p>${setsList(last.sets, timed)}`
+              ? `<p class="preview-last">Last time · ${formatDate(last.date)}</p>${setsList(last.sets, timed, Library.isRepsOnly(ex.refId))}`
               : '<p class="preview-last">No history yet</p>'}
             ${noteBox(ex.refId)}`}
         </div>`;
@@ -914,6 +925,7 @@ const Views = {
       const refId = swapped || ex.refId;
       const info = Library.forExercise({ refId });
       const timed = Library.isTimed(refId);
+      const bw = Library.isRepsOnly(refId);
       const last = Store.lastFor(ex);
       const nextEx = workout.exercises[i + 1];
       const isOpen = ex.id === openId;
@@ -930,8 +942,8 @@ const Views = {
           const lastReps = last?.sets[i]?.reps;
           return `
             <div class="set-num">${i + 1}</div>
-            ${timed ? LOCKED_WEIGHT : `<input type="text" inputmode="decimal" value="${Units.showWeight(set.weight)}" placeholder="${unit}"
-              data-ex="${ex.id}" data-set="${i}" data-field="weight" aria-label="Set ${i + 1} weight in ${unit}">`}
+            ${timed ? LOCKED_WEIGHT : bwBox(bw, `<input type="text" inputmode="decimal" value="${Units.showWeight(set.weight)}" placeholder="${bw ? '' : unit}"
+              data-ex="${ex.id}" data-set="${i}" data-field="weight" aria-label="Set ${i + 1} ${bw ? 'added ' : ''}weight in ${unit}">`)}
             <input type="text" inputmode="numeric" value="${esc(set.reps)}" placeholder="${lastReps ?? ''}"
               data-ex="${ex.id}" data-set="${i}" data-field="reps" aria-label="Set ${i + 1} ${timed ? 'seconds' : 'reps'}">`;
         }).join('');
@@ -1002,7 +1014,7 @@ const Views = {
               ${swapped ? `<span class="ex-sub swap-note">Swapped for today · planned: ${esc(plannedName)}</span>` : ''}
               ${ex.today ? '<span class="ex-sub swap-note">Added for today only</span>' : ''}
               ${makeupNote}
-              <span class="ex-sub">${lastSummary(last, timed)}</span>
+              <span class="ex-sub">${lastSummary(last, timed, bw)}</span>
               ${nextWeightNote(ex)}
             </span>
             <span class="tag">${esc(Library.primaryLabel(info))}</span>
@@ -1390,13 +1402,14 @@ const Views = {
     const unit = Units.weightUnit();
     const cards = edit.exercises.map((e, x) => {
       const timed = Library.isTimed(e.entry.refId);
-      const info = Library.forExercise(e.entry);
+      const bw = Library.isRepsOnly(e.entry.refId);
+      const info = Library.get(e.entry.refId) || Library.forExercise(e.entry);
       const isEditing = edit.editing === x;
       const logged = e.rows.filter(set => set.reps !== '');
       const rows = e.rows.map((set, i) => `
         <div class="set-num">${i + 1}</div>
-        ${timed ? LOCKED_WEIGHT : `<input type="text" inputmode="decimal" value="${Units.showWeight(set.weight)}" placeholder="${unit}"
-          data-past="${x}" data-set="${i}" data-field="weight" aria-label="Set ${i + 1} weight in ${unit}">`}
+        ${timed ? LOCKED_WEIGHT : bwBox(bw, `<input type="text" inputmode="decimal" value="${Units.showWeight(set.weight)}" placeholder="${bw ? '' : unit}"
+          data-past="${x}" data-set="${i}" data-field="weight" aria-label="Set ${i + 1} ${bw ? 'added ' : ''}weight in ${unit}">`)}
         <input type="text" inputmode="numeric" value="${esc(set.reps)}"
           data-past="${x}" data-set="${i}" data-field="reps" aria-label="Set ${i + 1} ${timed ? 'seconds' : 'reps'}">`).join('');
       const swappedFrom = e.entry.swappedFrom ? Library.forExercise({ refId: e.entry.swappedFrom }).name : '';
@@ -1421,7 +1434,7 @@ const Views = {
               <div class="col-head">${timed ? 'Seconds' : 'Reps'}</div>
               ${rows}
             </div>`
-            : logged.length ? setsList(logged, timed).replace('class="log-sets"', 'class="log-sets past-sets"')
+            : logged.length ? setsList(logged, timed, bw).replace('class="log-sets"', 'class="log-sets past-sets"')
             : '<p class="preview-last">No sets logged</p>'}
         </div>`;
     }).join('');
@@ -1571,8 +1584,8 @@ const Views = {
     const all = Stats.exerciseGrowth().filter(e => e.primary.includes(id));
     const counted = all.filter(e => e.counts).sort((a, b) => b.change - a.change);
     const waiting = all.filter(e => !e.counts);
-    const fromTo = e => Library.isTimed(e.refId) ? `${e.early} → ${e.recent} sec`
-      : Library.isRepsOnly(e.refId) ? `${e.early} → ${e.recent} reps`
+    const fromTo = e => e.kind === 'hold' ? `${e.early} → ${e.recent} sec`
+      : e.kind === 'reps' ? `${e.early} → ${e.recent} reps`
       : `${Math.round(Number(Units.showWeight(e.early)))} → ${Math.round(Number(Units.showWeight(e.recent)))} ${Units.weightUnit()}`;
     const countedRows = counted.map(e => row(e.refId, e.name, fromTo(e), percent(e.change))).join('');
     const waitingRows = waiting.length ? `
@@ -1610,18 +1623,27 @@ const Views = {
 
   // ---------- One exercise's log: estimated max graph, calendar, a day's sets ----------
   // state = { month: 'YYYY-MM' shown in the calendar (null = latest), day: 'YYYY-MM-DD' tapped (or null),
-  //           range: how much of the graph shows: '3m', '1y' or 'all' }
-  // A timed exercise (plank) shows its longest hold instead of an estimated max,
-  // and a bodyweight exercise shows its max reps.
+  //           range: how much of the graph shows: '3m', '1y' or 'all',
+  //           weighted: on a bodyweight exercise, which side of its switch shows (null = whichever
+  //           the latest workout was) }
+  // A timed exercise (plank) shows its longest hold instead of an estimated max. A bodyweight
+  // exercise has a switch: its max reps with no added weight, or "Weighted", which is like any
+  // other exercise. The switch only changes the top card; the calendar and list show every set.
   exerciseLog(refId, state) {
     const history = Store.exerciseHistory(refId);
     const info = Library.get(refId);
     const name = info ? info.name : Store.loggedExercises().find(l => l.refId === refId)?.name || 'Unknown exercise';
     const timed = Library.isTimed(refId);
-    // Timed and bodyweight exercises share one card: a top number and its graph, with no estimate.
-    const repsOnly = Library.isRepsOnly(refId);
-    const scored = timed || repsOnly;
+    const bw = Library.isRepsOnly(refId);
+    const showWeighted = bw && (state.weighted ?? Boolean(history[history.length - 1]?.sets.some(set => set.weight)));
+    // Timed exercises and a bodyweight exercise's reps share one card: a top number and its graph, with no estimate.
+    const scored = timed || (bw && !showWeighted);
     const scoreOf = h => (timed ? h.hold : h.topReps);
+    const scoredHistory = history.filter(h => scoreOf(h) > 0);
+    const logTab = (id, label, on) => `
+      <button type="button" class="segment ${on ? 'is-active' : ''}" data-action="log-tab" data-id="${id}" aria-pressed="${on}">${label}</button>`;
+    const bwSwitch = bw ? `
+      <div class="segmented log-switch">${logTab('reps', esc(info?.name || 'Bodyweight'), !showWeighted)}${logTab('weighted', 'Weighted', showWeighted)}</div>` : '';
     const scoreLabel = timed ? 'Longest hold' : 'Max reps';
     const scoreUnit = value => (timed ? 'sec' : value === 1 ? 'rep' : 'reps');
     // With no history, the graph and calendar still show, empty, with a note over them.
@@ -1638,7 +1660,7 @@ const Views = {
     const rangeDays = { '3m': 91, '1y': 365 }[state.range];
     const inRange = time => !rangeDays || time >= Date.now() - rangeDays * 24 * 60 * 60 * 1000;
     const points = (scored
-      ? history.map(h => ({ time: new Date(h.date).getTime(), value: scoreOf(h), dayKey: h.dayKey }))
+      ? scoredHistory.map(h => ({ time: new Date(h.date).getTime(), value: scoreOf(h), dayKey: h.dayKey }))
       : weighted.map(h => ({ time: new Date(h.date).getTime(), value: Number(Units.showWeight(h.best.max)), dayKey: h.dayKey })))
       .filter(p => inRange(p.time));
     // Actual max: the heaviest weight ever logged for a single rep (the first day it was lifted).
@@ -1653,7 +1675,9 @@ const Views = {
       if (inRange(new Date(h.date).getTime())) singlePoints.push({ time: new Date(h.date).getTime(), value: Number(Units.showWeight(heaviest)) });
       if (!single || heaviest > single.weight) single = { weight: heaviest, date: h.date };
     }
-    const emptyNote = !history.length ? 'No history yet' : !weighted.length && !scored ? 'No sets with weight yet' : 'Nothing in this time';
+    const emptyNote = !history.length ? 'No history yet'
+      : scored && !scoredHistory.length ? 'No sets without added weight yet'
+      : !weighted.length && !scored ? `No sets with ${bw ? 'added ' : ''}weight yet` : 'Nothing in this time';
     const ranges = { '3m': '3 months', '1y': '1 year', all: 'All time' };
     const rangePicker = `
       <div class="segmented log-range">
@@ -1661,9 +1685,10 @@ const Views = {
           <button type="button" class="segment ${id === (state.range || 'all') ? 'is-active' : ''}" data-action="log-range" data-id="${id}"
             aria-pressed="${id === (state.range || 'all')}">${label}</button>`).join('')}
       </div>`;
-    const top = scored && history.length ? history.reduce((a, b) => (scoreOf(b) > scoreOf(a) ? b : a)) : null;
+    const top = scored && scoredHistory.length ? scoredHistory.reduce((a, b) => (scoreOf(b) > scoreOf(a) ? b : a)) : null;
     const maxSection = scored ? `
       <div class="card">
+        ${bwSwitch}
         <p class="log-label">${scoreLabel}</p>
         <p class="log-max ${top ? '' : 'is-blank'}">${top ? `${scoreOf(top)} <span>${scoreUnit(scoreOf(top))}</span>` : '—'}</p>
         <p class="log-sub">${top ? `On ${shortDate(top.date)}` : '&nbsp;'}</p>
@@ -1672,9 +1697,10 @@ const Views = {
         ${maxChart(points, emptyNote, [], scoreLabel, state.day)}
       </div>` : `
       <div class="card">
+        ${bwSwitch}
         <p class="log-label">Current estimated max</p>
         <p class="log-max ${latest ? '' : 'is-blank'}">${latest ? `${Units.showWeight(latest.best.max)} <span>${unit}</span>` : '—'}</p>
-        <p class="log-sub">${latest ? `Best set on ${shortDate(latest.date)}: ${formatSet(latest.best.set)}` : '&nbsp;'}</p>
+        <p class="log-sub">${latest ? `Best set on ${shortDate(latest.date)}: ${formatSet(latest.best.set, false, bw)}` : '&nbsp;'}</p>
         <!-- Best ever and actual 1-rep max: one small line each, only when there's something to
              say, so most exercises just show the big number (the user didn't want it cluttered). -->
         ${bestEver && bestEver.best.max > latest.best.max ? `
@@ -1707,9 +1733,9 @@ const Views = {
         ${maxSection}
         <h2>History</h2>
         ${logCalendar(month, logged, state.day, firstMonth, lastMonth > thisMonth ? lastMonth : thisMonth, history.length ? '' : 'No history yet')}
-        ${state.day ? logDayCard(history.filter(h => h.dayKey === state.day), state.day, timed)
+        ${state.day ? logDayCard(history.filter(h => h.dayKey === state.day), state.day, timed, bw)
           : history.length ? '<p class="muted log-hint">Tap a highlighted day to see its sets.</p>' : ''}
-        ${history.length ? logList(history, timed, state.showAll) : ''}
+        ${history.length ? logList(history, timed, state.showAll, bw) : ''}
       `,
     };
   },
