@@ -71,7 +71,7 @@ Rule of thumb: **storage.js** knows about data, **views.js** knows about HTML, *
   - Core: abs, obliques
   - Legs: quads, hamstrings, glutes, adductors, calves
 
-  Each exercise has **primary** muscles (each set counts as **1 set**) and **secondary** muscles (each set counts as **0.5 set**). A muscle can't be both primary and secondary on one exercise.
+  Each exercise has **primary** muscles (each set counts as **1 set**) and **secondary** muscles (each set counts as **0.5 set**). A muscle can't be both primary and secondary on one exercise. Secondary muscles only affect planned sets: the map's Growth and Level modes use primary muscles only (the user's choice), and the streak's muscle groups go by primary too. Secondary means a muscle that moves a joint under load, or a lower back holding a heavy free bar; grip and general stabilizing aren't listed.
 - **Weekly streak** (`streak.js`, rules in its top comment):
   - A week runs Monday 3 am → next Monday 3 am. A workout counts for the week Finish was tapped in, on any day.
   - A week is hit when every planned set is logged (a set with reps), counting finished workouts only. Each planned exercise counts at most its planned sets.

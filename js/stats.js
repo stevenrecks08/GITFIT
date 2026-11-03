@@ -1,6 +1,7 @@
 // stats.js — per-muscle numbers for the muscle map and set summaries:
 // growth comes from logged workouts, planned sets from your weekly plan.
-// Every exercise trains its primary muscles fully (1) and secondary muscles half (0.5).
+// For planned sets, every exercise trains its primary muscles fully (1) and secondary muscles
+// half (0.5). Growth and levels only look at primary muscles.
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const WEEK_MS = 7 * DAY_MS;
@@ -19,7 +20,6 @@ function loggedSince(since) {
         refId: entry.refId || entry.exerciseId,
         sets: entry.sets,
         primary: info.primary || [],
-        secondary: info.secondary || [],
       });
     }
   }
@@ -40,8 +40,8 @@ const Stats = {
   // A bodyweight exercise uses its max reps instead of an estimated max (8 → 10 reps = +25%),
   // and a timed one its longest hold (40 → 50 sec = +25%).
   // For each exercise: its first vs. latest best set in that time. A muscle's number is
-  // the average over its exercises (secondary ones count half). Muscles without
-  // enough data are left out.
+  // the average over the exercises that train it as a primary muscle: getting stronger at a
+  // bench press doesn't prove the triceps grew. Muscles without enough data are left out.
   muscleGrowth(now = Date.now()) {
     const exercises = {};
     for (const entry of loggedSince(now - this.GROWTH_WEEKS * WEEK_MS)) {
@@ -60,15 +60,15 @@ const Stats = {
       points.sort((a, b) => a.time - b.time);
       const first = points[0].best;
       const change = (points[points.length - 1].best - first) / first * 100;
-      forEachMuscle(entry, (m, share) => {
-        if (!sums[m]) sums[m] = { total: 0, weight: 0 };
-        sums[m].total += change * share;
-        sums[m].weight += share;
-      });
+      for (const m of entry.primary) {
+        if (!sums[m]) sums[m] = { total: 0, count: 0 };
+        sums[m].total += change;
+        sums[m].count += 1;
+      }
     }
 
     const growth = {};
-    for (const m in sums) growth[m] = sums[m].total / sums[m].weight;
+    for (const m in sums) growth[m] = sums[m].total / sums[m].count;
     return growth;
   },
 

@@ -1331,7 +1331,7 @@ const Views = {
       legend = `
         <div class="legend-bar" style="background: linear-gradient(90deg, ${MapColors.growth(-GROWTH_SCALE)}, ${MapColors.growth(0)}, ${MapColors.growth(GROWTH_SCALE)})"></div>
         <div class="legend-labels"><span>−${GROWTH_SCALE}%</span><span>Flat</span><span>+${GROWTH_SCALE}%</span></div>
-        <p class="legend-empty"><i style="background:${MAP_EMPTY}"></i>Less than ${Stats.MIN_WEEKS} weeks of data</p>`;
+        <p class="legend-empty"><i style="background:${MAP_EMPTY}"></i>Not enough data yet (needs ${Stats.MIN_WEEKS} weeks of a primary exercise)</p>`;
     }
 
     return `
