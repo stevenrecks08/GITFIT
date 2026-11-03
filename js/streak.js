@@ -98,12 +98,12 @@ function entryGroup(entry) {
 }
 
 // Counts up to `sets` more sets toward a planned exercise (never past its planned sets),
-// remembering when. Returns how many were used.
-function credit(item, date, sets) {
+// remembering when, and which quick workout it was if it's made up by one (by). Returns how many were used.
+function credit(item, date, sets, by = null) {
   const used = Math.min(sets, item.short);
   if (used) {
     item.short -= used;
-    item.credits.push({ time: new Date(date).getTime(), sets: used });
+    item.credits.push({ time: new Date(date).getTime(), sets: used, by });
   }
   return used;
 }
@@ -209,7 +209,7 @@ const Streak = {
           if (!left) break;
           if (item.weekday >= passed || !item.short) continue;
           if (item !== target && item.group !== group) continue;
-          left -= credit(item, session.date, left);
+          left -= credit(item, session.date, left, session.workoutName);
         }
       }
     }
@@ -223,14 +223,16 @@ const Streak = {
   // and the Missed this week list. Today and later days are never missed.
   //   { [workoutId]: { weekday, planned, done, state: 'done' | 'partial' | 'missed',
   //                    caughtUp (weekday name it was completed on, if after its own day, else null),
-  //                    missing: [{ exerciseId, refId, sets (still missing) }] } }
+  //                    missing: [{ exerciseId, refId, sets (still missing) }],
+  //                    madeUp: { [quick workout's name]: sets it made up } } }
   dayStates(now = Date.now()) {
     const { items, passedNow } = this.progress(weekKey(now), now);
     const states = {};
     for (const item of items) {
       if (item.weekday >= passedNow) continue;
       const s = states[item.workoutId] || (states[item.workoutId] =
-        { weekday: item.weekday, planned: 0, done: 0, finishedAt: 0, missing: [] });
+        { weekday: item.weekday, planned: 0, done: 0, finishedAt: 0, missing: [], madeUp: {} });
+      for (const c of item.credits) if (c.by) s.madeUp[c.by] = (s.madeUp[c.by] || 0) + c.sets;
       s.planned += item.sets;
       s.done += item.sets - item.short;
       if (item.short) s.missing.push({ exerciseId: item.exerciseId, refId: item.refId, sets: item.short });

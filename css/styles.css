@@ -431,6 +431,8 @@ body.is-reordering .drag-ghost .icon-btn { display: none; }
 #plan-list .preview-ex #exercise-panel > .card { padding: 0; border: none; background: none; }
 #exercise-panel { scroll-margin-top: calc(var(--topbar-h) + env(safe-area-inset-top) + 12px); }
 .plan-end { margin-top: 12px; }
+/* Sets of this workout made up by a quick workout this week */
+.made-up-note { margin: 0 0 12px; font-size: 14px; color: var(--quick); font-weight: 600; }
 .start-row.is-empty { justify-content: flex-end; }
 .sets-step { flex: 0 0 56px; padding: 0; font-size: 22px; font-weight: 600; }
 .row.range-row #ex-sets { flex: 1; min-width: 0; text-align: center; }

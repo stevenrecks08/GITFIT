@@ -50,6 +50,14 @@ function nextWeightNote(ex) {
   return lbs ? `<span class="ex-sub next-weight">Try ${heavierText(lbs)} today</span>` : '';
 }
 
+// Why a workout on a passed day shows sets that weren't done in it: "9 sets made up by Hotel gym".
+function madeUpNote(workout) {
+  const madeUp = Object.entries(Streak.dayStates()[workout.id]?.madeUp || {});
+  if (!madeUp.length) return '';
+  const text = madeUp.map(([name, sets], i) => `${sets}${i ? '' : ` set${sets === 1 ? '' : 's'}`} ${i ? 'by' : 'made up by'} ${esc(name)}`).join(', ');
+  return `<p class="made-up-note">This week: ${text}</p>`;
+}
+
 // The column heading over the weight boxes. Dumbbell weights are per dumbbell, said quietly underneath.
 function weightHead(info, unit) {
   return `<div class="col-head">Weight (${unit})${info.equipment === 'Dumbbell' ? '<span class="col-note">per dumbbell</span>' : ''}</div>`;
@@ -850,6 +858,7 @@ const Views = {
           ${hasExercises ? `<button type="button" class="btn btn-primary" data-action="start-workout" data-id="${workout.id}">Start workout</button>` : ''}
           <button type="button" class="icon-btn" data-action="workout-details" data-id="${workout.id}" aria-label="Edit ${esc(workout.name)}">${PENCIL_SVG}</button>
         </div>
+        ${madeUpNote(workout)}
         <div id="plan-list">${cards}</div>
         <div class="plan-end">
           ${adding ? `<h2>Add exercise</h2><div id="exercise-panel">${this.exercisePanel(picker, null, hasExercises)}</div>`
