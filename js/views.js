@@ -272,13 +272,14 @@ function setsList(sets, timed) {
     </div>`;
 }
 
-// The sets done on one day (all workouts that day), that day's estimated max (or longest hold),
-// and a way into each workout it was part of.
+// The sets done on one day (all workouts that day), that day's estimated max (or longest hold,
+// or max reps on a bodyweight exercise), and a way into each workout it was part of.
 function logDayCard(entries, key, timed) {
   const sets = entries.flatMap(h => h.sets);
   const maxes = entries.filter(h => h.best).map(h => h.best.max);
   const unit = Units.weightUnit();
   const summary = timed ? `Longest hold: <strong>${Math.max(...entries.map(h => h.hold))} sec</strong>`
+    : entries[0].topReps != null ? `Max reps: <strong>${Math.max(...entries.map(h => h.topReps))}</strong>`
     : maxes.length ? `Estimated max: <strong>${Units.showWeight(Math.max(...maxes))} ${unit}</strong>` : '';
 
   return `
@@ -990,6 +991,7 @@ const Views = {
     const unit = Units.weightUnit();
     const { week } = Streak.summary();
     const best = b => b.timed ? `${b.before} → ${b.after} sec longest hold`
+      : b.repsOnly ? `${b.before} → ${b.after} max reps`
       : `${Units.showWeight(b.before)} → ${Units.showWeight(b.after)} ${unit} estimated max`;
     const stats = [
       ['Time', s.durationMs ? formatDuration(s.durationMs) : '—'],
@@ -1379,12 +1381,19 @@ const Views = {
   // ---------- One exercise's log: estimated max graph, calendar, a day's sets ----------
   // state = { month: 'YYYY-MM' shown in the calendar (null = latest), day: 'YYYY-MM-DD' tapped (or null),
   //           range: how much of the graph shows: '3m', '1y' or 'all' }
-  // A timed exercise (plank) shows its longest hold instead of an estimated max.
+  // A timed exercise (plank) shows its longest hold instead of an estimated max,
+  // and a bodyweight exercise shows its max reps.
   exerciseLog(refId, state) {
     const history = Store.exerciseHistory(refId);
     const info = Library.get(refId);
     const name = info ? info.name : Store.loggedExercises().find(l => l.refId === refId)?.name || 'Unknown exercise';
     const timed = Library.isTimed(refId);
+    // Timed and bodyweight exercises share one card: a top number and its graph, with no estimate.
+    const repsOnly = Library.isRepsOnly(refId);
+    const scored = timed || repsOnly;
+    const scoreOf = h => (timed ? h.hold : h.topReps);
+    const scoreLabel = timed ? 'Longest hold' : 'Max reps';
+    const scoreUnit = value => (timed ? 'sec' : value === 1 ? 'rep' : 'reps');
     // With no history, the graph and calendar still show, empty, with a note over them.
     const first = history[0];
     const last = history[history.length - 1];
@@ -1398,21 +1407,21 @@ const Views = {
     // How far back the graph goes.
     const rangeDays = { '3m': 91, '1y': 365 }[state.range];
     const inRange = time => !rangeDays || time >= Date.now() - rangeDays * 24 * 60 * 60 * 1000;
-    const points = (timed
-      ? history.map(h => ({ time: new Date(h.date).getTime(), value: h.hold, dayKey: h.dayKey }))
+    const points = (scored
+      ? history.map(h => ({ time: new Date(h.date).getTime(), value: scoreOf(h), dayKey: h.dayKey }))
       : weighted.map(h => ({ time: new Date(h.date).getTime(), value: Number(Units.showWeight(h.best.max)), dayKey: h.dayKey })))
       .filter(p => inRange(p.time));
     // Actual max: the heaviest weight ever logged for a single rep (the first day it was lifted).
     // singlePoints = the heaviest single of each workout that had one, for the graph's white line.
     let single = null;
     const singlePoints = [];
-    for (const h of timed ? [] : history) {
+    for (const h of scored ? [] : history) {
       const heaviest = Math.max(0, ...h.sets.filter(set => set.reps === 1 && set.weight).map(set => set.weight));
       if (!heaviest) continue;
       if (inRange(new Date(h.date).getTime())) singlePoints.push({ time: new Date(h.date).getTime(), value: Number(Units.showWeight(heaviest)) });
       if (!single || heaviest > single.weight) single = { weight: heaviest, date: h.date };
     }
-    const emptyNote = !history.length ? 'No history yet' : !weighted.length && !timed ? 'No sets with weight yet' : 'Nothing in this time';
+    const emptyNote = !history.length ? 'No history yet' : !weighted.length && !scored ? 'No sets with weight yet' : 'Nothing in this time';
     const ranges = { '3m': '3 months', '1y': '1 year', all: 'All time' };
     const rangePicker = `
       <div class="segmented log-range">
@@ -1420,14 +1429,14 @@ const Views = {
           <button type="button" class="segment ${id === (state.range || 'all') ? 'is-active' : ''}" data-action="log-range" data-id="${id}"
             aria-pressed="${id === (state.range || 'all')}">${label}</button>`).join('')}
       </div>`;
-    const longest = timed && history.length ? history.reduce((a, b) => (b.hold > a.hold ? b : a)) : null;
-    const maxSection = timed ? `
+    const top = scored && history.length ? history.reduce((a, b) => (scoreOf(b) > scoreOf(a) ? b : a)) : null;
+    const maxSection = scored ? `
       <div class="card">
-        <p class="log-label">Longest hold</p>
-        <p class="log-max ${longest ? '' : 'is-blank'}">${longest ? `${longest.hold} <span>sec</span>` : '—'}</p>
-        <p class="log-sub">${longest ? `On ${shortDate(longest.date)}` : '&nbsp;'}</p>
+        <p class="log-label">${scoreLabel}</p>
+        <p class="log-max ${top ? '' : 'is-blank'}">${top ? `${scoreOf(top)} <span>${scoreUnit(scoreOf(top))}</span>` : '—'}</p>
+        <p class="log-sub">${top ? `On ${shortDate(top.date)}` : '&nbsp;'}</p>
         ${rangePicker}
-        ${maxChart(points, emptyNote, [], 'Longest hold', state.day)}
+        ${maxChart(points, emptyNote, [], scoreLabel, state.day)}
       </div>` : `
       <div class="card">
         <p class="log-label">Current estimated max</p>

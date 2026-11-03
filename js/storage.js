@@ -923,22 +923,26 @@ const Store = {
 
   // Every finished workout that included this exercise, oldest first:
   //   [{ sessionId, workoutName, date (ISO), dayKey ('YYYY-MM-DD', local), sets: [{weight, reps}],
-  //      best: {set, max} or null, hold: longest seconds (timed exercises only) }]
-  // best = the set with the highest estimated 1-rep max (null if no set had a weight, or it's timed).
+  //      best: {set, max} or null, hold: longest seconds (timed exercises only),
+  //      topReps: most reps in one set (bodyweight exercises only) }]
+  // best = the set with the highest estimated 1-rep max (null if no set had a weight,
+  // or it's timed or bodyweight, which are tracked by hold and reps instead).
   exerciseHistory(refId) {
     const timed = Library.isTimed(refId);
+    const repsOnly = Library.isRepsOnly(refId);
     const history = [];
     for (const session of this.data.sessions) {
       const sets = session.exercises.filter(e => e.refId === refId).flatMap(e => e.sets);
       if (!sets.length) continue;
       let best = null;
       for (const set of sets) {
-        const max = timed ? null : estimateMax(set);
+        const max = timed || repsOnly ? null : estimateMax(set);
         if (max != null && (!best || max > best.max)) best = { set, max };
       }
       history.push({ sessionId: session.id, workoutName: session.workoutName, date: session.date,
         dayKey: dayKey(session.date), sets, best,
-        ...(timed ? { hold: Math.max(0, ...sets.map(s => s.reps || 0)) } : {}) });
+        ...(timed ? { hold: Math.max(0, ...sets.map(s => s.reps || 0)) } : {}),
+        ...(repsOnly ? { topReps: Math.max(0, ...sets.map(s => s.reps || 0)) } : {}) });
     }
     return history.sort((a, b) => new Date(a.date) - new Date(b.date));
   },
@@ -961,8 +965,8 @@ const Store = {
   // What a just-finished workout is shown with on its summary:
   //   { sessionId, name, durationMs, sets, exercises, volume (lbs: weight × reps of every set),
   //     moreThanLast (% more weight than the last time of this workout, or null),
-  //     bests: [{ refId, name, before, after, timed }] }
-  // A best = beating every earlier workout of that exercise (estimated max, or longest hold).
+  //     bests: [{ refId, name, before, after, timed, repsOnly }] }
+  // A best = beating every earlier workout of that exercise (estimated max, longest hold, or max reps).
   // The first time doing an exercise doesn't count, or every new exercise would be a best.
   sessionSummary(session) {
     const volumeOf = s => s.exercises.reduce((sum, e) =>
@@ -971,11 +975,12 @@ const Store = {
     for (const entry of session.exercises) {
       if (!entry.refId) continue;
       const timed = Library.isTimed(entry.refId);
-      const score = sets => Math.max(0, ...sets.map(s => (timed ? s.reps : estimateMax(s)) || 0));
+      const repsOnly = Library.isRepsOnly(entry.refId);
+      const score = sets => Math.max(0, ...sets.map(s => (timed || repsOnly ? s.reps : estimateMax(s)) || 0));
       const after = score(entry.sets);
       const earlier = this.exerciseHistory(entry.refId).filter(h => new Date(h.date) < new Date(session.date));
       const before = Math.max(0, ...earlier.map(h => score(h.sets)));
-      if (before && after > before) bests.push({ refId: entry.refId, name: entry.name, before, after, timed });
+      if (before && after > before) bests.push({ refId: entry.refId, name: entry.name, before, after, timed, repsOnly });
     }
     const previous = session.workoutId && [...this.data.sessions].reverse()
       .find(s => s.workoutId === session.workoutId && new Date(s.date) < new Date(session.date));

@@ -179,6 +179,12 @@ const Library = {
     return TIMED_EXERCISES.includes(refId);
   },
 
+  // Bodyweight exercises (built-in or custom) are tracked by max reps, not an estimated max.
+  // A plank is bodyweight too, but it's timed, so it isn't one of these.
+  isRepsOnly(refId) {
+    return this.get(refId)?.equipment === 'Bodyweight' && !this.isTimed(refId);
+  },
+
   // Every exercise in a muscle group (see groupOf), by name.
   inGroup(group) {
     return this.active().filter(e => this.groupOf(e) === group).sort((a, b) => a.name.localeCompare(b.name));
