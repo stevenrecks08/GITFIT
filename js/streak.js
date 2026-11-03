@@ -16,7 +16,9 @@
 //
 // Results:
 //   hit    → streak +1. Every WEEKS_PER_FREEZE (4) weeks in a row (streak 4, 8, 12 …) earns a freeze,
-//            up to MAX_FREEZES held.
+//            up to MAX_FREEZES held. Hitting the very first tracked week earns one too, so someone
+//            new who goes away early doesn't lose their first streak. (Weeks from before version 11
+//            have no saved goal, so someone who started back then doesn't get it.)
 //   frozen → the week ended short, a freeze was held and the streak was above 0: the freeze is used
 //            and the streak stays where it is (a freeze isn't wasted on a streak of 0)
 //   missed → the week ended short with no freeze to use: streak back to 0
@@ -264,7 +266,8 @@ const Streak = {
       if (w.result === 'hit') {
         current++;
         best = Math.max(best, current);
-        if (current % WEEKS_PER_FREEZE === 0) freezes = Math.min(MAX_FREEZES, freezes + 1);
+        const firstWeek = w === weeks[0] && w.goal != null;
+        if (firstWeek || current % WEEKS_PER_FREEZE === 0) freezes = Math.min(MAX_FREEZES, freezes + 1);
       } else if (w.result === 'frozen') {
         freezes--;
       } else if (w.result === 'missed') {

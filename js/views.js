@@ -150,9 +150,11 @@ function plannedSetsTable(planned, open, { hideEmpty = false, changed = new Set(
       const list = sources[id] || [];
       const detail = list.length
         ? `<ul class="sets-sources">${list.map(s => `
-            <li><span class="src-name">${esc(s.name)}</span>
+            <li><button type="button" class="src-row" data-action="open-workout" data-id="${esc(s.workoutId)}">
+              <span class="src-name">${esc(s.name)}<span class="src-where">${esc(s.where)}</span></span>
               <span class="src-role is-${s.role}">${s.role}</span>
-              <span class="src-num">${setsText(s.sets)}</span></li>`).join('')}</ul>`
+              <span class="src-num">${setsText(s.sets)}</span>
+            </button></li>`).join('')}</ul>`
         : '<p class="sets-none">No planned exercise trains this.</p>';
       return `
         <div class="sets-block ${isOpen ? 'is-open' : ''}" data-block="${id}">
@@ -304,6 +306,42 @@ function logCalendar(month, logged, selected, minMonth, maxMonth, emptyNote) {
         ${cells}
         ${emptyNote ? `<p class="empty-note"><span>${emptyNote}</span></p>` : ''}
       </div>
+    </div>`;
+}
+
+// How an exercise has changed over the points on its graph: "+12% since Aug 3". Like the muscle map,
+// it compares the best of the first and last 2 weeks (or less, on a short graph), so one bad
+// workout doesn't decide it. points = oldest first, with at least 2 days needed.
+function progressLine(points) {
+  if (points.length < 2) return '';
+  const t0 = points[0].time, t1 = points[points.length - 1].time;
+  const ends = Math.min(14 * DAY_MS, (t1 - t0) / 2);
+  const early = Math.max(...points.filter(p => p.time <= t0 + ends).map(p => p.value));
+  const recent = Math.max(...points.filter(p => p.time >= t1 - ends).map(p => p.value));
+  if (!early || dayKey(new Date(t0)) === dayKey(new Date(t1))) return '';
+  const pct = Math.round((recent - early) / early * 100);
+  const since = `since ${shortDate(t0)}`;
+  return `<p class="log-change ${pct > 0 ? 'is-up' : ''}">${pct ? `${pct > 0 ? '+' : '−'}${Math.abs(pct)}% ${since}` : `No change ${since}`}</p>`;
+}
+
+// Each time an exercise was done, newest first, each opening that workout.
+// With a lot of them, only the newest show until Show all is tapped.
+const LOG_LIST_SIZE = 10;
+function logList(history, timed, showAll) {
+  const newest = [...history].reverse();
+  const rows = (showAll ? newest : newest.slice(0, LOG_LIST_SIZE)).map(h => `
+    <button type="button" class="muscle-row" data-action="open-session" data-id="${esc(h.sessionId)}">
+      <span class="muscle-row-main">
+        <strong>${shortDate(h.date)}</strong>
+        <span>${h.sets.map(set => formatSet(set, timed)).join(', ')}</span>
+      </span>
+      ${CHEVRON}
+    </button>`).join('');
+  const more = newest.length - LOG_LIST_SIZE;
+  return `
+    <div class="card log-list">
+      ${rows}
+      ${!showAll && more > 0 ? `<button type="button" class="text-btn" data-action="log-show-all">Show all ${newest.length}</button>` : ''}
     </div>`;
 }
 
@@ -557,7 +595,25 @@ const Views = {
   exercisePanel(picker, editing, canClose) {
     if (picker.mode === 'custom') return this.customExerciseForm(picker);
     if (picker.mode === 'details') return this.exerciseDetailsForm(picker, editing);
+    if (picker.mode === 'move') return this.moveExercisePicker(editing);
     return this.exercisePicker(picker, editing, canClose);
+  },
+
+  // Move an exercise to another workout: its other workouts, in week order.
+  moveExercisePicker(exercise) {
+    const others = Store.data.workouts.filter(w => !w.exercises.includes(exercise)).sort((a, b) => a.weekday - b.weekday);
+    return `
+      <div class="card stack">
+        <p class="muted move-title">Move to:</p>
+        <div class="lib-results">
+          ${others.map(w => `
+            <button type="button" class="lib-item" data-action="move-confirm" data-id="${esc(w.id)}">
+              <span class="lib-name">${esc(w.name)}</span>
+              <span class="lib-meta">${WEEKDAYS[w.weekday]}</span>
+            </button>`).join('')}
+        </div>
+        <button type="button" class="btn" data-action="move-cancel">Cancel</button>
+      </div>`;
   },
 
   // The title, day, Copy and Delete of a workout (the pencil at the top of its screen).
@@ -585,7 +641,7 @@ const Views = {
       <div class="card stack">
         <input type="search" id="lib-search" value="${esc(picker.query)}"
           placeholder="Search name, muscle or equipment" autocomplete="off" aria-label="Search exercises">
-        <div id="lib-results" class="lib-results">${this.libraryResults(picker.query)}</div>
+        <div id="lib-results" class="lib-results">${this.libraryResults(picker.query, 'pick-exercise', picker.group)}</div>
         <button type="button" class="btn" data-action="new-custom">+ Create custom exercise</button>
         ${editing ? '<button type="button" class="btn" data-action="cancel-edit">Cancel</button>'
           : canClose ? '<button type="button" class="btn" data-action="close-add">Done adding</button>' : ''}
@@ -630,7 +686,8 @@ const Views = {
   exerciseDetailsForm(picker, editing) {
     const info = Library.forExercise({ refId: picker.refId });
     const timed = Library.isTimed(picker.refId);
-    const form = editing || (timed ? { sets: 3, repMin: 30, repMax: 60 } : { sets: 3, repMin: 8, repMax: 12 });
+    // A new one starts with what you last used for it, if anything.
+    const form = editing || Store.lastTargets(picker.refId) || (timed ? { sets: 3, repMin: 30, repMax: 60 } : { sets: 3, repMin: 8, repMax: 12 });
     return `
       <form id="exercise-form" class="card stack">
         <div class="picked">
@@ -666,6 +723,7 @@ const Views = {
           <button type="button" class="btn" data-action="cancel-edit">Cancel</button>
           ${editing ? `<button type="button" class="btn btn-danger" data-action="delete-exercise" data-id="${editing.id}">Delete</button>` : ''}
         </div>
+        ${editing && Store.data.workouts.length > 1 ? '<button type="button" class="text-btn" data-action="move-open">Move to another workout</button>' : ''}
       </form>`;
   },
 
@@ -1162,7 +1220,8 @@ const Views = {
 
     // How to earn the next freeze (one every WEEKS_PER_FREEZE weeks in a row).
     const toNext = WEEKS_PER_FREEZE - totals.current % WEEKS_PER_FREEZE;
-    const earnNote = !started ? `Hit ${WEEKS_PER_FREEZE} weeks in a row to earn a freeze.`
+    const earnNote = !Store.data.streak.weeks.length ? 'Hit your goal your first week to earn a freeze.'
+      : !started ? `Hit ${WEEKS_PER_FREEZE} weeks in a row to earn a freeze.`
       : totals.freezes >= MAX_FREEZES ? `Freezes full. You earn one every ${WEEKS_PER_FREEZE} weeks in a row.`
       : `${toNext} more week${toNext === 1 ? '' : 's'} in a row to earn a freeze.`;
 
@@ -1235,6 +1294,7 @@ const Views = {
         ${milestone ? '<p class="celebrate-badge">Milestone</p>' : ''}
         <p class="celebrate-msg">${message}</p>
         ${earned ? '<p class="celebrate-freeze">❄&#xFE0E; +1 streak freeze earned</p>' : ''}
+        ${earned && streak === 1 ? `<p class="celebrate-msg">It saves your streak if you miss a week. Stay consistent for ${WEEKS_PER_FREEZE - 1} more weeks to earn another.</p>` : ''}
         <p class="celebrate-hint">Tap to continue</p>
       </div>`;
   },
@@ -1492,7 +1552,7 @@ const Views = {
     const planned = Stats.weekPlannedSets().sources[id] || [];
     const secondary = planned.filter(s => s.role === 'secondary').map(s => s.name);
     const primary = planned.filter(s => s.role === 'primary').map(s => s.name);
-    const named = names => esc(names.length > 1 ? `${names[0]} and others` : names[0]);
+    const named = names => esc(new Set(names).size > 1 ? `${names[0]} and others` : names[0]);
     return head('Not enough data')
       + note(`No exercise you've logged in the last ${Stats.GROWTH_WEEKS} weeks trains this as a primary muscle.`)
       + (primary.length ? note(`${named(primary)} in your plan will count once logged in ${Stats.MIN_WEEKS} different weeks.`) : '')
@@ -1549,6 +1609,8 @@ const Views = {
       .filter(p => inRange(p.time));
     // Actual max: the heaviest weight ever logged for a single rep (the first day it was lifted).
     // singlePoints = the heaviest single of each workout that had one, for the graph's white line.
+    // Best ever: only worth a line once the latest isn't the best.
+    const bestEver = weighted.reduce((a, h) => (!a || h.best.max > a.best.max ? h : a), null);
     let single = null;
     const singlePoints = [];
     for (const h of scored ? [] : history) {
@@ -1572,21 +1634,27 @@ const Views = {
         <p class="log-max ${top ? '' : 'is-blank'}">${top ? `${scoreOf(top)} <span>${scoreUnit(scoreOf(top))}</span>` : '—'}</p>
         <p class="log-sub">${top ? `On ${shortDate(top.date)}` : '&nbsp;'}</p>
         ${rangePicker}
+        ${progressLine(points)}
         ${maxChart(points, emptyNote, [], scoreLabel, state.day)}
       </div>` : `
       <div class="card">
         <p class="log-label">Current estimated max</p>
         <p class="log-max ${latest ? '' : 'is-blank'}">${latest ? `${Units.showWeight(latest.best.max)} <span>${unit}</span>` : '—'}</p>
         <p class="log-sub">${latest ? `Best set on ${shortDate(latest.date)}: ${formatSet(latest.best.set)}` : '&nbsp;'}</p>
-        <!-- Actual 1-rep max: one small line (many exercises are never done for 1 rep).
-             With none logged it stays as a blank "—", so you can see it's tracked. -->
-        <p class="log-actual">
-          <span class="log-actual-label">Actual 1-rep max</span>
-          ${single
-            ? `<span class="log-actual-value">${Units.showWeight(single.weight)} ${unit}</span><span class="log-actual-date">· ${shortDate(single.date)}</span>`
-            : '<span class="log-actual-value is-blank">—</span>'}
-        </p>
+        <!-- Best ever and actual 1-rep max: one small line each, only when there's something to
+             say, so most exercises just show the big number (the user didn't want it cluttered). -->
+        ${bestEver && bestEver.best.max > latest.best.max ? `
+          <p class="log-actual">
+            <span class="log-actual-label">Best ever</span>
+            <span class="log-actual-value">${Units.showWeight(bestEver.best.max)} ${unit}</span><span class="log-actual-date">· ${shortDate(bestEver.date)}</span>
+          </p>` : ''}
+        ${single ? `
+          <p class="log-actual">
+            <span class="log-actual-label">Actual 1-rep max</span>
+            <span class="log-actual-value">${Units.showWeight(single.weight)} ${unit}</span><span class="log-actual-date">· ${shortDate(single.date)}</span>
+          </p>` : ''}
         ${rangePicker}
+        ${progressLine(points)}
         ${maxChart(points, emptyNote, singlePoints, 'Estimated max', state.day)}
         <p class="log-formula">Estimated with the Epley formula: weight × (1 + reps ÷ 30)</p>
       </div>`;
@@ -1607,6 +1675,7 @@ const Views = {
         ${logCalendar(month, logged, state.day, firstMonth, lastMonth > thisMonth ? lastMonth : thisMonth, history.length ? '' : 'No history yet')}
         ${state.day ? logDayCard(history.filter(h => h.dayKey === state.day), state.day, timed)
           : history.length ? '<p class="muted log-hint">Tap a highlighted day to see its sets.</p>' : ''}
+        ${history.length ? logList(history, timed, state.showAll) : ''}
       `,
     };
   },

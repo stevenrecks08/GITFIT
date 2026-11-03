@@ -460,6 +460,29 @@ const Store = {
     draft.entries[id] = logged.map(({ extra, ...set }) => set);
   },
 
+  // Moves an exercise to the end of another workout, keeping its sets, reps and id.
+  moveExerciseToWorkout(fromWorkoutId, exerciseId, toWorkoutId) {
+    const from = this.getWorkout(fromWorkoutId);
+    const exercise = from.exercises.find(e => e.id === exerciseId);
+    from.exercises = from.exercises.filter(e => e !== exercise);
+    this.getWorkout(toWorkoutId).exercises.push(exercise);
+    this.save();
+  },
+
+  // The sets and reps last used for an exercise, to start a new one with: from a workout it's
+  // in, otherwise from the last time it was logged with targets. null if neither.
+  lastTargets(refId) {
+    for (const workout of this.data.workouts) {
+      const ex = workout.exercises.find(e => e.refId === refId);
+      if (ex) return { sets: ex.sets, repMin: ex.repMin, repMax: ex.repMax };
+    }
+    for (let i = this.data.sessions.length - 1; i >= 0; i--) {
+      const entry = this.data.sessions[i].exercises.find(e => e.refId === refId && e.targetSets && e.targetRepMin);
+      if (entry) return { sets: entry.targetSets, repMin: entry.targetRepMin, repMax: entry.targetRepMax };
+    }
+    return null;
+  },
+
   // Puts a workout's exercises in this order (a list of their ids), after dragging one.
   setExerciseOrder(workoutId, exerciseIds) {
     const workout = this.getWorkout(workoutId);

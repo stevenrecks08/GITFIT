@@ -121,22 +121,26 @@ const Stats = {
 
   // Planned sets from your week (not logged workouts), for a list of day exercises:
   //   muscles = { muscleId: sets }       each exercise's target sets × 1 (primary) or × 0.5 (secondary)
-  //   sources = { muscleId: [ { name, sets, role: 'primary' | 'secondary' } ] }
+  //   sources = { muscleId: [ { name, sets, role: 'primary' | 'secondary', workoutId, where: 'Mon · Upper A' } ] }
   //                                      the exercises behind each muscle's number, most sets first
-  //                                      (an exercise on several days is listed once, with its sets added up)
-  plannedSets(exercises) {
+  //                                      (one row per workout an exercise is in)
+  // workouts = the workouts to count.
+  plannedSets(workouts) {
     const muscles = {};
     const sources = {};
-    for (const ex of exercises) {
-      const info = Library.forExercise(ex);
-      forEachMuscle(info, (m, share) => {
-        muscles[m] = (muscles[m] || 0) + ex.sets * share;
+    for (const workout of workouts) {
+      const where = `${WEEKDAYS[workout.weekday].slice(0, 3)} · ${workout.name}`;
+      for (const ex of workout.exercises) {
+        const info = Library.forExercise(ex);
+        forEachMuscle(info, (m, share) => {
+          muscles[m] = (muscles[m] || 0) + ex.sets * share;
 
-        const list = sources[m] || (sources[m] = []);
-        const same = list.find(s => s.refId === ex.refId);
-        if (same) same.sets += ex.sets * share;
-        else list.push({ refId: ex.refId, name: info.name, sets: ex.sets * share, role: share === 1 ? 'primary' : 'secondary' });
-      });
+          const list = sources[m] || (sources[m] = []);
+          const same = list.find(s => s.refId === ex.refId && s.workoutId === workout.id);
+          if (same) same.sets += ex.sets * share;
+          else list.push({ refId: ex.refId, name: info.name, sets: ex.sets * share, role: share === 1 ? 'primary' : 'secondary', workoutId: workout.id, where });
+        });
+      }
     }
     for (const m in sources) sources[m].sort((a, b) => b.sets - a.sets || a.name.localeCompare(b.name));
     return { muscles, sources };
@@ -144,11 +148,11 @@ const Stats = {
 
   // Planned sets for the whole week (workouts on rest days don't count).
   weekPlannedSets() {
-    return this.plannedSets(Store.plannedWorkouts().flatMap(w => w.exercises));
+    return this.plannedSets(Store.plannedWorkouts());
   },
 
   // Planned sets for one day: every workout on that weekday.
   dayPlannedSets(weekday) {
-    return this.plannedSets(Store.workoutsOn(weekday).flatMap(w => w.exercises));
+    return this.plannedSets(Store.workoutsOn(weekday));
   },
 };

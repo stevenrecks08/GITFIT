@@ -55,11 +55,21 @@ let newForm = null;
 //   adding     = true while + Add exercise is open at the end of the list
 //   refId      = the library/custom exercise picked
 //   mode       = 'pick' (search library), 'custom' (create custom), 'details' (sets & reps)
+//   mode also 'move' (the workouts to move the exercise to)
 //   query      = text in the search box
-//   custom     = the custom exercise being created: { name, equipment, primary: [], secondary: [] }
+//   group      = the muscle group chip picked in the search (kept while adding several)
+//   custom     = the custom exercise being created: { name, startName, equipment, primary: [], secondary: [] }
 let picker = newPicker();
-function newPicker(adding = false) {
-  return { exerciseId: null, adding, refId: null, mode: 'pick', query: '', custom: null };
+function newPicker(adding = false, group = null) {
+  return { exerciseId: null, adding, refId: null, mode: 'pick', query: '', group, custom: null };
+}
+
+// Has anything been entered on the custom exercise form? (A name carried over from a search doesn't count.)
+function customFormChanged() {
+  const c = picker.custom;
+  if (!c.id) return Boolean(c.primary.length || c.secondary.length || c.name.trim() !== (c.startName || '').trim());
+  const saved = Library.get(c.id);
+  return ['name', 'equipment', 'primary', 'secondary'].some(key => JSON.stringify(c[key]) !== JSON.stringify(saved[key]));
 }
 
 // Redraws just the muscle chips and suggestions on the custom exercise form,
@@ -216,6 +226,17 @@ function saveExerciseForm(form) {
 // An exercise only picked so far might just have been looked at, so that one asks first.
 // `then` is what was tapped; it runs once that's settled.
 function withFormSaved(then) {
+  // A custom exercise isn't saved until its form is, so leaving a half-filled one asks first.
+  if (document.getElementById('custom-form') && customFormChanged()) {
+    afterFormQuestion = then;
+    showDialog({
+      title: 'Leave without saving?',
+      lines: ['This custom exercise hasn\'t been saved.'],
+      confirm: { label: 'Keep editing', action: 'dialog-cancel' },
+      cancel: { label: 'Discard it', action: 'leave-skip' },
+    });
+    return;
+  }
   const form = document.getElementById('exercise-form');
   if (!form) return then();
   if (!form.reportValidity()) return; // e.g. the sets box was left empty: says so and stays
@@ -269,7 +290,7 @@ function setFabMenu(open) {
 function openCustomForm(query) {
   picker = newPicker();
   picker.mode = 'custom';
-  picker.custom = { id: null, name: query.trim(), equipment: EQUIPMENT[0], primary: [], secondary: [] };
+  picker.custom = { id: null, name: query.trim(), startName: query.trim(), equipment: EQUIPMENT[0], primary: [], secondary: [] };
   render();
   document.getElementById('custom-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -545,20 +566,25 @@ function finishWorkout(endAt = null, checked = false) {
 
 const actions = {
   // Tapped a workout on the week: opens it to look at (or resumes it, if it's the one in progress).
+  // (Also a row in the planned sets lists. On this workout's own screen, that just closes the strip.)
   'open-workout'(id) {
     if (dragJustEnded()) return;
-    go(`#/workout/${id}`);
+    if (currentRoute().workoutId === id) {
+      strip.open = false;
+      return render();
+    }
+    withFormSaved(() => go(`#/workout/${id}`));
   },
 
-  // Start workout: asks first, since this starts the timer (and replaces any other workout in progress).
+  // Start workout: starts it and its timer straight away, since opening the workout was already
+  // a tap. It only asks if another workout in progress would be thrown away.
   'start-workout'(id) {
     withFormSaved(() => {
-      const other = Store.data.draft && Store.draftWorkout();
-      const lines = ['The timer starts now, and you can log your sets.'];
-      if (Store.data.draft) lines.push(`Your unfinished "${other ? other.name : 'workout'}" will be discarded.`);
+      if (!Store.data.draft) return actions['start-workout-confirm'](id);
+      const other = Store.draftWorkout();
       showDialog({
         title: `Start ${Store.getWorkout(id).name}?`,
-        lines,
+        lines: [`Your unfinished "${other ? other.name : 'workout'}" will be discarded.`],
         confirm: { label: 'Start workout', action: 'start-workout-confirm', id },
         cancel: { label: 'Not yet', action: 'dialog-cancel' },
       });
@@ -599,6 +625,7 @@ const actions = {
   // A muscle group chip in an exercise search: shows that group (tap again to go back).
   'browse-group'(group, button) {
     const picked = button.classList.contains('is-picked');
+    if (button.dataset.target === 'pick-exercise') picker.group = picked ? null : group; // stays while adding several
     button.closest('.lib-results').innerHTML = Views.libraryResults('', button.dataset.target, picked ? null : group);
   },
 
@@ -683,6 +710,12 @@ const actions = {
   // Graph length on an exercise's log.
   'log-range'(range) {
     logState.range = range;
+    render();
+  },
+
+  // Show all, under the list of times an exercise was done.
+  'log-show-all'() {
+    logState.showAll = true;
     render();
   },
 
@@ -867,6 +900,8 @@ const actions = {
 
   'leave-skip'() {
     picker = newPicker();
+    swap.creating = false;
+    quickAdd.creating = false;
     hideDialog();
     render();
     afterFormQuestion();
@@ -910,9 +945,33 @@ const actions = {
 
   // Cancel in the panel. While adding, that's back to the search; on an exercise, it closes.
   'cancel-edit'() {
-    picker = newPicker(!picker.exerciseId);
+    picker = newPicker(!picker.exerciseId, picker.group);
     render();
     if (picker.adding) showPanel();
+  },
+
+  // "Move to another workout" on an exercise: first saves what's in its form, then lists the workouts.
+  'move-open'() {
+    withFormSaved(() => {
+      picker = { ...picker, mode: 'move' };
+      render();
+      showPanel();
+    });
+  },
+
+  'move-cancel'() {
+    picker = { ...picker, mode: 'details' };
+    render();
+    showPanel();
+  },
+
+  'move-confirm'(toWorkoutId) {
+    const { workoutId } = currentRoute();
+    const { exerciseId, refId } = picker;
+    trackPlanned(() => Store.moveExerciseToWorkout(workoutId, exerciseId, toWorkoutId));
+    toast(`Moved ${Library.forExercise({ refId }).name} to ${Store.getWorkout(toWorkoutId).name}`);
+    picker = newPicker();
+    render();
   },
 
   // Tapped an exercise in the library search results.
@@ -932,7 +991,7 @@ const actions = {
 
   'new-custom'() {
     picker.mode = 'custom';
-    picker.custom = { id: null, name: picker.query.trim(), equipment: EQUIPMENT[0], primary: [], secondary: [] };
+    picker.custom = { id: null, name: picker.query.trim(), startName: picker.query.trim(), equipment: EQUIPMENT[0], primary: [], secondary: [] };
     render();
     showPanel();
   },
@@ -1543,7 +1602,7 @@ appEl.addEventListener('input', event => {
 
   if (input.id === 'lib-search') {
     picker.query = input.value;
-    document.getElementById('lib-results').innerHTML = Views.libraryResults(input.value);
+    document.getElementById('lib-results').innerHTML = Views.libraryResults(input.value, 'pick-exercise', picker.group);
     return;
   }
 
@@ -1773,7 +1832,7 @@ appEl.addEventListener('submit', event => {
   // After adding, the search stays open for the next one.
   if (form.id === 'exercise-form') {
     saveExerciseForm(form);
-    picker = newPicker(!picker.exerciseId);
+    picker = newPicker(!picker.exerciseId, picker.group);
     render();
     if (picker.adding) showPanel();
   }
