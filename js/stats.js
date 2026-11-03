@@ -43,6 +43,7 @@ const Stats = {
   muscleGrowth(now = Date.now()) {
     const exercises = {};
     for (const entry of loggedSince(now - this.GROWTH_WEEKS * WEEK_MS)) {
+      if (Library.isTimed(entry.refId)) continue; // seconds, not a max
       const best = Math.max(0, ...entry.sets.map(set => estimateMax(set) || 0));
       if (!best) continue; // bodyweight-only: no estimated max
       if (!exercises[entry.refId]) exercises[entry.refId] = { entry, points: [] };

@@ -161,10 +161,27 @@ function matchScore(typed, lists) {
   return score;
 }
 
+// Exercises logged in seconds instead of reps, with no weight. The seconds are saved as the set's reps.
+const TIMED_EXERCISES = ['plank'];
+
 const Library = {
   // Built-in exercises followed by your custom ones.
   all() {
     return [...LIBRARY, ...Store.data.customExercises];
+  },
+
+  // The same, without deleted custom exercises: what you can pick from.
+  active() {
+    return this.all().filter(e => !e.deleted);
+  },
+
+  isTimed(refId) {
+    return TIMED_EXERCISES.includes(refId);
+  },
+
+  // Every exercise in a muscle group (see groupOf), by name.
+  inGroup(group) {
+    return this.active().filter(e => this.groupOf(e) === group).sort((a, b) => a.name.localeCompare(b.name));
   },
 
   get(refId) {
@@ -188,7 +205,7 @@ const Library = {
     const phrase = simplify(query);
 
     const scored = [];
-    for (const e of this.all()) {
+    for (const e of this.active()) {
       const nameWords = words(e.name);
       const aliasWords = (e.aliases || []).flatMap(words);
       const muscleWords = e.primary.flatMap(id => [...words(MUSCLES[id]), ...words(MUSCLE_GROUP_OF[id])]);

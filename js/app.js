@@ -5,8 +5,8 @@
 //   #/new              → new workout (the + button) [Workouts tab]
 //   #/new/<id>         → copy of a workout          [Workouts tab]
 //   #/workout/<id>/edit → edit a workout            [Workouts tab]
-//   #/workout/<id>     → do a workout (any day)     [Workouts tab]
-//   #/quick            → the quick workout in progress (+ button → Quick workout) [Workouts tab]
+//   #/workout/<id>     → a workout: a look at it until it's started, then the real thing [Workouts tab]
+//   #/quick           → the quick workout in progress (+ button → Quick workout) [Workouts tab]
 //   #/history          → past workouts (link at the top of Workouts) [Workouts tab]
 //   #/history/<id>     → fix or delete one past workout [Workouts tab]
 //   #/profile          → profile                  [Profile tab]
@@ -80,6 +80,24 @@ function showPanel() {
 // Which exercise is expanded on the workout screen (null = all collapsed).
 let openExerciseId = null;
 
+// True when the workout screen should open the first unfinished exercise the next time it's drawn:
+// on arriving there, but not on each redraw (you may have closed it on purpose).
+let autoOpenExercise = true;
+
+// Where Back goes from a log or past workout opened from another screen, with how that screen was left:
+//   [{ hash, openExerciseId, logState, scrollY }]  (a Log can open a workout, which can open a Log, …)
+let returnStack = [];
+
+// Remembers this screen, then goes to another one that Back should return from.
+function goAndReturn(hash) {
+  returnStack.push({ hash: location.hash || '#/', openExerciseId, logState, scrollY: window.scrollY });
+  go(hash);
+}
+
+// The summary of the workout just finished (Store.sessionSummary()). Kept in memory on purpose: it
+// stays on the Workouts tab until Close, or until the app is fully closed.
+let summary = null;
+
 // Planned sets card on the Workouts tab: which groups and muscles are expanded.
 // Kept while the app is open, so going into a day and back leaves them as they were.
 const openSets = { groups: new Set(), muscles: new Set() };
@@ -95,7 +113,7 @@ let quickAdd = { open: false, query: '' };
 // Log screens: the search text (kept so Back returns to the same results),
 // and the calendar month / tapped day on an exercise's log.
 let logQuery = '';
-let logState = { month: null, day: null };
+let logState = { month: null, day: null, range: 'all' };
 
 // What the muscle map on Profile shows: 'growth' or 'level'.
 let mapMode = 'growth';
@@ -221,10 +239,14 @@ function go(hash) {
 function render() {
   Streak.update(); // decides any week that just ended, and catches a week that was just hit
   const route = currentRoute();
+  const setup = !Store.data.settings.setupDone;
+  if (summary && !Store.getSession(summary.sessionId)) summary = null; // that workout was deleted
   let screen;
 
-  if (route.view === 'home') {
-    screen = Views.home(openSets);
+  if (setup) {
+    screen = Views.setup();
+  } else if (route.view === 'home') {
+    screen = summary ? Views.summary(summary) : Views.home(openSets);
   } else if (route.view === 'history') {
     screen = Views.history();
   } else if (route.view === 'past') {
@@ -251,17 +273,29 @@ function render() {
   } else if (route.view === 'quick') {
     const quick = Store.draftWorkout();
     if (!quick?.quick) return go('#/'); // no quick workout in progress (finished or discarded)
+    if (autoOpenExercise) openExerciseId = Store.firstUnfinished();
+    autoOpenExercise = false;
     screen = Views.workout(quick, Store.data.draft, openExerciseId, swap, quickAdd, picker);
   } else {
     const workout = Store.getWorkout(route.workoutId);
     if (!workout) return go('#/');
     if (route.view === 'edit') {
       screen = Views.editWorkout(workout, picker);
+    } else if (Store.data.draft?.workoutId === workout.id && workout.exercises.length) {
+      // This workout has been started: the real thing.
+      const draft = Store.ensureDraft(workout);
+      if (autoOpenExercise) openExerciseId = Store.firstUnfinished();
+      autoOpenExercise = false;
+      screen = Views.workout(Store.draftWorkout(), draft, openExerciseId, swap, quickAdd, picker);
     } else {
-      // Only start a draft once there's something to log.
-      const draft = workout.exercises.length ? Store.ensureDraft(workout) : null;
-      screen = Views.workout(workout, draft, openExerciseId, swap, undefined, picker);
+      // Not started: just a look. Start workout is what starts it (and the timer).
+      screen = Views.workoutPreview(workout);
     }
+  }
+
+  // Opened from another screen: Back returns there.
+  if (['past', 'exercise-log'].includes(route.view) && returnStack.length) {
+    screen.back = returnStack[returnStack.length - 1].hash;
   }
 
   titleEl.textContent = screen.title;
@@ -271,9 +305,10 @@ function render() {
   gearBtn.hidden = !screen.gear;
   historyLink.hidden = !screen.history;
   timerEl.hidden = !(screen.timer && Store.data.draft);
+  document.body.classList.toggle('in-workout', Boolean(screen.timer && Store.data.draft));
   // The tab bar only shows on each tab's main screen; deeper screens use Back.
   const here = '#/' + location.hash.replace(/^#\/?/, '');
-  const showTabs = TABS.some(tab => tab.href === here);
+  const showTabs = !setup && TABS.some(tab => tab.href === here);
   tabBarEl.hidden = !showTabs;
   document.body.classList.toggle('no-tabbar', !showTabs);
   tabBarEl.innerHTML = tabBarHtml(route.tab);
@@ -388,6 +423,7 @@ function finishWorkout(endAt = null, checked = false) {
   // Ended at a last set in a week that's already over: that week is judged again with it.
   const earlierWeek = weekKey(new Date(session.date).getTime()) < weekKey(Date.now());
   if (earlierWeek) Streak.rejudge(session.date);
+  summary = Store.sessionSummary(session);
   toast('Workout saved 💪', { label: 'Undo', action: 'undo-finish' }, 5000);
   lastFinish = { sessionId: session.id, draft, hadHit, rejudgeFrom: earlierWeek ? session.date : null };
   go('#/');
@@ -396,12 +432,107 @@ function finishWorkout(endAt = null, checked = false) {
 // ---------- Button taps ----------
 
 const actions = {
-  // Tapped a workout on the week: start it (or resume it), whatever day it is today.
+  // Tapped a workout on the week: opens it to look at (or resumes it, if it's the one in progress).
   'open-workout'(id) {
     if (dragJustEnded()) return;
-    const draft = Store.data.draft;
-    if (draft && (draft.quick || draft.workoutId !== id) && !discardOtherDraft()) return;
     go(`#/workout/${id}`);
+  },
+
+  // Start workout: asks first, since this starts the timer (and replaces any other workout in progress).
+  'start-workout'(id) {
+    const other = Store.data.draft && Store.draftWorkout();
+    const lines = ['The timer starts now, and you can log your sets.'];
+    if (Store.data.draft) lines.push(`Your unfinished "${other ? other.name : 'workout'}" will be discarded.`);
+    showDialog({
+      title: `Start ${Store.getWorkout(id).name}?`,
+      lines,
+      confirm: { label: 'Start workout', action: 'start-workout-confirm', id },
+      cancel: { label: 'Not yet', action: 'dialog-cancel' },
+    });
+  },
+
+  'start-workout-confirm'(id) {
+    hideDialog();
+    Store.discardDraft();
+    Store.ensureDraft(Store.getWorkout(id));
+    autoOpenExercise = true;
+    render();
+    window.scrollTo(0, 0);
+  },
+
+  // Next on a filled-in exercise: closes it and opens the next one. If every set hit the top of
+  // its rep range, a small message suggests going heavier next time.
+  'next-exercise'(id) {
+    const list = Store.draftWorkout().exercises;
+    const next = list[list.findIndex(e => e.id === id) + 1];
+    const ready = Store.readyForMoreWeight(id);
+    openExerciseId = next ? next.id : null;
+    swap = { exerciseId: null, query: '' };
+    render();
+    (next ? document.getElementById(`ex-${next.id}`) : document.querySelector('.finish-bar')).scrollIntoView({ block: 'nearest' });
+    if (ready) {
+      const ex = list.find(e => e.id === id);
+      const shown = Number(Units.showWeight(ready));
+      toast(`Hit ${ex.repMax} every set. Try ${shown + (Units.isMetric() ? 2.5 : 5)} ${Units.weightUnit()} next time.`, null, 4000);
+    }
+  },
+
+  // A Log button: opens that exercise's log, and Back returns here.
+  'view-log'(refId) {
+    goAndReturn(`#/log/${encodeURIComponent(refId)}`);
+  },
+
+  // A muscle group chip in an exercise search: shows that group (tap again to go back).
+  'browse-group'(group, button) {
+    const picked = button.classList.contains('is-picked');
+    button.closest('.lib-results').innerHTML = Views.libraryResults('', button.dataset.target, picked ? null : group);
+  },
+
+  'close-summary'() {
+    summary = null;
+    hideToast();
+    render();
+    window.scrollTo(0, 0);
+  },
+
+  // Get started (or skip) on the first-time setup. What's typed saves as it changes,
+  // but save the box you're still in too.
+  'setup-done'() {
+    saveSettingsForm(document.getElementById('settings-form'));
+    Store.updateSettings({ setupDone: true });
+    if (currentRoute().view === 'home') render();
+    else go('#/');
+  },
+
+  // Delete a custom exercise: it comes out of search and any workout using it, so that's said first.
+  'delete-custom'(id) {
+    const e = Library.get(id);
+    const used = Store.workoutsUsing(id).map(w => w.name);
+    const lines = [];
+    if (used.length) lines.push(`It's in ${used.join(', ')}, and will be removed from ${used.length === 1 ? 'that workout' : 'those workouts'}.`);
+    lines.push('Workouts you\'ve already finished and its log stay as they are.');
+    showDialog({
+      title: `Delete ${e.name}?`,
+      lines,
+      confirm: { label: 'Delete exercise', action: 'delete-custom-confirm', id },
+      cancel: { label: 'Cancel', action: 'dialog-cancel' },
+      danger: true,
+    });
+  },
+
+  'delete-custom-confirm'(id) {
+    const name = Library.get(id).name;
+    hideDialog();
+    Store.deleteCustomExercise(id);
+    picker = newPicker();
+    toast(`Deleted ${name}`);
+    render();
+  },
+
+  // Graph length on an exercise's log.
+  'log-range'(range) {
+    logState.range = range;
+    render();
   },
 
   // Resume on the "Workout in progress" banner for a quick workout.
@@ -750,8 +881,10 @@ const actions = {
 
   // ---------- Past workouts ----------
 
+  // From an exercise's log, Back returns to that log; from anywhere else, to Past workouts.
   'open-session'(id) {
-    go(`#/history/${id}`);
+    if (currentRoute().view === 'exercise-log') goAndReturn(`#/history/${id}`);
+    else go(`#/history/${id}`);
   },
 
   // Saves the edited sets, then re-checks the streak from that workout's week.
@@ -772,11 +905,11 @@ const actions = {
       Streak.rejudge(session.date);
       toast('Changes saved');
     }
-    go('#/history');
+    go(backBtn.dataset.href);
   },
 
   'past-discard'() {
-    go('#/history');
+    go(backBtn.dataset.href);
   },
 
   'past-delete'() {
@@ -805,7 +938,7 @@ const actions = {
   // "Leave without saving?" → yes.
   'past-leave'() {
     hideDialog();
-    go('#/history');
+    go(backBtn.dataset.href);
   },
 
   'dialog-cancel'() {
@@ -824,6 +957,7 @@ const actions = {
     }
     const draft = lastFinish.draft;
     lastFinish = null;
+    summary = null;
     hideToast();
     go(draft.quick ? '#/quick' : `#/workout/${draft.workoutId}`);
   },
@@ -836,13 +970,14 @@ const actions = {
 
   'export'() {
     Store.exportBackup();
+    render(); // shows the new "Last backup" and takes down the reminder
   },
 
   'import'() {
     document.getElementById('import-file').click();
   },
 
-  // Tapped an exercise in the Log search results.
+  // Tapped an exercise in the Log's list or search results.
   'open-log'(refId) {
     go(`#/log/${encodeURIComponent(refId)}`);
   },
@@ -1060,6 +1195,13 @@ window.addEventListener('touchmove', event => {
 appEl.addEventListener('input', event => {
   const input = event.target;
 
+  // An exercise's note: saved as you type, and shown on its small line.
+  if (input.dataset.note != null) {
+    Store.setExerciseNote(input.dataset.note, input.value);
+    input.closest('.ex-note').querySelector('.note-text').textContent = input.value.trim() ? `Note: ${input.value.trim()}` : '+ Add note';
+    return;
+  }
+
   // Library search: redraw only the results so the search box keeps focus.
   if (input.id === 'log-search') {
     logQuery = input.value;
@@ -1120,12 +1262,29 @@ appEl.addEventListener('input', event => {
     return;
   }
   Store.updateDraftSet(input.dataset.ex, Number(input.dataset.set), field, value);
+  refreshWorkoutProgress(input.dataset.ex);
 });
+
+// As sets are typed in: the Next button and the sets counter, without a redraw (which would
+// close the keyboard).
+function refreshWorkoutProgress(exerciseId) {
+  const next = document.querySelector(`#ex-${exerciseId} .next-ex`);
+  if (next) next.hidden = !Store.draftProgress(exerciseId).complete;
+  const { filled, total } = Store.draftTotals();
+  document.querySelector('[data-sets-done]').textContent = `${filled} / ${total} sets`;
+  document.querySelector('[data-sets-bar]').style.width = `${total ? filled / total * 100 : 0}%`;
+}
 
 // Tapping the exercise search moves it to the top of the screen, so the results
 // show below it instead of under the keyboard. The extra space (is-searching) lets
 // the page scroll that far even before there are results.
 appEl.addEventListener('focusin', event => {
+  // Tapping a weight selects the whole number, so typing replaces it. (A moment later, or the
+  // iPhone's own tap handling clears the selection again.)
+  if (event.target.dataset.field === 'weight') {
+    setTimeout(() => event.target.select(), 0);
+    return;
+  }
   if (!['lib-search', 'swap-search', 'quick-search'].includes(event.target.id)) return;
   appEl.classList.add('is-searching');
   const pin = () => event.target.scrollIntoView({ block: 'start' });
@@ -1149,9 +1308,13 @@ function saveSettingsForm(form) {
   Store.updateSettings({
     name: values.name.trim(),
     heightIn: Units.readHeight({ ft: values.heightFt, in: values.heightIn, cm: values.heightCm }),
-    bodyWeightLbs: Units.readWeight(values.bodyWeight),
     sex: values.sex,
   });
+  // Body weight is logged with today's date, so only when the box really changed
+  // (not its rounded display value when some other setting changes).
+  if (values.bodyWeight.trim() !== Units.showWeight(Store.data.settings.bodyWeightLbs)) {
+    Store.setBodyWeight(Units.readWeight(values.bodyWeight));
+  }
 }
 
 // Saves when you leave a box (or pick an option).
@@ -1202,6 +1365,19 @@ appEl.addEventListener('submit', event => {
   event.preventDefault();
   const form = event.target;
   const values = Object.fromEntries(new FormData(form));
+
+  // Today's body weight on Profile.
+  if (form.id === 'bw-form') {
+    const lbs = Units.readWeight(values.weight);
+    if (!lbs) {
+      toast('Type your weight first');
+      return;
+    }
+    Store.setBodyWeight(lbs);
+    toast('Body weight logged');
+    render();
+    return;
+  }
 
   // New workout (or a copy) → create it, then open it to add or change exercises.
   if (form.id === 'new-workout-form') {
@@ -1292,15 +1468,23 @@ appEl.addEventListener('submit', event => {
 // ---------- Start ----------
 
 window.addEventListener('hashchange', () => {
+  // Coming Back from a log or past workout opened from another screen: that screen as it was left.
+  const top = returnStack[returnStack.length - 1];
+  const back = top && top.hash === (location.hash || '#/') ? returnStack.pop() : null;
+  const { view } = currentRoute();
+  if (!back && !['past', 'exercise-log'].includes(view)) returnStack = [];
+
   picker = newPicker();
-  openExerciseId = null;
+  openExerciseId = back ? back.openExerciseId : null;
+  autoOpenExercise = !back;
   swap = { exerciseId: null, query: '' };
   quickAdd = { open: false, query: '' };
-  logState = { month: null, day: null };
+  logState = back ? back.logState : { month: null, day: null, range: 'all' };
   newForm = null;
-  pastEdit = null;
+  // Unsaved edits to a past workout are kept while one of its Log buttons is being looked at.
+  if (view !== 'past' && !returnStack.some(entry => entry.hash.startsWith('#/history/'))) pastEdit = null;
   render();
-  window.scrollTo(0, 0);
+  window.scrollTo(0, back ? back.scrollY : 0);
 });
 
 // A home-screen app usually comes back from the background instead of reloading, so

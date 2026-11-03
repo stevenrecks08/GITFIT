@@ -105,10 +105,12 @@ html, body {
 }
 .top-link[hidden] { display: none; }
 
-/* Workout timer: quiet muted numbers on the right of the top bar, with a small pause/resume button */
+/* In a workout: the top bar turns green-tinted, so it's clear this is the real thing */
+body.in-workout .topbar { background: #16331f; border-bottom-color: var(--accent); }
+/* Workout timer: bold green numbers on the right of the top bar, with a small pause/resume button */
 .top-timer { display: flex; align-items: center; gap: 4px; margin-left: auto; margin-right: -10px; flex: 0 0 auto; }
 .top-timer[hidden] { display: none; }
-.timer-time { color: var(--muted); font-size: 15px; font-variant-numeric: tabular-nums; }
+.timer-time { color: var(--accent); font-size: 19px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .timer-paused { color: var(--muted); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.8; }
 .timer-paused[hidden] { display: none; }
 .timer-btn {
@@ -124,6 +126,7 @@ html, body {
   color: var(--muted);
 }
 .timer-btn:active { color: var(--text); background: var(--surface-2); }
+body.in-workout .timer-btn { color: var(--accent); }
 /* On the "Workout in progress" banner */
 .banner-timer { margin-left: 6px; color: var(--muted); font-variant-numeric: tabular-nums; }
 
@@ -631,6 +634,10 @@ main.is-searching { padding-bottom: 100vh; }
 .lib-name .tag { margin-left: 4px; vertical-align: 1px; }
 .lib-meta { display: block; font-size: 14px; color: var(--muted); margin-top: 2px; }
 .lib-results .empty { padding: 14px; }
+/* Before typing: muscle group chips to browse, then recent exercises */
+.browse-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+.browse-chips .chip-btn { min-height: 38px; padding: 0 12px; font-size: 14px; }
+.lib-head { margin: 0; padding: 12px 14px 2px; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
 
 /* The picked exercise at the top of the sets & reps form */
 .picked { display: flex; align-items: flex-start; gap: 10px; }
@@ -730,6 +737,137 @@ main.is-searching { padding-bottom: 100vh; }
 .set-num { font-weight: 700; color: var(--muted); text-align: center; }
 .set-grid input { text-align: center; padding: 0 6px; }
 .set-grid input::placeholder { color: #5d6573; }
+.set-grid .col-head { align-self: end; }
+.col-note { display: block; margin-top: 1px; font-size: 11px; text-transform: none; letter-spacing: 0; opacity: 0.85; }
+/* A weight box that isn't for typing in (timed exercises): dashed and flat, with a dash in it */
+.set-grid input.is-locked {
+  background: transparent;
+  border-style: dashed;
+  color: var(--muted);
+  -webkit-text-fill-color: var(--muted);
+  opacity: 1;
+  cursor: not-allowed;
+}
+
+/* The strip at the top of a workout: "In progress" (green, with sets so far) or "Not started" (dashed) */
+.workout-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 2px 10px;
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  font-size: 14px;
+}
+.workout-status.is-live { background: #16331f; border: 1px solid var(--accent); }
+.workout-status.is-live strong { color: var(--accent); }
+.workout-status.is-live [data-sets-done] { font-weight: 700; font-variant-numeric: tabular-nums; }
+.status-bar { flex: 0 0 100%; height: 6px; margin-top: 6px; border-radius: 999px; background: rgba(255, 255, 255, 0.12); overflow: hidden; }
+.status-bar i { display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width 0.25s ease-out; }
+.workout-status.is-preview { border: 1px dashed var(--muted); color: var(--muted); }
+.workout-status.is-preview strong { color: var(--text); }
+
+/* The look at a workout before it's started: dashed cards with nothing to type in */
+.preview-ex { border-style: dashed; }
+.preview-ex + .preview-ex { margin-top: 8px; }
+.preview-head { display: flex; align-items: center; gap: 10px; }
+.preview-last { margin: 12px 0 6px; font-size: 13px; color: var(--muted); }
+.preview-tip { margin: 14px 0 0; font-size: 14px; }
+
+/* Next, once an exercise is filled in */
+.next-ex { margin-top: 12px; }
+.next-ex[hidden] { display: none; }
+
+/* An exercise's note: one small line until it's opened */
+.ex-note { margin-top: 10px; font-size: 14px; color: var(--muted); }
+.ex-note summary { display: flex; align-items: center; min-height: 36px; cursor: pointer; list-style: none; }
+.ex-note summary::-webkit-details-marker { display: none; }
+.note-text { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ex-note textarea {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 16px; /* 16px+ stops iPhone from zooming in on tap */
+  resize: vertical;
+}
+.ex-note textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.add-today-note { margin: 0; font-size: 14px; line-height: 1.4; }
+
+/* The summary after finishing a workout */
+.summary-top { padding: 10px 0 18px; text-align: center; }
+.summary-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: 32px;
+  font-weight: 800;
+}
+.summary-top h1 { margin: 12px 0 0; font-size: 24px; overflow-wrap: anywhere; }
+.summary-more { margin: 4px 0 0; color: var(--accent); font-weight: 600; }
+.summary-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.summary-stats .card { margin: 0; }
+.summary-stats span { display: block; font-size: 13px; color: var(--muted); }
+.summary-stats strong { display: block; margin-top: 2px; font-size: 20px; font-variant-numeric: tabular-nums; }
+.summary-bests { margin-top: 10px; border-color: var(--gold); }
+.summary-bests h2 { margin: 0 0 4px; font-size: 16px; text-transform: none; letter-spacing: 0; color: var(--gold); }
+.best-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: var(--tap);
+  padding: 8px 0;
+  background: none;
+  border: none;
+  border-top: 1px solid var(--border);
+  color: var(--text);
+  text-align: left;
+}
+.best-row:active { opacity: 0.6; }
+.best-row:first-of-type { border-top: none; }
+.best-main { flex: 1; min-width: 0; }
+.best-main > * { display: block; }
+.best-main span { margin-top: 2px; font-size: 14px; color: var(--muted); }
+.best-link { display: flex; align-items: center; gap: 2px; color: var(--accent); font-size: 15px; font-weight: 600; white-space: nowrap; }
+.best-link .chev { stroke: var(--accent); }
+.summary-week { margin-top: 10px; }
+.summary-week .week-sets { margin-top: 0; }
+
+/* First-time setup */
+.setup-intro { margin: 4px 0 0; }
+.setup-tip { margin: 16px 0 0; font-size: 14px; }
+
+/* Reminder on Profile to back up */
+.backup-note { display: flex; align-items: center; gap: 12px; margin-top: 16px; border-color: var(--partial); font-size: 14px; }
+.backup-note span { flex: 1; }
+.backup-note .btn { flex: 0 0 auto; }
+
+/* Body weight on Profile */
+.bw-form { display: flex; gap: 8px; margin-top: 12px; }
+.bw-form input { flex: 1; min-width: 0; }
+.bw-form .btn { flex: 0 0 auto; min-height: var(--tap); padding: 0 18px; }
+
+/* Custom exercises in Settings */
+.custom-list { padding: 4px 14px; }
+.custom-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; }
+.custom-row + .custom-row { border-top: 1px solid var(--border); }
+.custom-info { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.custom-info > * { display: block; }
+.custom-info span { margin-top: 2px; font-size: 14px; color: var(--muted); }
 
 
 .finish-bar { margin-top: 20px; }
@@ -954,6 +1092,11 @@ main.is-searching { padding-bottom: 100vh; }
 .chart-label { fill: var(--muted); font-size: 11px; }
 .chart-line { fill: none; stroke: var(--accent); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
 .chart-dot { fill: var(--accent); stroke: var(--surface); stroke-width: 1.5; }
+.chart-hit { fill: transparent; cursor: pointer; }
+.log-range { margin-bottom: 10px; }
+.log-range .segment { min-height: 36px; font-size: 14px; }
+.log-day-links { margin-top: 12px; }
+.log-day-links .btn { width: 100%; height: auto; padding: 8px 12px; }
 .chart-single-line { fill: none; stroke: var(--text); stroke-opacity: 0.7; stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
 .chart-single-dot { fill: var(--text); fill-opacity: 0.8; }
 .chart-key { display: flex; gap: 16px; margin: 6px 0 0; font-size: 12px; color: var(--muted); }

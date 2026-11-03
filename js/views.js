@@ -17,7 +17,9 @@ function formatDate(iso) {
 }
 
 // One set as "20×10" (weight in the chosen unit × reps). BW = bodyweight (no weight entered).
-function formatSet(set) {
+// On a timed exercise (plank): "60 sec".
+function formatSet(set, timed = false) {
+  if (timed) return `${set.reps} sec`;
   const weight = set.weight == null ? 'BW' : Units.showWeight(set.weight);
   return `${weight}×${set.reps}`;
 }
@@ -27,9 +29,46 @@ function repRange(min, max) {
   return min === max ? String(min) : `${min}–${max}`;
 }
 
+// The target line: "3 × 8–12", or "3 × 30–60 sec" on a timed exercise.
+function targetText(ex, timed) {
+  return `${ex.sets} × ${repRange(ex.repMin, ex.repMax)}${timed ? ' sec' : ''}`;
+}
+
 // "Last: 20×10, 20×8, 20×7" or "No history yet"
-function lastSummary(last) {
-  return last ? `Last: ${last.sets.map(formatSet).join(', ')}` : 'No history yet';
+function lastSummary(last, timed = false) {
+  return last ? `Last: ${last.sets.map(set => formatSet(set, timed)).join(', ')}` : 'No history yet';
+}
+
+// The column heading over the weight boxes. Dumbbell weights are per dumbbell, said quietly underneath.
+function weightHead(info, unit) {
+  return `<div class="col-head">Weight (${unit})${info.equipment === 'Dumbbell' ? '<span class="col-note">per dumbbell</span>' : ''}</div>`;
+}
+
+// The weight box on a timed exercise (plank): still there, but clearly not for typing in.
+const LOCKED_WEIGHT = `<input type="text" class="is-locked" value="—" disabled aria-label="No weight for this exercise">`;
+
+// One note per exercise, on the workout screens. A small line until it's opened.
+function noteBox(refId) {
+  const note = Store.exerciseNote(refId);
+  return `
+    <details class="ex-note">
+      <summary><span class="note-text">${note ? `Note: ${esc(note)}` : '+ Add note'}</span></summary>
+      <textarea data-note="${esc(refId)}" rows="2" placeholder="e.g. seat on 4" aria-label="Note for this exercise">${esc(note)}</textarea>
+    </details>`;
+}
+
+// The small button that opens an exercise's log (Back returns to wherever it was tapped).
+function logButton(refId) {
+  return `<button type="button" class="btn btn-small" data-action="view-log" data-id="${esc(refId)}">Log</button>`;
+}
+
+// One exercise in a search list.
+function libItem(e, action, meta) {
+  return `
+    <button type="button" class="lib-item" data-action="${action}" data-id="${esc(e.id)}">
+      <span class="lib-name">${esc(e.name)} ${e.custom ? '<span class="tag">Custom</span>' : ''}</span>
+      <span class="lib-meta">${esc(meta ?? `${e.equipment} · ${Library.primaryLabel(e)}`)}</span>
+    </button>`;
 }
 
 function profileName() {
@@ -42,6 +81,7 @@ function initials(name) {
 }
 
 const SETS_SCALE = 16; // a full bar = 16+ sets a week
+const BACKUP_REMINDER_DAYS = 30;
 
 // The streak flame. Its colors come from CSS (.flame-outer / .flame-inner).
 const FLAME_SVG = `
@@ -123,7 +163,9 @@ function fromDayKey(key) {
 // points = [{ time (ms), value (in the chosen unit) }], oldest first.
 // singles = the same shape, for logged 1-rep sets: drawn as a thin white line behind,
 // with a small key under the graph. With no points, draws an empty graph with emptyNote written over it.
-function maxChart(points, emptyNote, singles = []) {
+// label = what the line is, for the key under the graph. A point with a dayKey can be tapped to
+// show that day's sets; selected = the dayKey shown now (its dot is bigger).
+function maxChart(points, emptyNote, singles = [], label = 'Estimated max', selected = null) {
   const W = 320, H = 170, L = 40, R = 10, T = 10, B = 24; // size and margins (SVG units)
 
   if (!points.length) {
@@ -155,13 +197,15 @@ function maxChart(points, emptyNote, singles = []) {
     <line class="chart-grid" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/>
     <text class="chart-label" x="${L - 6}" y="${y(v) + 4}" text-anchor="end">${Math.round(v)}</text>`).join('');
   const line = points.map((p, i) => `${i ? 'L' : 'M'}${x(p.time).toFixed(1)},${y(p.value).toFixed(1)}`).join(' ');
-  const dots = points.map(p => `<circle class="chart-dot" cx="${x(p.time).toFixed(1)}" cy="${y(p.value).toFixed(1)}" r="3.5"/>`).join('');
+  const dots = points.map(p => `<circle class="chart-dot" cx="${x(p.time).toFixed(1)}" cy="${y(p.value).toFixed(1)}" r="${p.dayKey && p.dayKey === selected ? 6 : 3.5}"/>`).join('');
+  // A bigger invisible circle over each dot, so it's easy to tap.
+  const hits = points.filter(p => p.dayKey).map(p => `<circle class="chart-hit" cx="${x(p.time).toFixed(1)}" cy="${y(p.value).toFixed(1)}" r="14" data-action="log-day" data-id="${p.dayKey}"/>`).join('');
   const singleLine = singles.map((p, i) => `${i ? 'L' : 'M'}${x(p.time).toFixed(1)},${y(p.value).toFixed(1)}`).join(' ');
   const singleDots = singles.map(p => `<circle class="chart-single-dot" cx="${x(p.time).toFixed(1)}" cy="${y(p.value).toFixed(1)}" r="2.5"/>`).join('');
   // The "Actual 1-rep" key only shows once a 1-rep set has been logged.
   const key = `
     <p class="chart-key">
-      <span><i class="key-estimate"></i>Estimated max</span>
+      <span><i class="key-estimate"></i>${label}</span>
       ${singles.length ? '<span><i class="key-single"></i>Actual 1-rep</span>' : ''}
     </p>`;
   const xLabels = t1 === t0
@@ -170,12 +214,13 @@ function maxChart(points, emptyNote, singles = []) {
        <text class="chart-label" x="${W - R}" y="${H - 6}" text-anchor="end">Today</text>`;
 
   return `
-    <svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Estimated max over time">
+    <svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${label} over time">
       ${grid}
       ${singles.length ? `<path class="chart-single-line" d="${singleLine}"/>${singleDots}` : ''}
       <path class="chart-line" d="${line}"/>
       ${dots}
       ${xLabels}
+      ${hits}
     </svg>${key}`;
 }
 
@@ -213,24 +258,37 @@ function logCalendar(month, logged, selected, minMonth, maxMonth, emptyNote) {
     </div>`;
 }
 
-// The sets done on one day (all workouts that day), plus that day's estimated max.
-function logDayCard(entries, key) {
-  const sets = entries.flatMap(h => h.sets);
-  const maxes = entries.filter(h => h.best).map(h => h.best.max);
+// A list of sets: Set, Weight, Reps. A timed exercise (plank) has Set and Seconds, with no weight.
+function setsList(sets, timed) {
   const unit = Units.weightUnit();
   const rows = sets.map((set, i) => `
     <span>${i + 1}</span>
-    <span>${set.weight == null ? 'BW' : `${Units.showWeight(set.weight)} ${unit}`}</span>
+    <span>${timed ? '—' : set.weight == null ? 'BW' : `${Units.showWeight(set.weight)} ${unit}`}</span>
     <span>${set.reps}</span>`).join('');
+  return `
+    <div class="log-sets">
+      <span class="log-sets-head">Set</span><span class="log-sets-head">Weight</span><span class="log-sets-head">${timed ? 'Seconds' : 'Reps'}</span>
+      ${rows}
+    </div>`;
+}
+
+// The sets done on one day (all workouts that day), that day's estimated max (or longest hold),
+// and a way into each workout it was part of.
+function logDayCard(entries, key, timed) {
+  const sets = entries.flatMap(h => h.sets);
+  const maxes = entries.filter(h => h.best).map(h => h.best.max);
+  const unit = Units.weightUnit();
+  const summary = timed ? `Longest hold: <strong>${Math.max(...entries.map(h => h.hold))} sec</strong>`
+    : maxes.length ? `Estimated max: <strong>${Units.showWeight(Math.max(...maxes))} ${unit}</strong>` : '';
 
   return `
     <div class="card log-day">
       <p class="log-day-date">${fromDayKey(key).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</p>
-      <div class="log-sets">
-        <span class="log-sets-head">Set</span><span class="log-sets-head">Weight</span><span class="log-sets-head">Reps</span>
-        ${rows}
+      ${setsList(sets, timed)}
+      ${summary ? `<p class="log-day-max">${summary}</p>` : ''}
+      <div class="stack log-day-links">
+        ${entries.map(h => `<button type="button" class="btn btn-small" data-action="open-session" data-id="${esc(h.sessionId)}">See full workout: ${esc(h.workoutName || 'Workout')}</button>`).join('')}
       </div>
-      ${maxes.length ? `<p class="log-day-max">Estimated max: <strong>${Units.showWeight(Math.max(...maxes))} ${unit}</strong></p>` : ''}
     </div>`;
 }
 
@@ -389,9 +447,7 @@ const Views = {
             <h2>This week</h2>
             <span class="week-range">${weekDates()}</span>
           </div>
-          <p class="week-hint">${Store.data.workouts.length
-            ? 'Tap a workout to start it. Hold and drag it to move it to another day.'
-            : 'Tap + to create your first workout.'}</p>
+          ${Store.data.workouts.length ? '' : '<p class="week-hint">Tap + to create your first workout.</p>'}
         </div>
         <div class="week">${days}</div>
 
@@ -456,7 +512,7 @@ const Views = {
           <span class="ex-num">${i + 1}</span>
           <button class="ex-info" data-action="edit-exercise" data-id="${ex.id}">
             <span class="ex-name">${esc(info.name)}</span>
-            <span class="ex-meta">${ex.sets} × ${repRange(ex.repMin, ex.repMax)} · ${esc(Library.primaryLabel(info))}</span>
+            <span class="ex-meta">${targetText(ex, Library.isTimed(ex.refId))} · ${esc(Library.primaryLabel(info))}</span>
           </button>
           <button class="btn btn-small" data-action="move-exercise" data-id="${ex.id}" data-dir="-1"
             aria-label="Move up" ${i === 0 ? 'disabled' : ''}>↑</button>
@@ -511,10 +567,29 @@ const Views = {
   },
 
   // The search results list. Redrawn on its own while you type, so the search box keeps focus.
-  // Nothing is listed until you start typing, then only the best few matches.
+  // Before you type: muscle group chips to browse, then your recent exercises (on the Log,
+  // every exercise you've logged). Once you type: only the best few matches.
   // action = what tapping a result does (picking for a day, or opening its log).
-  libraryResults(query, action = 'pick-exercise') {
-    if (!query.trim()) return '';
+  // group = the muscle group chip that's picked, if any.
+  libraryResults(query, action = 'pick-exercise', group = null) {
+    if (!query.trim()) {
+      const chips = `
+        <div class="browse-chips">
+          ${MUSCLE_GROUPS.map(g => `
+            <button type="button" class="chip-btn ${g.name === group ? 'is-picked' : ''}" data-action="browse-group"
+              data-id="${g.name}" data-target="${action}">${g.name}</button>`).join('')}
+        </div>`;
+      if (group) return chips + Library.inGroup(group).map(e => libItem(e, action)).join('');
+      if (action === 'open-log') {
+        const logged = Store.loggedExercises();
+        return chips + (logged.length
+          ? `<p class="lib-head">Your exercises</p>${logged.map(l => libItem({ id: l.refId, name: l.name }, action,
+              `Last ${shortDate(l.date)} · ${l.count} workout${l.count === 1 ? '' : 's'}`)).join('')}`
+          : '<p class="empty">Exercises you log will show here.</p>');
+      }
+      const recent = Store.loggedExercises().map(l => Library.get(l.refId)).filter(e => e && !e.deleted).slice(0, 6);
+      return chips + (recent.length ? `<p class="lib-head">Recent</p>${recent.map(e => libItem(e, action)).join('')}` : '');
+    }
     const { results, total } = Library.search(query);
     if (!results.length) {
       const canCreate = ['pick-exercise', 'swap-pick', 'quick-pick'].includes(action);
@@ -522,17 +597,14 @@ const Views = {
     }
     const more = total > results.length
       ? `<p class="lib-more">Showing the best ${results.length} of ${total} — keep typing to narrow it down.</p>` : '';
-    return results.map(e => `
-      <button type="button" class="lib-item" data-action="${action}" data-id="${e.id}">
-        <span class="lib-name">${esc(e.name)} ${e.custom ? '<span class="tag">Custom</span>' : ''}</span>
-        <span class="lib-meta">${esc(e.equipment)} · ${esc(Library.primaryLabel(e))}</span>
-      </button>`).join('') + more;
+    return results.map(e => libItem(e, action)).join('') + more;
   },
 
   // Step 2: sets and reps for the picked exercise.
   exerciseDetailsForm(picker, editing) {
     const info = Library.forExercise({ refId: picker.refId });
-    const form = editing || { sets: 3, repMin: 8, repMax: 12 };
+    const timed = Library.isTimed(picker.refId);
+    const form = editing || (timed ? { sets: 3, repMin: 30, repMax: 60 } : { sets: 3, repMin: 8, repMax: 12 });
     return `
       <form id="exercise-form" class="card stack">
         <div class="picked">
@@ -550,7 +622,7 @@ const Views = {
           <input id="ex-sets" name="sets" type="number" inputmode="numeric" min="1" max="20" value="${form.sets}" required>
         </div>
         <div>
-          <label for="ex-rep-min">Target reps (e.g. 8 to 12)</label>
+          <label for="ex-rep-min">${timed ? 'Target seconds (e.g. 30 to 60)' : 'Target reps (e.g. 8 to 12)'}</label>
           <div class="row range-row">
             <input id="ex-rep-min" name="repMin" type="number" inputmode="numeric" min="1" max="100"
               value="${form.repMin}" aria-label="Minimum reps" required>
@@ -599,6 +671,7 @@ const Views = {
           Past workouts keep the muscles they were logged with.</p>` : ''}
         <button class="btn btn-primary">${saveLabel || (isEdit ? 'Save changes' : 'Save exercise')}</button>
         <button type="button" class="btn" data-action="cancel-custom">${isEdit ? 'Cancel' : 'Back to library'}</button>
+        ${isEdit ? `<button type="button" class="btn btn-danger" data-action="delete-custom" data-id="${esc(c.id)}">Delete custom exercise</button>` : ''}
       </form>`;
   },
 
@@ -641,31 +714,75 @@ const Views = {
       </div>`;
   },
 
-  // ---------- Workout: compact list, one exercise expanded at a time ----------
-  // swap = the Swap for today search: { exerciseId (whose search is open, or null), query,
-  //   creating (showing the custom exercise form instead of the search; its state is in picker) }
-  // A quick workout (workout.quick, from Store.draftWorkout()) uses the same screen with an
-  // editable title, no targets or swaps, "+ Add set" on each exercise, and "+ Add exercise"
-  // (quickAdd = its search: { open, query, creating (showing the custom exercise form instead) }).
-  workout(workout, draft, openId, swap, quickAdd = { open: false, query: '' }, picker = null) {
-    const quick = Boolean(workout.quick);
-    const title = workout.name || 'Quick workout';
-    if (!quick && !workout.exercises.length) {
+  // ---------- A planned workout before it's started: a look only, nothing to type in ----------
+  // Shows what you did last time, each exercise's note and log. Start workout is what starts it
+  // (and its timer). Dashed cards and a "Not started" strip make it look different from the real thing.
+  workoutPreview(workout) {
+    if (!workout.exercises.length) {
       return {
-        title,
+        title: workout.name,
         back: '#/',
         html: `
           <p class="empty">This workout has no exercises yet.</p>
           <button class="btn btn-primary" data-action="edit-workout" data-id="${workout.id}">Add exercises</button>`,
       };
     }
+    const cards = workout.exercises.map((ex, i) => {
+      const info = Library.forExercise(ex);
+      const timed = Library.isTimed(ex.refId);
+      const last = Store.lastResult(ex);
+      return `
+        <div class="card preview-ex">
+          <div class="preview-head">
+            <span class="ex-num">${i + 1}</span>
+            <span class="ex-toggle-main">
+              <span class="ex-title">${esc(info.name)}</span>
+              <span class="ex-sub">Target ${targetText(ex, timed)}</span>
+            </span>
+            ${logButton(ex.refId)}
+          </div>
+          ${last
+            ? `<p class="preview-last">Last time · ${formatDate(last.date)}</p>${setsList(last.sets, timed)}`
+            : '<p class="preview-last">No history yet</p>'}
+          ${noteBox(ex.refId)}
+        </div>`;
+    }).join('');
+    return {
+      title: workout.name,
+      back: '#/',
+      html: `
+        <div class="workout-status is-preview"><strong>Not started</strong><span>Looking only. Nothing is being logged.</span></div>
+        ${cards}
+        <p class="muted preview-tip">Only log your working sets, not your warm-ups.</p>
+        <div class="finish-bar stack">
+          <button type="button" class="btn btn-primary" data-action="start-workout" data-id="${workout.id}">Start workout</button>
+          <button type="button" class="btn" data-action="edit-workout" data-id="${workout.id}">Edit workout</button>
+        </div>
+      `,
+    };
+  },
+
+  // ---------- Workout: compact list, one exercise expanded at a time ----------
+  // swap = the Swap for today search: { exerciseId (whose search is open, or null), query,
+  //   creating (showing the custom exercise form instead of the search; its state is in picker) }
+  // A quick workout (workout.quick, from Store.draftWorkout()) uses the same screen with an
+  // editable title, no targets or swaps, "+ Add set" on each exercise, and "+ Add exercise"
+  // (quickAdd = its search: { open, query, creating (showing the custom exercise form instead) }).
+  // A planned workout has that "+ Add exercise" too, for today only (those exercises are ex.today
+  // and work like a quick workout's).
+  workout(workout, draft, openId, swap, quickAdd = { open: false, query: '' }, picker = null) {
+    const quick = Boolean(workout.quick);
+    const title = workout.name || 'Quick workout';
 
     const unit = Units.weightUnit();
     const cards = workout.exercises.map((ex, i) => {
       // A swapped exercise shows as itself, with its own history.
       const swapped = Store.swappedRef(ex.id);
-      const info = Library.forExercise({ refId: swapped || ex.refId });
+      const refId = swapped || ex.refId;
+      const info = Library.forExercise({ refId });
+      const timed = Library.isTimed(refId);
       const last = Store.lastFor(ex);
+      const nextEx = workout.exercises[i + 1];
       const isOpen = ex.id === openId;
       // Collapsed rows show ✓ once every set is filled in, "1/3" part way, nothing before the first set.
       const progress = Store.draftProgress(ex.id);
@@ -680,23 +797,24 @@ const Views = {
           const lastReps = last?.sets[i]?.reps;
           return `
             <div class="set-num">${i + 1}</div>
-            <input type="text" inputmode="decimal" value="${Units.showWeight(set.weight)}" placeholder="${unit}"
-              data-ex="${ex.id}" data-set="${i}" data-field="weight" aria-label="Set ${i + 1} weight in ${unit}">
+            ${timed ? LOCKED_WEIGHT : `<input type="text" inputmode="decimal" value="${Units.showWeight(set.weight)}" placeholder="${unit}"
+              data-ex="${ex.id}" data-set="${i}" data-field="weight" aria-label="Set ${i + 1} weight in ${unit}">`}
             <input type="text" inputmode="numeric" value="${esc(set.reps)}" placeholder="${lastReps ?? ''}"
-              data-ex="${ex.id}" data-set="${i}" data-field="reps" aria-label="Set ${i + 1} reps">`;
+              data-ex="${ex.id}" data-set="${i}" data-field="reps" aria-label="Set ${i + 1} ${timed ? 'seconds' : 'reps'}">`;
         }).join('');
 
         // Swap for today: a button, or the exercise search once it's tapped.
         // Once swapped, only Undo swap shows (undo, then swap again to pick a different one).
         // Every workout has "+ Add set" and "− Remove set" (when the last set can go: Store.canRemoveDraftSet()).
-        // A quick workout also has "Remove exercise" instead of the swap.
+        // A quick workout (or an exercise added for today) has "Remove exercise" instead of the swap.
         const setButtons = `
             <button type="button" class="btn btn-small" data-action="add-set" data-id="${ex.id}">+ Add set</button>
             ${Store.canRemoveDraftSet(ex.id) ? `<button type="button" class="btn btn-small" data-action="remove-set" data-id="${ex.id}">− Remove set</button>` : ''}`;
-        const swapPanel = quick ? `
+        const swapPanel = quick || ex.today ? `
           <div class="row swap-row">
             ${setButtons}
             <button type="button" class="btn btn-small" data-action="quick-remove" data-id="${ex.id}">Remove exercise</button>
+            ${logButton(refId)}
           </div>` : swap.exerciseId === ex.id && swap.creating ? `
           <div class="swap-panel stack">
             ${this.customExerciseForm(picker, 'Save and swap')}
@@ -713,20 +831,27 @@ const Views = {
             ${swapped
               ? `<button type="button" class="btn btn-small" data-action="swap-undo" data-id="${ex.id}">Undo swap</button>`
               : `<button type="button" class="btn btn-small" data-action="swap-open" data-id="${ex.id}">Swap for today</button>`}
+            ${logButton(refId)}
           </div>`;
+
+        // Next shows once every set here is filled in (app.js shows it as you type). The last exercise gets Done.
+        const nextButton = `
+          <button type="button" class="btn btn-primary next-ex" data-action="next-exercise" data-id="${ex.id}"
+            ${Store.draftProgress(ex.id).complete ? '' : 'hidden'}>${nextEx ? `Next: ${esc(Library.forExercise({ refId: Store.swappedRef(nextEx.id) || nextEx.refId }).name)}` : 'Done'}</button>`;
 
         body = `
           <div class="ex-body">
-            ${quick ? ((ex.repMin ? `<div class="ex-sub">Target ${ex.sets} × ${repRange(ex.repMin, ex.repMax)}${last ? ` · last done ${formatDate(last.date)}` : ''}</div>`
-                : last ? `<div class="ex-sub">Last done ${formatDate(last.date)}</div>` : ''))
-              : `<div class="ex-sub">Target ${ex.sets} × ${repRange(ex.repMin, ex.repMax)}${last ? ` · last done ${formatDate(last.date)}` : ''}</div>`}
+            ${ex.repMin ? `<div class="ex-sub">Target ${targetText(ex, timed)}${last ? ` · last done ${formatDate(last.date)}` : ''}</div>`
+              : last ? `<div class="ex-sub">Last done ${formatDate(last.date)}</div>` : ''}
             <div class="set-grid">
               <div class="col-head">Set</div>
-              <div class="col-head">Weight (${unit})</div>
-              <div class="col-head">Reps</div>
+              ${weightHead(info, unit)}
+              <div class="col-head">${timed ? 'Seconds' : 'Reps'}</div>
               ${setRows}
             </div>
+            ${nextButton}
             ${swapPanel}
+            ${noteBox(refId)}
           </div>`;
       }
 
@@ -742,8 +867,9 @@ const Views = {
             <span class="ex-toggle-main">
               <span class="ex-title">${esc(info.name)}</span>
               ${swapped ? `<span class="ex-sub swap-note">Swapped for today · planned: ${esc(plannedName)}</span>` : ''}
+              ${ex.today ? '<span class="ex-sub swap-note">Added for today only</span>' : ''}
               ${makeupNote}
-              <span class="ex-sub">${lastSummary(last)}</span>
+              <span class="ex-sub">${lastSummary(last, timed)}</span>
             </span>
             <span class="tag">${esc(Library.primaryLabel(info))}</span>
             ${badge}
@@ -757,22 +883,32 @@ const Views = {
       <input id="quick-name" class="quick-name" value="${esc(workout.name)}" placeholder="Quick workout"
         autocomplete="off" aria-label="Workout title">
       ${workout.exercises.length ? '' : '<p class="muted quick-hint">Add the exercises you do as you go. This workout won\'t be added to your week.</p>'}` : '';
-    const quickBottom = !quick ? '' : quickAdd.creating ? this.customExerciseForm(picker, 'Save and add') : quickAdd.open ? `
+    const quickBottom = quickAdd.creating ? this.customExerciseForm(picker, 'Save and add') : quickAdd.open ? `
       <div class="card stack" id="quick-add-panel">
-        ${this.missedPicker()}
+        ${quick ? this.missedPicker() : '<p class="muted add-today-note">Just for today: your plan stays the same, and its sets are logged but don\'t count for your streak.</p>'}
         <input type="search" id="quick-search" value="${esc(quickAdd.query)}"
           placeholder="Search name, muscle or equipment" autocomplete="off" aria-label="Search exercises to add">
         <div id="quick-results" class="lib-results">${this.libraryResults(quickAdd.query, 'quick-pick')}</div>
         <button type="button" class="btn" data-action="quick-new-custom">+ Create custom exercise</button>
         <button type="button" class="btn" data-action="quick-add-cancel">Cancel</button>
       </div>` : `
-      <button type="button" class="btn btn-add-ex" data-action="quick-add-open">+ Add exercise</button>`;
+      <button type="button" class="btn btn-add-ex" data-action="quick-add-open">+ Add exercise${quick ? '' : ' for today'}</button>`;
+
+    // The strip that says you're really in a workout, with the sets logged so far.
+    const totals = Store.draftTotals();
+    const status = `
+      <div class="workout-status is-live">
+        <strong>In progress</strong>
+        <span data-sets-done>${totals.filled} / ${totals.total} sets</span>
+        <span class="status-bar"><i data-sets-bar style="width:${totals.total ? totals.filled / totals.total * 100 : 0}%"></i></span>
+      </div>`;
 
     return {
       title,
       back: '#/',
       timer: true, // the workout timer shows in the top bar
       html: `
+        ${status}
         ${quickTop}
         ${cards}
         ${quickBottom}
@@ -805,9 +941,110 @@ const Views = {
           <p class="profile-name">${esc(name)}</p>
           ${stats ? `<p class="muted profile-stats">${stats}</p>` : ''}
         </div>
+        ${this.backupReminder()}
         ${this.streakCard()}
         <a class="btn" href="#/log">Log</a>
+        ${this.bodyWeightCard()}
         ${this.muscleMap(mapMode)}
+      `,
+    };
+  },
+
+  // A small reminder once there's something to lose and no backup in the last 30 days.
+  backupReminder() {
+    const { lastBackupAt } = Store.data.settings;
+    if (!Store.data.sessions.length) return '';
+    const days = lastBackupAt ? Math.floor((Date.now() - new Date(lastBackupAt).getTime()) / (24 * 60 * 60 * 1000)) : null;
+    if (days != null && days < BACKUP_REMINDER_DAYS) return '';
+    return `
+      <div class="card backup-note">
+        <span>${days == null ? 'You haven\'t backed up yet.' : `Last backup: ${days} days ago.`} Your data only lives on this device.</span>
+        <button type="button" class="btn btn-small" data-action="export">Back up</button>
+      </div>`;
+  },
+
+  // ---------- Body weight (on Profile): log today's weight, see it over time ----------
+  bodyWeightCard() {
+    const log = Store.data.bodyWeightLog;
+    const unit = Units.weightUnit();
+    const latest = log[log.length - 1];
+    const points = log.map(e => ({ time: fromDayKey(e.day).getTime(), value: Number(Units.showWeight(e.lbs)) }));
+    const change = latest && log.length > 1 ? Number(Units.showWeight(latest.lbs)) - points[0].value : null;
+    const changeText = change == null ? '' : change === 0 ? `No change since ${shortDate(fromDayKey(log[0].day))}`
+      : `${change > 0 ? '+' : '−'}${Number(Math.abs(change).toFixed(1))} ${unit} since ${shortDate(fromDayKey(log[0].day))}`;
+    return `
+      <h2>Body weight</h2>
+      <div class="card">
+        <p class="log-max ${latest ? '' : 'is-blank'}">${latest ? `${Units.showWeight(latest.lbs)} <span>${unit}</span>` : '—'}</p>
+        <p class="log-sub">${changeText || (latest ? `Logged ${shortDate(fromDayKey(latest.day))}` : '&nbsp;')}</p>
+        ${maxChart(points, 'Log your weight to start the graph', [], 'Body weight')}
+        <form id="bw-form" class="bw-form">
+          <input name="weight" type="text" inputmode="decimal" placeholder="Today's weight (${unit})" autocomplete="off" aria-label="Today's body weight in ${unit}">
+          <button class="btn btn-primary btn-small">Log</button>
+        </form>
+      </div>`;
+  },
+
+  // ---------- After finishing a workout: stays up until closed (or the app is closed) ----------
+  // s = Store.sessionSummary(). The new bests only show if there are any; each opens its log.
+  summary(s) {
+    const unit = Units.weightUnit();
+    const { week } = Streak.summary();
+    const best = b => b.timed ? `${b.before} → ${b.after} sec longest hold`
+      : `${Units.showWeight(b.before)} → ${Units.showWeight(b.after)} ${unit} estimated max`;
+    const stats = [
+      ['Time', s.durationMs ? formatDuration(s.durationMs) : '—'],
+      ['Sets', s.sets],
+      ['Exercises', s.exercises],
+      ['Weight lifted', s.volume ? `${Number(Units.showWeight(s.volume)).toLocaleString()} ${unit}` : '—'],
+    ];
+    return {
+      title: 'Workout done',
+      back: null,
+      html: `
+        <div class="summary-top">
+          <span class="summary-check" aria-hidden="true">✓</span>
+          <h1>${esc(s.name || 'Workout')}</h1>
+          ${s.moreThanLast ? `<p class="summary-more">${s.moreThanLast}% more weight than last time</p>` : ''}
+        </div>
+        <div class="summary-stats">
+          ${stats.map(([label, value]) => `<div class="card"><span>${label}</span><strong>${value}</strong></div>`).join('')}
+        </div>
+        ${s.bests.length ? `
+          <div class="card summary-bests">
+            <h2>You got ${s.bests.length} new best${s.bests.length === 1 ? '' : 's'} today!</h2>
+            ${s.bests.map(b => `
+              <button type="button" class="best-row" data-action="view-log" data-id="${esc(b.refId)}">
+                <span class="best-main"><strong>${esc(b.name)}</strong><span>${best(b)}</span></span>
+                <span class="best-link">Log ${CHEVRON}</span>
+              </button>`).join('')}
+          </div>` : ''}
+        ${week.planned ? `
+          <div class="card summary-week">
+            <div class="week-sets"><span>Sets this week</span><strong>${week.logged} / ${week.planned}</strong></div>
+            <div class="week-bar ${week.hit ? 'is-full' : ''}"><i style="width:${Math.min(100, week.logged / week.planned * 100)}%"></i></div>
+          </div>` : ''}
+        <div class="finish-bar">
+          <button type="button" class="btn btn-primary" data-action="close-summary">Close</button>
+        </div>
+      `,
+    };
+  },
+
+  // ---------- First-time setup: the same fields as Settings, all optional ----------
+  setup() {
+    return {
+      title: 'Welcome to GitFit',
+      back: null,
+      html: `
+        <p class="setup-intro">A few quick details. You can change these any time in Settings.</p>
+        <form id="settings-form">
+          ${this.settingsFields()}
+        </form>
+        <p class="muted setup-tip">When you work out, only log your working sets, not your warm-ups.</p>
+        <div class="finish-bar stack">
+          <button type="button" class="btn btn-primary" data-action="setup-done">Get started</button>
+        </div>
       `,
     };
   },
@@ -968,12 +1205,14 @@ const Views = {
   pastWorkout(session, edit) {
     const unit = Units.weightUnit();
     const cards = edit.exercises.map((e, x) => {
+      const timed = Library.isTimed(e.entry.refId);
+      const info = Library.forExercise(e.entry);
       const rows = e.rows.map((set, i) => `
         <div class="set-num">${i + 1}</div>
-        <input type="text" inputmode="decimal" value="${Units.showWeight(set.weight)}" placeholder="${unit}"
-          data-past="${x}" data-set="${i}" data-field="weight" aria-label="Set ${i + 1} weight in ${unit}">
+        ${timed ? LOCKED_WEIGHT : `<input type="text" inputmode="decimal" value="${Units.showWeight(set.weight)}" placeholder="${unit}"
+          data-past="${x}" data-set="${i}" data-field="weight" aria-label="Set ${i + 1} weight in ${unit}">`}
         <input type="text" inputmode="numeric" value="${esc(set.reps)}"
-          data-past="${x}" data-set="${i}" data-field="reps" aria-label="Set ${i + 1} reps">`).join('');
+          data-past="${x}" data-set="${i}" data-field="reps" aria-label="Set ${i + 1} ${timed ? 'seconds' : 'reps'}">`).join('');
       const swappedFrom = e.entry.swappedFrom ? Library.forExercise({ refId: e.entry.swappedFrom }).name : '';
       return `
         <div class="card workout-ex is-open">
@@ -983,12 +1222,13 @@ const Views = {
               <span class="ex-title">${esc(e.entry.name)}</span>
               ${swappedFrom ? `<span class="ex-sub swap-note">Swapped · planned: ${esc(swappedFrom)}</span>` : ''}
             </span>
+            ${e.entry.refId ? logButton(e.entry.refId) : ''}
           </div>
           <div class="ex-body">
             <div class="set-grid">
               <div class="col-head">Set</div>
-              <div class="col-head">Weight (${unit})</div>
-              <div class="col-head">Reps</div>
+              ${weightHead(info, unit)}
+              <div class="col-head">${timed ? 'Seconds' : 'Reps'}</div>
               ${rows}
             </div>
           </div>
@@ -1127,11 +1367,14 @@ const Views = {
   },
 
   // ---------- One exercise's log: estimated max graph, calendar, a day's sets ----------
-  // state = { month: 'YYYY-MM' shown in the calendar (null = latest), day: 'YYYY-MM-DD' tapped (or null) }
+  // state = { month: 'YYYY-MM' shown in the calendar (null = latest), day: 'YYYY-MM-DD' tapped (or null),
+  //           range: how much of the graph shows: '3m', '1y' or 'all' }
+  // A timed exercise (plank) shows its longest hold instead of an estimated max.
   exerciseLog(refId, state) {
     const history = Store.exerciseHistory(refId);
     const info = Library.get(refId);
-    const name = info ? info.name : 'Unknown exercise';
+    const name = info ? info.name : Store.loggedExercises().find(l => l.refId === refId)?.name || 'Unknown exercise';
+    const timed = Library.isTimed(refId);
     // With no history, the graph and calendar still show, empty, with a note over them.
     const first = history[0];
     const last = history[history.length - 1];
@@ -1142,18 +1385,40 @@ const Views = {
     const unit = Units.weightUnit();
     const weighted = history.filter(h => h.best);
     const latest = weighted[weighted.length - 1];
-    const points = weighted.map(h => ({ time: new Date(h.date).getTime(), value: Number(Units.showWeight(h.best.max)) }));
+    // How far back the graph goes.
+    const rangeDays = { '3m': 91, '1y': 365 }[state.range];
+    const inRange = time => !rangeDays || time >= Date.now() - rangeDays * 24 * 60 * 60 * 1000;
+    const points = (timed
+      ? history.map(h => ({ time: new Date(h.date).getTime(), value: h.hold, dayKey: h.dayKey }))
+      : weighted.map(h => ({ time: new Date(h.date).getTime(), value: Number(Units.showWeight(h.best.max)), dayKey: h.dayKey })))
+      .filter(p => inRange(p.time));
     // Actual max: the heaviest weight ever logged for a single rep (the first day it was lifted).
     // singlePoints = the heaviest single of each workout that had one, for the graph's white line.
     let single = null;
     const singlePoints = [];
-    for (const h of history) {
+    for (const h of timed ? [] : history) {
       const heaviest = Math.max(0, ...h.sets.filter(set => set.reps === 1 && set.weight).map(set => set.weight));
       if (!heaviest) continue;
-      singlePoints.push({ time: new Date(h.date).getTime(), value: Number(Units.showWeight(heaviest)) });
+      if (inRange(new Date(h.date).getTime())) singlePoints.push({ time: new Date(h.date).getTime(), value: Number(Units.showWeight(heaviest)) });
       if (!single || heaviest > single.weight) single = { weight: heaviest, date: h.date };
     }
-    const maxSection = `
+    const emptyNote = !history.length ? 'No history yet' : !weighted.length && !timed ? 'No sets with weight yet' : 'Nothing in this time';
+    const ranges = { '3m': '3 months', '1y': '1 year', all: 'All time' };
+    const rangePicker = `
+      <div class="segmented log-range">
+        ${Object.entries(ranges).map(([id, label]) => `
+          <button type="button" class="segment ${id === (state.range || 'all') ? 'is-active' : ''}" data-action="log-range" data-id="${id}"
+            aria-pressed="${id === (state.range || 'all')}">${label}</button>`).join('')}
+      </div>`;
+    const longest = timed && history.length ? history.reduce((a, b) => (b.hold > a.hold ? b : a)) : null;
+    const maxSection = timed ? `
+      <div class="card">
+        <p class="log-label">Longest hold</p>
+        <p class="log-max ${longest ? '' : 'is-blank'}">${longest ? `${longest.hold} <span>sec</span>` : '—'}</p>
+        <p class="log-sub">${longest ? `On ${shortDate(longest.date)}` : '&nbsp;'}</p>
+        ${rangePicker}
+        ${maxChart(points, emptyNote, [], 'Longest hold', state.day)}
+      </div>` : `
       <div class="card">
         <p class="log-label">Current estimated max</p>
         <p class="log-max ${latest ? '' : 'is-blank'}">${latest ? `${Units.showWeight(latest.best.max)} <span>${unit}</span>` : '—'}</p>
@@ -1166,7 +1431,8 @@ const Views = {
             ? `<span class="log-actual-value">${Units.showWeight(single.weight)} ${unit}</span><span class="log-actual-date">· ${shortDate(single.date)}</span>`
             : '<span class="log-actual-value is-blank">—</span>'}
         </p>
-        ${maxChart(points, history.length ? 'No sets with weight yet' : 'No history yet', singlePoints)}
+        ${rangePicker}
+        ${maxChart(points, emptyNote, singlePoints, 'Estimated max', state.day)}
         <p class="log-formula">Estimated with the Epley formula: weight × (1 + reps ÷ 30)</p>
       </div>`;
 
@@ -1184,7 +1450,7 @@ const Views = {
         ${maxSection}
         <h2>History</h2>
         ${logCalendar(month, logged, state.day, firstMonth, lastMonth > thisMonth ? lastMonth : thisMonth, history.length ? '' : 'No history yet')}
-        ${state.day ? logDayCard(history.filter(h => h.dayKey === state.day), state.day)
+        ${state.day ? logDayCard(history.filter(h => h.dayKey === state.day), state.day, timed)
           : history.length ? '<p class="muted log-hint">Tap a highlighted day to see its sets.</p>' : ''}
       `,
     };
@@ -1192,8 +1458,46 @@ const Views = {
 
   // ---------- Settings (opened from the gear on Profile) ----------
   // Every setting lives in one form; app.js saves the whole form on any change.
-  // To add a setting, add a field here (and see DEFAULT_SETTINGS in storage.js).
+  // To add a setting, add a field in settingsFields() (and see DEFAULT_SETTINGS in storage.js).
   settings() {
+    const { lastBackupAt } = Store.data.settings;
+    const customs = Store.data.customExercises.filter(e => !e.deleted);
+    return {
+      title: 'Settings',
+      back: '#/profile',
+      html: `
+        <form id="settings-form">
+          ${this.settingsFields()}
+        </form>
+        <p class="muted" style="font-size:14px">Changes save automatically and are included in backups.</p>
+
+        <h2>Custom exercises</h2>
+        ${customs.length ? `<div class="card custom-list">${customs.map(e => `
+          <div class="custom-row">
+            <span class="custom-info"><strong>${esc(e.name)}</strong><span>${esc(e.equipment)} · ${esc(Library.primaryLabel(e))}</span></span>
+            <button type="button" class="btn btn-small btn-danger" data-action="delete-custom" data-id="${esc(e.id)}">Delete</button>
+          </div>`).join('')}</div>`
+          : '<p class="muted" style="font-size:14px">Exercises you create are saved here and can be added to any workout.</p>'}
+
+        <h2>Backup</h2>
+        <div class="row">
+          <button class="btn" data-action="export">Export</button>
+          <button class="btn" data-action="import">Import</button>
+        </div>
+        <p class="muted" style="font-size:14px">
+          Your data lives only on this device. Export now and then to keep a copy safe.
+          ${lastBackupAt ? `Last backup: ${shortDate(lastBackupAt)}.` : 'No backup yet.'}
+        </p>
+        <input type="file" id="import-file" accept=".json,application/json" hidden>
+
+        <h2>Danger zone</h2>
+        <button class="btn btn-danger" data-action="delete-all">Delete all data</button>
+      `,
+    };
+  },
+
+  // Units and About you, in the form that Settings and the first-time setup share.
+  settingsFields() {
     const s = Store.data.settings;
     const metric = Units.isMetric();
     const height = Units.showHeight(s.heightIn);
@@ -1215,62 +1519,41 @@ const Views = {
         <span class="range-sep">in</span>
       </div>`;
 
-    return {
-      title: 'Settings',
-      back: '#/profile',
-      html: `
-        <form id="settings-form">
-          <h2>Units</h2>
-          <div class="choices">
-            ${unitOption('imperial', 'Imperial', 'lbs, ft/in')}
-            ${unitOption('metric', 'Metric', 'kg, cm')}
-          </div>
+    return `
+      <h2>Units</h2>
+      <div class="choices">
+        ${unitOption('imperial', 'Imperial', 'lbs, ft/in')}
+        ${unitOption('metric', 'Metric', 'kg, cm')}
+      </div>
 
-          <h2>About you</h2>
-          <div class="card stack">
-            <div>
-              <label for="name">Name</label>
-              <input id="name" name="name" value="${esc(s.name)}" placeholder="Your name" autocomplete="name">
-            </div>
-            <div>
-              <label for="height">Height</label>
-              ${heightFields}
-            </div>
-            <div>
-              <label for="body-weight">Body weight</label>
-              <div class="row range-row">
-                <input id="body-weight" name="bodyWeight" type="text" inputmode="decimal"
-                  value="${Units.showWeight(s.bodyWeightLbs)}" placeholder="0">
-                <span class="range-sep">${Units.weightUnit()}</span>
-              </div>
-            </div>
-            <div>
-              <label>Sex <span class="muted">(for strength levels)</span></label>
-              <div class="choices">
-                ${['male', 'female'].map(value => `
-                  <label class="choice">
-                    <input type="radio" name="sex" value="${value}" ${s.sex === value ? 'checked' : ''}>
-                    <span><strong>${value === 'male' ? 'Male' : 'Female'}</strong></span>
-                  </label>`).join('')}
-              </div>
-            </div>
-          </div>
-        </form>
-        <p class="muted" style="font-size:14px">Changes save automatically and are included in backups.</p>
-
-        <h2>Backup</h2>
-        <div class="row">
-          <button class="btn" data-action="export">Export</button>
-          <button class="btn" data-action="import">Import</button>
+      <h2>About you</h2>
+      <div class="card stack">
+        <div>
+          <label for="name">Name</label>
+          <input id="name" name="name" value="${esc(s.name)}" placeholder="Your name" autocomplete="name">
         </div>
-        <p class="muted" style="font-size:14px">
-          Your data lives only on this device. Export now and then to keep a copy safe.
-        </p>
-        <input type="file" id="import-file" accept=".json,application/json" hidden>
-
-        <h2>Danger zone</h2>
-        <button class="btn btn-danger" data-action="delete-all">Delete all data</button>
-      `,
-    };
+        <div>
+          <label for="height">Height</label>
+          ${heightFields}
+        </div>
+        <div>
+          <label for="body-weight">Body weight</label>
+          <div class="row range-row">
+            <input id="body-weight" name="bodyWeight" type="text" inputmode="decimal"
+              value="${Units.showWeight(s.bodyWeightLbs)}" placeholder="0">
+            <span class="range-sep">${Units.weightUnit()}</span>
+          </div>
+        </div>
+        <div>
+          <label>Sex <span class="muted">(for strength levels)</span></label>
+          <div class="choices">
+            ${['male', 'female'].map(value => `
+              <label class="choice">
+                <input type="radio" name="sex" value="${value}" ${s.sex === value ? 'checked' : ''}>
+                <span><strong>${value === 'male' ? 'Male' : 'Female'}</strong></span>
+              </label>`).join('')}
+          </div>
+        </div>
+      </div>`;
   },
 };

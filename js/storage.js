@@ -6,10 +6,15 @@
 //
 // Shape of the saved data:
 // {
-//   version: 9,
-//   settings: { name, units: 'imperial' | 'metric', heightIn, bodyWeightLbs, sex: 'male' | 'female' },
+//   version: 10,
+//   settings: { name, units: 'imperial' | 'metric', heightIn, bodyWeightLbs, sex: 'male' | 'female',
+//               setupDone (the first-time setup was finished or skipped),
+//               lastBackupAt (ISO, when Export was last used, or null) },
+//   bodyWeightLog: [ { day: 'YYYY-MM-DD', lbs } ],  // oldest first; one per day, for the Profile graph
+//   exerciseNotes: { [refId]: text },               // one note per exercise, kept until you change it
 //   customExercises: [     // your own exercises, used alongside LIBRARY in library.js
-//     { id: 'custom-…', name, equipment, primary: [muscle ids], secondary: [muscle ids], custom: true }
+//     { id: 'custom-…', name, equipment, primary: [muscle ids], secondary: [muscle ids], custom: true,
+//       deleted (true once deleted: gone from search and workouts, kept so its past logs still have a name) }
 //   ],
 //   workouts: [            // your planned workouts; each sits on one weekday, any number per day
 //     { id, name (e.g. "Push"), weekday (0 = Monday … 6 = Sunday),
@@ -29,10 +34,12 @@
 //                      targetSets, targetRepMin, targetRepMax,   // (not on quick workouts)
 //                      makeupFor: { workoutId, exerciseId }      // (quick workouts only: the missed
 //                                 // planned exercise it was added to make up, with its targetRepMin/Max)
-//                      sets: [ { weight, reps } ] } ] }
+//                      today (true on an exercise added for today only: not in the plan, no targets),
+//                      sets: [ { weight, reps } ] } ] }   // on a timed exercise (plank), reps = seconds, weight null
 //   ],
 //   draft: null or { workoutId, startedAt, entries: { [exerciseId]: [ { weight, reps, loggedAt?, extra? } ] },
 //                    swaps: { [exerciseId]: refId },  // exercises swapped for today only
+//                    added: [ { id, refId } ],        // exercises added for today only
 //                    pausedAt (ISO while the timer is paused, else null), pausedMs (earlier pauses) },
 //                    // loggedAt = when that set's reps were typed
 //          or, for a quick workout: { quick: true, workoutId: null, name, startedAt,
@@ -55,9 +62,11 @@
 // Version 8 added quick workouts (quick sessions and quick drafts); older data has none.
 // Version 9 added the workout timer: draft.pausedAt / pausedMs, sets' loggedAt in the draft,
 // and session.durationMs (older sessions have no duration).
+// Version 10 added bodyWeightLog (started from the saved body weight), exerciseNotes, draft.added,
+// settings.setupDone (true for anyone who already had saved data) and settings.lastBackupAt.
 
 const STORAGE_KEY = 'gitfit-data';
-const DATA_VERSION = 9;
+const DATA_VERSION = 10;
 
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
@@ -69,11 +78,13 @@ function todayWeekday() {
 // To add a setting: give it a default here, a field in Views.settings(),
 // and a line in saveSettingsForm() in app.js.
 const DEFAULT_SETTINGS = {
-  name: 'Rex Stephenson',
+  name: '',
   units: 'imperial',
   heightIn: null,
   bodyWeightLbs: null,
   sex: 'male', // for strength standards: 'male' | 'female'
+  setupDone: false,
+  lastBackupAt: null,
 };
 
 // Before version 4, exercises had one muscle group picked from a short list.
@@ -238,7 +249,7 @@ function normalize(data) {
     delete session.dayId;
     delete session.dayName;
   }
-  const draft = data.draft ? { swaps: {}, ...data.draft } : null;
+  const draft = data.draft ? { swaps: {}, added: [], ...data.draft } : null;
   if (draft && draft.quick && !Array.isArray(draft.exercises)) draft.exercises = [];
   // Version 9: the timer's pause. (A draft from before has no pause; its startedAt already exists.)
   if (draft) {
@@ -267,9 +278,20 @@ function normalize(data) {
     custom.secondary = renameMuscles(custom.secondary).filter(id => !custom.primary.includes(id));
   }
 
+  // Anyone with saved data from before version 10 has no need for the first-time setup.
+  const settings = { ...DEFAULT_SETTINGS, setupDone: data.version != null, ...data.settings };
+
+  // Version 10: the body weight graph starts from the weight already saved.
+  const bodyWeightLog = Array.isArray(data.bodyWeightLog) ? data.bodyWeightLog : [];
+  if (!bodyWeightLog.length && settings.bodyWeightLbs != null) {
+    bodyWeightLog.push({ day: dayKey(new Date()), lbs: settings.bodyWeightLbs });
+  }
+
   return {
     version: DATA_VERSION,
-    settings: { ...DEFAULT_SETTINGS, ...data.settings },
+    settings,
+    bodyWeightLog,
+    exerciseNotes: data.exerciseNotes || {},
     customExercises,
     workouts,
     days,
@@ -361,6 +383,31 @@ const Store = {
     this.save();
   },
 
+  // Removes a custom exercise from search and from every workout. It's only marked as deleted,
+  // so finished workouts and its log keep their name and muscles.
+  deleteCustomExercise(id) {
+    this.data.customExercises.find(e => e.id === id).deleted = true;
+    for (const workout of this.data.workouts) {
+      workout.exercises = workout.exercises.filter(e => e.refId !== id);
+    }
+    this.save();
+  },
+
+  // The planned workouts that use an exercise.
+  workoutsUsing(refId) {
+    return this.data.workouts.filter(w => w.exercises.some(e => e.refId === refId));
+  },
+
+  exerciseNote(refId) {
+    return this.data.exerciseNotes[refId] || '';
+  },
+
+  setExerciseNote(refId, text) {
+    if (text.trim()) this.data.exerciseNotes[refId] = text;
+    else delete this.data.exerciseNotes[refId];
+    this.save();
+  },
+
   // fields: { refId, sets, repMin, repMax }
   addExercise(workoutId, fields) {
     const exercise = { id: newId(), ...fields };
@@ -428,7 +475,13 @@ const Store = {
   draftWorkout() {
     const draft = this.data.draft;
     if (!draft) return null;
-    if (!draft.quick) return this.getWorkout(draft.workoutId);
+    if (!draft.quick) {
+      // A planned workout, plus anything added for today only (marked today: true).
+      const workout = this.getWorkout(draft.workoutId);
+      if (!workout || !draft.added.length) return workout;
+      const added = draft.added.map(e => ({ ...e, today: true, sets: (draft.entries[e.id] || []).length }));
+      return { ...workout, exercises: [...workout.exercises, ...added] };
+    }
     return {
       id: 'quick',
       quick: true,
@@ -454,8 +507,9 @@ const Store = {
 
   // The weight a new set starts with (lbs or null): your body weight from Settings on a
   // bodyweight exercise, otherwise last time's weight. It's only a starting value, so
-  // a weighted pull-up can just be typed over.
+  // a weighted pull-up can just be typed over. A timed exercise (plank) never has a weight.
   startWeight(refId, lastWeight) {
+    if (Library.isTimed(refId)) return null;
     const bodyWeight = this.data.settings.bodyWeightLbs;
     if (bodyWeight != null && Library.forExercise({ refId }).equipment === 'Bodyweight') return bodyWeight;
     return lastWeight ?? null;
@@ -464,10 +518,11 @@ const Store = {
   // Adds an exercise (one set, or `sets`), weights prefilled from the last time it was done. Returns its id.
   // A missed exercise being made up also has its target reps and makeupFor
   // ({ workoutId, exerciseId } of the planned exercise; see streak.js).
+  // On a planned workout it's added for today only (draft.added): the plan doesn't change.
   quickAddExercise(refId, { sets = 1, repMin, repMax, makeupFor } = {}) {
     const draft = this.data.draft;
     const id = newId();
-    draft.exercises.push({ id, refId, ...(makeupFor ? { makeupFor, repMin, repMax } : {}) });
+    (draft.quick ? draft.exercises : draft.added).push({ id, refId, ...(makeupFor ? { makeupFor, repMin, repMax } : {}) });
     const history = this.exerciseHistory(refId);
     const lastSets = history[history.length - 1]?.sets || [];
     draft.entries[id] = Array.from({ length: sets }, (_, i) =>
@@ -500,26 +555,27 @@ const Store = {
     return list.sort((a, b) => a.weekday - b.weekday);
   },
 
-  // One more set row, with the weight of the set above (or last time's weight for that set).
-  // On a planned workout it's marked extra: a bonus set for today, on top of the plan.
+  // One more set row, with the weight of the set above. If that's empty, so is this one
+  // (except a bodyweight exercise, which always starts with your body weight).
+  // On a planned exercise it's marked extra: a bonus set for today, on top of the plan.
   addDraftSet(exerciseId) {
     const draft = this.data.draft;
     const workout = this.draftWorkout();
     const rows = draft.entries[exerciseId];
-    const refId = draft.swaps[exerciseId] || workout.exercises.find(e => e.id === exerciseId).refId;
-    const history = this.exerciseHistory(refId);
-    const lastTime = history[history.length - 1]?.sets[rows.length]?.weight ?? null;
-    rows.push({ weight: rows[rows.length - 1]?.weight ?? this.startWeight(refId, lastTime), reps: '', ...(workout.quick ? {} : { extra: true }) });
+    const ex = workout.exercises.find(e => e.id === exerciseId);
+    const refId = draft.swaps[exerciseId] || ex.refId;
+    rows.push({ weight: rows[rows.length - 1]?.weight ?? this.startWeight(refId, null), reps: '', ...(workout.quick || ex.today ? {} : { extra: true }) });
     this.save();
   },
 
-  // Can the last set of this exercise be taken off? On a quick workout, if at least one would be
-  // left (Remove exercise is for the rest). On a planned workout, only a set added today:
-  // a planned set that's skipped is just left empty.
+  // Can the last set of this exercise be taken off? On a quick workout or an exercise added for
+  // today, if at least one would be left (Remove exercise is for the rest). On a planned exercise,
+  // only a set added today: a planned set that's skipped is just left empty.
   canRemoveDraftSet(exerciseId) {
     const draft = this.data.draft;
     const rows = draft.entries[exerciseId];
-    return draft.quick ? rows.length > 1 : Boolean(rows[rows.length - 1]?.extra);
+    const loose = draft.quick || draft.added.some(e => e.id === exerciseId);
+    return loose ? rows.length > 1 : Boolean(rows[rows.length - 1]?.extra);
   },
 
   removeDraftSet(exerciseId) {
@@ -529,7 +585,8 @@ const Store = {
 
   quickRemoveExercise(exerciseId) {
     const draft = this.data.draft;
-    draft.exercises = draft.exercises.filter(e => e.id !== exerciseId);
+    if (draft.quick) draft.exercises = draft.exercises.filter(e => e.id !== exerciseId);
+    else draft.added = draft.added.filter(e => e.id !== exerciseId);
     delete draft.entries[exerciseId];
     this.save();
   },
@@ -539,7 +596,7 @@ const Store = {
   ensureDraft(workout) {
     let draft = this.data.draft;
     if (!draft || draft.workoutId !== workout.id) {
-      draft = { workoutId: workout.id, startedAt: new Date().toISOString(), pausedAt: null, pausedMs: 0, entries: {}, swaps: {} };
+      draft = { workoutId: workout.id, startedAt: new Date().toISOString(), pausedAt: null, pausedMs: 0, entries: {}, swaps: {}, added: [] };
       this.data.draft = draft;
     }
     for (const ex of workout.exercises) {
@@ -681,7 +738,9 @@ const Store = {
           primary: info.primary,
           secondary: info.secondary,
           // A quick workout has no targets, except a missed exercise being made up.
-          ...(!workout.quick ? { targetSets: ex.sets, targetRepMin: ex.repMin, targetRepMax: ex.repMax }
+          // Neither does one added for today, and it's left out of the plan below.
+          ...(ex.today ? { today: true }
+            : !workout.quick ? { targetSets: ex.sets, targetRepMin: ex.repMin, targetRepMax: ex.repMax }
             : ex.makeupFor ? { makeupFor: ex.makeupFor, targetRepMin: ex.repMin, targetRepMax: ex.repMax } : {}),
           sets,
         });
@@ -705,7 +764,7 @@ const Store = {
       workoutName: workout.name,
       date,
       durationMs,
-      plan: workout.exercises.map(e => ({ exerciseId: e.id, refId: e.refId, sets: e.sets })),
+      plan: workout.exercises.filter(e => !e.today).map(e => ({ exerciseId: e.id, refId: e.refId, sets: e.sets })),
       exercises,
     };
     // Sessions stay oldest first (one ended at its last set can be older than the newest).
@@ -730,7 +789,7 @@ const Store = {
       const info = Library.forExercise({ refId: draft.swaps[ex.id] || ex.refId });
       const problems = [];
       (draft.entries[ex.id] || []).forEach((set, i) => {
-        if (set.reps === '' || set.reps == null) problems.push(`Set ${i + 1}: no reps`);
+        if (set.reps === '' || set.reps == null) problems.push(`Set ${i + 1}: no ${Library.isTimed(info.id) ? 'time' : 'reps'}`);
         else if (set.weight == null && info.equipment !== 'Bodyweight') problems.push(`Set ${i + 1}: no weight`);
       });
       if (problems.length) gaps.push({ name: info.name, problems });
@@ -750,6 +809,37 @@ const Store = {
     const filled = rows.filter(hasReps).length;
     const complete = rows.length > 0 && rows.every(set => hasReps(set) && (set.weight != null || info.equipment === 'Bodyweight'));
     return { filled, total: rows.length, complete };
+  },
+
+  // Sets logged so far in the whole workout in progress: { filled, total }.
+  draftTotals() {
+    const totals = { filled: 0, total: 0 };
+    for (const ex of this.draftWorkout()?.exercises || []) {
+      const progress = this.draftProgress(ex.id);
+      totals.filled += progress.filled;
+      totals.total += progress.total;
+    }
+    return totals;
+  },
+
+  // The first exercise that isn't filled in yet (its id), or null if they all are.
+  firstUnfinished() {
+    const first = (this.draftWorkout()?.exercises || []).find(ex => !this.draftProgress(ex.id).complete);
+    return first ? first.id : null;
+  },
+
+  // Did every planned set of this exercise reach the top of its rep range, all at the same weight?
+  // Then it's time to go heavier: returns that weight in lbs, otherwise null.
+  // Exercises with no target or no real weight to raise (bodyweight, plank) never ask.
+  readyForMoreWeight(exerciseId) {
+    const draft = this.data.draft;
+    const ex = this.draftWorkout()?.exercises.find(e => e.id === exerciseId);
+    if (!ex?.repMax) return null;
+    if (Library.forExercise({ refId: draft.swaps[exerciseId] || ex.refId }).equipment === 'Bodyweight') return null;
+    const rows = (draft.entries[exerciseId] || []).filter(r => !r.extra);
+    const weight = rows[0]?.weight;
+    if (!weight || !rows.every(r => r.weight === weight && Number(r.reps) >= ex.repMax)) return null;
+    return weight;
   },
 
   // Undo for a workout just finished: removes its session and puts back the
@@ -789,9 +879,24 @@ const Store = {
     this.save();
   },
 
+  // Changes your body weight and logs it under today (a second change today replaces the first).
+  // Emptying it clears the setting but leaves the graph as it was.
+  setBodyWeight(lbs) {
+    this.data.settings.bodyWeightLbs = lbs;
+    if (lbs != null) {
+      const today = dayKey(new Date());
+      const log = this.data.bodyWeightLog;
+      if (log[log.length - 1]?.day === today) log[log.length - 1].lbs = lbs;
+      else log.push({ day: today, lbs });
+    }
+    this.save();
+  },
+
   // ---------- Backup ----------
 
   exportBackup() {
+    this.data.settings.lastBackupAt = new Date().toISOString();
+    this.save();
     const json = JSON.stringify(this.data, null, 2);
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -817,21 +922,75 @@ const Store = {
   // ---------- Exercise log ----------
 
   // Every finished workout that included this exercise, oldest first:
-  //   [{ date (ISO), dayKey ('YYYY-MM-DD', local), sets: [{weight, reps}], best: {set, max} or null }]
-  // best = the set with the highest estimated 1-rep max (null if no set had a weight).
+  //   [{ sessionId, workoutName, date (ISO), dayKey ('YYYY-MM-DD', local), sets: [{weight, reps}],
+  //      best: {set, max} or null, hold: longest seconds (timed exercises only) }]
+  // best = the set with the highest estimated 1-rep max (null if no set had a weight, or it's timed).
   exerciseHistory(refId) {
+    const timed = Library.isTimed(refId);
     const history = [];
     for (const session of this.data.sessions) {
       const sets = session.exercises.filter(e => e.refId === refId).flatMap(e => e.sets);
       if (!sets.length) continue;
       let best = null;
       for (const set of sets) {
-        const max = estimateMax(set);
+        const max = timed ? null : estimateMax(set);
         if (max != null && (!best || max > best.max)) best = { set, max };
       }
-      history.push({ date: session.date, dayKey: dayKey(session.date), sets, best });
+      history.push({ sessionId: session.id, workoutName: session.workoutName, date: session.date,
+        dayKey: dayKey(session.date), sets, best,
+        ...(timed ? { hold: Math.max(0, ...sets.map(s => s.reps || 0)) } : {}) });
     }
     return history.sort((a, b) => new Date(a.date) - new Date(b.date));
+  },
+
+  // Exercises you've logged, most recent first: [{ refId, name, date (last done), count (workouts) }]
+  loggedExercises() {
+    const list = new Map();
+    for (let i = this.data.sessions.length - 1; i >= 0; i--) {
+      const session = this.data.sessions[i];
+      for (const entry of session.exercises) {
+        if (!entry.refId) continue;
+        const item = list.get(entry.refId);
+        if (item) item.count++;
+        else list.set(entry.refId, { refId: entry.refId, name: Library.get(entry.refId)?.name || entry.name, date: session.date, count: 1 });
+      }
+    }
+    return [...list.values()];
+  },
+
+  // What a just-finished workout is shown with on its summary:
+  //   { sessionId, name, durationMs, sets, exercises, volume (lbs: weight × reps of every set),
+  //     moreThanLast (% more weight than the last time of this workout, or null),
+  //     bests: [{ refId, name, before, after, timed }] }
+  // A best = beating every earlier workout of that exercise (estimated max, or longest hold).
+  // The first time doing an exercise doesn't count, or every new exercise would be a best.
+  sessionSummary(session) {
+    const volumeOf = s => s.exercises.reduce((sum, e) =>
+      sum + e.sets.reduce((n, set) => n + (Library.isTimed(e.refId) ? 0 : (set.weight || 0) * (set.reps || 0)), 0), 0);
+    const bests = [];
+    for (const entry of session.exercises) {
+      if (!entry.refId) continue;
+      const timed = Library.isTimed(entry.refId);
+      const score = sets => Math.max(0, ...sets.map(s => (timed ? s.reps : estimateMax(s)) || 0));
+      const after = score(entry.sets);
+      const earlier = this.exerciseHistory(entry.refId).filter(h => new Date(h.date) < new Date(session.date));
+      const before = Math.max(0, ...earlier.map(h => score(h.sets)));
+      if (before && after > before) bests.push({ refId: entry.refId, name: entry.name, before, after, timed });
+    }
+    const previous = session.workoutId && [...this.data.sessions].reverse()
+      .find(s => s.workoutId === session.workoutId && new Date(s.date) < new Date(session.date));
+    const volume = volumeOf(session);
+    const lastVolume = previous ? volumeOf(previous) : 0;
+    return {
+      sessionId: session.id,
+      name: session.workoutName,
+      durationMs: session.durationMs,
+      sets: session.exercises.reduce((n, e) => n + e.sets.length, 0),
+      exercises: session.exercises.length,
+      volume,
+      moreThanLast: lastVolume && volume > lastVolume ? Math.round((volume - lastVolume) / lastVolume * 100) : null,
+      bests,
+    };
   },
 
   // Wipes everything and starts over with an empty week and default settings.
