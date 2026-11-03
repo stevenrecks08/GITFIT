@@ -33,22 +33,22 @@ function ex(id, name, equipment, primary, secondary = [], aliases = []) {
 
 const LIBRARY = [
   // ----- Chest -----
-  ex('barbell-bench-press', 'Barbell Bench Press', 'Barbell', ['midChest'], ['frontDelts', 'triceps'], ['bench press', 'bench', 'flat bench press']),
+  ex('barbell-bench-press', 'Barbell Bench Press', 'Barbell', ['midChest'], ['upperChest', 'frontDelts', 'triceps'], ['bench press', 'bench', 'flat bench press']),
   ex('incline-barbell-bench-press', 'Incline Barbell Bench Press', 'Barbell', ['upperChest'], ['midChest', 'frontDelts', 'triceps'], ['incline bench press', 'incline bench']),
   ex('decline-barbell-bench-press', 'Decline Barbell Bench Press', 'Barbell', ['lowerChest'], ['midChest', 'frontDelts', 'triceps'], ['decline bench press', 'decline bench']),
-  ex('dumbbell-bench-press', 'Dumbbell Bench Press', 'Dumbbell', ['midChest'], ['frontDelts', 'triceps'], ['db bench press', 'db bench']),
+  ex('dumbbell-bench-press', 'Dumbbell Bench Press', 'Dumbbell', ['midChest'], ['upperChest', 'frontDelts', 'triceps'], ['db bench press', 'db bench']),
   ex('incline-dumbbell-press', 'Incline Dumbbell Press', 'Dumbbell', ['upperChest'], ['midChest', 'frontDelts', 'triceps'], ['incline db press', 'incline dumbbell bench press']),
-  ex('machine-chest-press', 'Machine Chest Press', 'Machine', ['midChest'], ['frontDelts', 'triceps'], ['chest press']),
+  ex('machine-chest-press', 'Machine Chest Press', 'Machine', ['midChest'], ['upperChest', 'frontDelts', 'triceps'], ['chest press']),
   ex('incline-machine-chest-press', 'Incline Machine Chest Press', 'Machine', ['upperChest'], ['midChest', 'frontDelts', 'triceps'], ['incline chest press']),
   ex('smith-incline-press', 'Smith Machine Incline Press', 'Smith machine', ['upperChest'], ['midChest', 'frontDelts', 'triceps'], ['smith incline']),
-  ex('smith-bench-press', 'Smith Machine Bench Press', 'Smith machine', ['midChest'], ['frontDelts', 'triceps'], ['smith bench']),
+  ex('smith-bench-press', 'Smith Machine Bench Press', 'Smith machine', ['midChest'], ['upperChest', 'frontDelts', 'triceps'], ['smith bench']),
   ex('pec-deck-fly', 'Pec Deck Fly', 'Machine', ['midChest'], ['frontDelts'], ['pec deck', 'machine fly', 'chest fly machine']),
   ex('cable-fly', 'Cable Fly', 'Cable', ['midChest'], ['frontDelts'], ['cable crossover', 'cable chest fly']),
   ex('low-to-high-cable-fly', 'Low-to-High Cable Fly', 'Cable', ['upperChest'], ['midChest', 'frontDelts'], ['incline cable fly']),
   ex('high-to-low-cable-fly', 'High-to-Low Cable Fly', 'Cable', ['lowerChest'], ['midChest', 'frontDelts'], ['decline cable fly']),
   ex('dumbbell-fly', 'Dumbbell Fly', 'Dumbbell', ['midChest'], ['frontDelts'], ['db fly']),
   ex('chest-dip', 'Chest Dip', 'Bodyweight', ['lowerChest'], ['midChest', 'triceps', 'frontDelts'], ['dips', 'dip']),
-  ex('push-up', 'Push-Up', 'Bodyweight', ['midChest'], ['frontDelts', 'triceps'], ['pushup', 'push ups']),
+  ex('push-up', 'Push-Up', 'Bodyweight', ['midChest'], ['upperChest', 'frontDelts', 'triceps'], ['pushup', 'push ups']),
 
   // ----- Back -----
   ex('pull-up', 'Pull-Up', 'Bodyweight', ['lats'], ['biceps', 'brachialis', 'upperBack'], ['pullup', 'pull ups']),
