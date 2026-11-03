@@ -7,7 +7,7 @@
 // Shape of the saved data:
 // {
 //   version: 11,
-//   settings: { name, units: 'imperial' | 'metric', heightIn, bodyWeightLbs, sex: 'male' | 'female',
+//   settings: { name, units: 'imperial' | 'metric', heightIn, bodyWeightLbs, sex: 'male' | 'female' | null,
 //               weeklyGoal (days a week you're trying to go, 1 to 7, or null until you've picked),
 //               setupDone (the first-time setup was finished or skipped),
 //               lastBackupAt (ISO, when Export was last used, or null) },
@@ -88,7 +88,7 @@ const DEFAULT_SETTINGS = {
   units: 'imperial',
   heightIn: null,
   bodyWeightLbs: null,
-  sex: 'male', // for strength standards: 'male' | 'female'
+  sex: null, // for strength standards: 'male' | 'female', or null until picked (no levels on the map)
   weeklyGoal: null, // days a week, 1 to 7; picked in the first-time setup and changed in Settings
   setupDone: false,
   lastBackupAt: null,
@@ -286,7 +286,8 @@ function normalize(data) {
   }
 
   // Anyone with saved data from before version 10 has no need for the first-time setup.
-  const settings = { ...DEFAULT_SETTINGS, setupDone: data.version != null, ...data.settings };
+  // Saved data from before sex could be left unpicked had 'male' as its default, so it keeps it.
+  const settings = { ...DEFAULT_SETTINGS, ...(data.version != null ? { sex: 'male' } : {}), setupDone: data.version != null, ...data.settings };
 
   // Version 11: anything but a whole number from 1 to 7 counts as not picked yet, and the app asks.
   if (![1, 2, 3, 4, 5, 6, 7].includes(settings.weeklyGoal)) settings.weeklyGoal = null;
@@ -880,6 +881,39 @@ const Store = {
     return weight;
   },
 
+  // The same question about the last time this exercise was done, for the "Try 140 lbs today"
+  // reminder. It goes away by itself: once a heavier weight is logged, the reps fall below the top.
+  // Also gone once a heavier weight is in today's boxes. Returns last time's weight in lbs, or null.
+  readyLastTime(ex) {
+    if (!ex.repMax) return null;
+    if (Library.forExercise({ refId: this.swappedRef(ex.id) || ex.refId }).equipment === 'Bodyweight') return null;
+    const rows = (this.lastFor(ex)?.sets || []).slice(0, ex.sets);
+    const weight = rows[0]?.weight;
+    if (!weight || rows.length < ex.sets || !rows.every(r => r.weight === weight && r.reps >= ex.repMax)) return null;
+    if (this.data.draft?.entries[ex.id]?.[0]?.weight > weight) return null;
+    return weight;
+  },
+
+  // Weights in the workout in progress that look like typos, to check at Finish: over half as
+  // heavy again as this exercise's heaviest ever (and at least 25 lbs more, since small dumbbell
+  // jumps are real), or over 1000 lbs the first time it's done. Only sets with reps count.
+  //   [{ id, name, weight, heaviest (null the first time) }]
+  draftWeightChecks() {
+    const draft = this.data.draft;
+    const checks = [];
+    for (const ex of this.draftWorkout()?.exercises || []) {
+      const refId = draft.swaps?.[ex.id] || ex.refId;
+      const weight = Math.max(0, ...(draft.entries[ex.id] || []).filter(s => s.reps !== '').map(s => s.weight || 0));
+      if (!weight) continue;
+      const past = this.exerciseHistory(refId).flatMap(h => h.sets).map(s => s.weight || 0);
+      const heaviest = past.length ? Math.max(...past) : 0;
+      if (heaviest ? weight > heaviest * 1.5 && weight - heaviest >= 25 : weight > 1000) {
+        checks.push({ id: ex.id, name: Library.forExercise({ refId }).name, weight, heaviest: heaviest || null });
+      }
+    }
+    return checks;
+  },
+
   // Undo for a workout just finished: removes its session and puts back the
   // workout in progress exactly as it was (draft = a copy saved before finishing).
   undoFinish(sessionId, draft) {
@@ -1027,8 +1061,11 @@ const Store = {
   // A best = beating every earlier workout of that exercise (estimated max, longest hold, or max reps).
   // The first time doing an exercise doesn't count, or every new exercise would be a best.
   sessionSummary(session) {
-    const volumeOf = s => s.exercises.reduce((sum, e) =>
-      sum + e.sets.reduce((n, set) => n + (Library.isTimed(e.refId) ? 0 : (set.weight || 0) * (set.reps || 0)), 0), 0);
+    // Dumbbell weights are per dumbbell, so they count twice here: you lifted both.
+    const volumeOf = s => s.exercises.reduce((sum, e) => {
+      const each = Library.get(e.refId)?.equipment === 'Dumbbell' ? 2 : 1;
+      return sum + each * e.sets.reduce((n, set) => n + (Library.isTimed(e.refId) ? 0 : (set.weight || 0) * (set.reps || 0)), 0);
+    }, 0);
     const bests = [];
     for (const entry of session.exercises) {
       if (!entry.refId) continue;

@@ -238,13 +238,19 @@ function withFormSaved(then) {
 // What to do once the "Add this exercise?" question above is answered.
 let afterFormQuestion = null;
 
-// Only one workout can be in progress. Asks before throwing away the one there is;
-// returns true if it was discarded (or there was none).
-function discardOtherDraft() {
+// Only one workout can be in progress. Asks before throwing away the one there is,
+// then does `then` if it was discarded.
+function discardOtherDraft(then) {
   const other = Store.draftWorkout();
-  if (!confirm(`You have an unfinished "${other ? other.name : 'workout'}". Discard it and start this one?`)) return false;
-  Store.discardDraft();
-  return true;
+  askFirst({
+    title: 'Discard your workout?',
+    lines: [`You have an unfinished "${other ? other.name : 'workout'}". Discard it and start this one?`],
+    confirmLabel: 'Discard and start',
+    danger: true,
+  }, () => {
+    Store.discardDraft();
+    then();
+  });
 }
 
 // Opens or closes the + button's menu (New workout / Quick workout).
@@ -282,6 +288,18 @@ function hideDialog() {
   overlayEl.hidden = true;
   overlayEl.innerHTML = '';
 }
+
+// A yes/no pop-up that runs `then` if the answer is yes. (The app's own pop-up, not the browser's.)
+//   options = { title, lines, confirmLabel, danger }
+function askFirst(options, then) {
+  afterYes = then;
+  showDialog({
+    ...options,
+    confirm: { label: options.confirmLabel, action: 'dialog-yes' },
+    cancel: { label: 'Cancel', action: 'dialog-cancel' },
+  });
+}
+let afterYes = null;
 
 function currentRoute() {
   const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
@@ -477,6 +495,20 @@ function hideToast() {
 //   { sessionId, draft (copy from before finishing) }
 let lastFinish = null;
 
+// Before finishing: any weight that looks like a typo (1350 instead of 135) is asked about first.
+function checkWeightsThenFinish() {
+  const checks = Store.draftWeightChecks();
+  if (!checks.length) return finishWorkout();
+  const unit = Units.weightUnit();
+  showDialog({
+    title: checks.length === 1 ? 'Is this weight right?' : 'Are these weights right?',
+    lines: checks.map(c => `${c.name}: ${Units.showWeight(c.weight)} ${unit}. ${c.heaviest
+      ? `Your heaviest so far is ${Units.showWeight(c.heaviest)} ${unit}.` : 'That\'s very heavy for a first time.'}`),
+    confirm: { label: 'Yes, finish', action: 'weights-ok' },
+    cancel: { label: 'Go back and fix it', action: 'weights-fix', id: checks[0].id },
+  });
+}
+
 // endAt (ms, optional) = end it at that time instead of now ("Use last set time").
 // A workout left running for over 3 hours asks first (unless `checked`, i.e. already answered).
 function finishWorkout(endAt = null, checked = false) {
@@ -554,8 +586,7 @@ const actions = {
     (next ? document.getElementById(`ex-${next.id}`) : document.querySelector('.finish-bar')).scrollIntoView({ block: 'nearest' });
     if (ready) {
       const ex = list.find(e => e.id === id);
-      const shown = Number(Units.showWeight(ready));
-      toast(`Hit ${ex.repMax} every set. Try ${shown + (Units.isMetric() ? 2.5 : 5)} ${Units.weightUnit()} next time.`, null, 4000);
+      toast(`Hit ${ex.repMax} every set. Try ${heavierText(ready)} next time.`, null, 4000);
     }
   },
 
@@ -668,12 +699,13 @@ const actions = {
   // (One already in progress is resumed; another workout in progress is discarded after asking.)
   'quick-start'() {
     setFabMenu(false);
+    const begin = () => {
+      if (!Store.data.draft?.quick) Store.startQuick();
+      go('#/quick');
+    };
     const draft = Store.data.draft;
-    if (!draft?.quick) {
-      if (draft && !discardOtherDraft()) return;
-      Store.startQuick();
-    }
-    go('#/quick');
+    if (draft && !draft.quick) discardOtherDraft(begin);
+    else begin();
   },
 
   // With a Missed this week list showing, the panel scrolls into view instead of jumping to
@@ -701,15 +733,18 @@ const actions = {
   'catch-up'(workoutId) {
     if (dragJustEnded()) return;
     const missed = Store.missedThisWeek(workoutId)[0];
+    const begin = () => {
+      if (!Store.data.draft?.quick) {
+        Store.startQuick();
+        if (missed) Store.renameQuick(`${missed.name} catch-up`);
+      }
+      for (const e of missed?.exercises || []) Store.quickAddExercise(e.refId, e);
+      if (missed) toast(`Added ${missed.exercises.length} missed exercise${missed.exercises.length === 1 ? '' : 's'}`);
+      go('#/quick');
+    };
     const draft = Store.data.draft;
-    if (!draft?.quick) {
-      if (draft && !discardOtherDraft()) return;
-      Store.startQuick();
-      if (missed) Store.renameQuick(`${missed.name} catch-up`);
-    }
-    for (const e of missed?.exercises || []) Store.quickAddExercise(e.refId, e);
-    if (missed) toast(`Added ${missed.exercises.length} missed exercise${missed.exercises.length === 1 ? '' : 's'}`);
-    go('#/quick');
+    if (draft && !draft.quick) discardOtherDraft(begin);
+    else begin();
   },
 
   'quick-add-cancel'() {
@@ -737,17 +772,23 @@ const actions = {
 
   // Takes off the last set; asks first if reps were already typed in it.
   'remove-set'(id) {
+    const remove = () => {
+      Store.removeDraftSet(id);
+      render();
+    };
     const rows = Store.data.draft.entries[id];
-    if (rows[rows.length - 1].reps !== '' && !confirm('Remove the last set and the reps typed in it?')) return;
-    Store.removeDraftSet(id);
-    render();
+    if (rows[rows.length - 1].reps === '') return remove();
+    askFirst({ title: 'Remove the last set?', lines: ['The reps typed in it will be removed too.'], confirmLabel: 'Remove set', danger: true }, remove);
   },
 
   'quick-remove'(id) {
-    if (Store.draftHasReps(id) && !confirm('Remove this exercise and the sets typed for it?')) return;
-    Store.quickRemoveExercise(id);
-    openExerciseId = null;
-    render();
+    const remove = () => {
+      Store.quickRemoveExercise(id);
+      openExerciseId = null;
+      render();
+    };
+    if (!Store.draftHasReps(id)) return remove();
+    askFirst({ title: 'Remove this exercise?', lines: ['The sets typed for it will be removed too.'], confirmLabel: 'Remove exercise', danger: true }, remove);
   },
 
   // The pencil at the top of a workout's screen: its title, day, Copy and Delete, in a pop-up.
@@ -1029,7 +1070,7 @@ const actions = {
       return;
     }
     const gaps = Store.draftGaps();
-    if (!gaps.length) return finishWorkout();
+    if (!gaps.length) return checkWeightsThenFinish();
     overlayEl.innerHTML = Views.finishCheck(gaps);
     overlayEl.className = 'overlay is-notice';
     overlayEl.hidden = false;
@@ -1057,7 +1098,27 @@ const actions = {
   'finish-anyway'() {
     overlayEl.hidden = true;
     overlayEl.innerHTML = '';
+    checkWeightsThenFinish();
+  },
+
+  // The answers to "Is this weight right?" at Finish.
+  'weights-ok'() {
+    hideDialog();
     finishWorkout();
+  },
+
+  // Back to the workout, with the exercise that looked wrong open.
+  'weights-fix'(id) {
+    hideDialog();
+    openExerciseId = id;
+    render();
+    document.getElementById(`ex-${id}`).scrollIntoView({ block: 'start' });
+  },
+
+  // The yes on a pop-up from askFirst().
+  'dialog-yes'() {
+    hideDialog();
+    afterYes();
   },
 
   'finish-back'() {
@@ -1156,9 +1217,10 @@ const actions = {
   },
 
   'discard'() {
-    if (!confirm('Discard this workout? Anything typed will be lost.')) return;
-    Store.discardDraft();
-    go('#/');
+    askFirst({ title: 'Discard this workout?', lines: ['Anything typed will be lost.'], confirmLabel: 'Discard workout', danger: true }, () => {
+      Store.discardDraft();
+      go('#/');
+    });
   },
 
   'export'() {
@@ -1234,10 +1296,17 @@ const actions = {
   },
 
   'delete-all'() {
-    if (!confirm('Delete ALL data? This removes every workout day, exercise, custom exercise, workout history and setting from this device. It cannot be undone.')) return;
-    Store.deleteAll();
-    toast('All data deleted');
-    render();
+    askFirst({
+      title: 'Delete ALL data?',
+      lines: ['This removes every workout, custom exercise, workout history and setting from this device. It cannot be undone.'],
+      confirmLabel: 'Delete everything',
+      danger: true,
+    }, () => {
+      Store.deleteAll();
+      toast('All data deleted');
+      render();
+      window.scrollTo(0, 0);
+    });
   },
 };
 
@@ -1533,8 +1602,20 @@ appEl.addEventListener('input', event => {
     return;
   }
   Store.updateDraftSet(input.dataset.ex, Number(input.dataset.set), field, value);
+  if (field === 'weight' && value != null) fillWeightDown(input.dataset.ex, Number(input.dataset.set), value);
   refreshWorkoutProgress(input.dataset.ex);
 });
+
+// A weight typed on a set also goes on the sets below it, except any with reps already logged.
+// Any of them can still be typed over afterward.
+function fillWeightDown(exerciseId, setIndex, lbs) {
+  Store.data.draft.entries[exerciseId].forEach((set, i) => {
+    if (i <= setIndex || set.reps !== '') return;
+    Store.updateDraftSet(exerciseId, i, 'weight', lbs);
+    const box = document.querySelector(`[data-ex="${exerciseId}"][data-set="${i}"][data-field="weight"]`);
+    if (box) box.value = Units.showWeight(lbs);
+  });
+}
 
 // As sets are typed in: the Next button and the sets counter, without a redraw (which would
 // close the keyboard).
@@ -1579,7 +1660,7 @@ function saveSettingsForm(form) {
   Store.updateSettings({
     name: values.name.trim(),
     heightIn: Units.readHeight({ ft: values.heightFt, in: values.heightIn, cm: values.heightCm }),
-    sex: values.sex,
+    sex: values.sex || null,
   });
   // A new weekly goal counts straight away. Any week that has just ended is judged first,
   // against the goal it ended with. (Setup picks it before anything is logged.)
@@ -1626,18 +1707,21 @@ appEl.addEventListener('change', async event => {
   if (input.id === 'import-file') {
     const file = input.files[0];
     if (!file) return;
-    if (!confirm('Importing replaces ALL data on this device with the backup. Continue?')) {
-      input.value = '';
-      return;
-    }
-    try {
-      Store.importBackup(await file.text());
-      toast('Backup imported');
-      render();
-    } catch (err) {
-      alert('Could not import: ' + err.message);
-      input.value = '';
-    }
+    input.value = ''; // so the same file can be picked again
+    askFirst({
+      title: 'Import this backup?',
+      lines: ['Importing replaces ALL data on this device with the backup.'],
+      confirmLabel: 'Import backup',
+      danger: true,
+    }, async () => {
+      try {
+        Store.importBackup(await file.text());
+        toast('Backup imported');
+        render();
+      } catch {
+        showDialog({ title: 'Could not import', lines: ['That file couldn\'t be read as a GitFit backup. Nothing was changed.'], confirm: { label: 'OK', action: 'dialog-cancel' } });
+      }
+    });
   }
 });
 

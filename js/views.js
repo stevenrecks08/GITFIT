@@ -39,6 +39,17 @@ function lastSummary(last, timed = false) {
   return last ? `Last: ${last.sets.map(set => formatSet(set, timed)).join(', ')}` : 'No history yet';
 }
 
+// Going heavier: the next weight up from `lbs`, as "140 lbs" (5 lbs more, or 2.5 kg).
+function heavierText(lbs) {
+  return `${Number(Units.showWeight(lbs)) + (Units.isMetric() ? 2.5 : 5)} ${Units.weightUnit()}`;
+}
+
+// "Try 140 lbs today", under an exercise that hit the top of its rep range on every set last time.
+function nextWeightNote(ex) {
+  const lbs = Store.readyLastTime(ex);
+  return lbs ? `<span class="ex-sub next-weight">Try ${heavierText(lbs)} today</span>` : '';
+}
+
 // The column heading over the weight boxes. Dumbbell weights are per dumbbell, said quietly underneath.
 function weightHead(info, unit) {
   return `<div class="col-head">Weight (${unit})${info.equipment === 'Dumbbell' ? '<span class="col-note">per dumbbell</span>' : ''}</div>`;
@@ -191,7 +202,8 @@ function fromDayKey(key) {
 // with a small key under the graph. With no points, draws an empty graph with emptyNote written over it.
 // label = what the line is, for the key under the graph. A point with a dayKey can be tapped to
 // show that day's sets; selected = the dayKey shown now (its dot is bigger).
-function maxChart(points, emptyNote, singles = [], label = 'Estimated max', selected = null) {
+// tight = the scale hugs the numbers, so small changes show (body weight).
+function maxChart(points, emptyNote, singles = [], label = 'Estimated max', selected = null, tight = false) {
   const W = 320, H = 170, L = 40, R = 10, T = 10, B = 24; // size and margins (SVG units)
 
   if (!points.length) {
@@ -212,7 +224,7 @@ function maxChart(points, emptyNote, singles = [], label = 'Estimated max', sele
   const t0 = points[0].time;
   const t1 = Math.max(Date.now(), points[points.length - 1].time);
   const values = [...points, ...singles].map(p => p.value);
-  const pad = Math.max((Math.max(...values) - Math.min(...values)) * 0.15, Math.max(...values) * 0.05, 1);
+  const pad = Math.max((Math.max(...values) - Math.min(...values)) * 0.15, tight ? 0 : Math.max(...values) * 0.05, 1);
   const lo = Math.max(0, Math.min(...values) - pad);
   const hi = Math.max(...values) + pad;
 
@@ -747,6 +759,7 @@ const Views = {
             <span class="ex-toggle-main">
               <span class="ex-title">${esc(info.name)}</span>
               <span class="ex-sub">Target ${targetText(ex, timed)}</span>
+              ${nextWeightNote(ex)}
             </span>
             ${logButton(ex.refId)}
             <button type="button" class="icon-btn" data-action="edit-exercise" data-id="${ex.id}"
@@ -887,6 +900,7 @@ const Views = {
               ${ex.today ? '<span class="ex-sub swap-note">Added for today only</span>' : ''}
               ${makeupNote}
               <span class="ex-sub">${lastSummary(last, timed)}</span>
+              ${nextWeightNote(ex)}
             </span>
             <span class="tag">${esc(Library.primaryLabel(info))}</span>
             ${badge}
@@ -999,7 +1013,7 @@ const Views = {
       <div class="card">
         <p class="log-max ${latest ? '' : 'is-blank'}">${latest ? `${Units.showWeight(latest.lbs)} <span>${unit}</span>` : '—'}</p>
         <p class="log-sub">${changeText || (latest ? `Logged ${shortDate(fromDayKey(latest.day))}` : '&nbsp;')}</p>
-        ${maxChart(points, 'Log your weight to start the graph', [], 'Body weight')}
+        ${maxChart(points, 'Log your weight to start the graph', [], 'Body weight', null, true)}
         <form id="bw-form" class="bw-form">
           <input name="weight" type="text" inputmode="decimal" placeholder="Today's weight (${unit})" autocomplete="off" aria-label="Today's body weight in ${unit}">
           <button class="btn btn-primary btn-small">Log</button>
@@ -1054,7 +1068,7 @@ const Views = {
       ['Time', s.durationMs ? formatDuration(s.durationMs) : '—'],
       ['Sets', s.sets],
       ['Exercises', s.exercises],
-      ['Weight lifted', s.volume ? `${Number(Units.showWeight(s.volume)).toLocaleString()} ${unit}` : '—'],
+      ['Weight lifted', s.volume ? `${Math.round(Number(Units.showWeight(s.volume))).toLocaleString()} ${unit}` : '—'],
     ];
     return {
       title: 'Workout done',
@@ -1329,6 +1343,7 @@ const Views = {
 
   // A yes/no pop-up drawn into the overlay.
   // confirm/cancel = { label, action, id (optional, passed to the action) }; danger = the confirm button is red.
+  // With no cancel, there's just the one button.
   confirmDialog({ title, lines, confirm, cancel, danger = false }) {
     return `
       <div class="card notice" role="dialog" aria-label="${esc(title)}">
@@ -1336,7 +1351,7 @@ const Views = {
         ${lines.map(line => `<p>${esc(line)}</p>`).join('')}
         <div class="stack">
           <button type="button" class="btn ${danger ? 'btn-danger' : 'btn-primary'}" data-action="${confirm.action}" data-id="${esc(confirm.id ?? '')}">${esc(confirm.label)}</button>
-          <button type="button" class="btn" data-action="${cancel.action}">${esc(cancel.label)}</button>
+          ${cancel ? `<button type="button" class="btn" data-action="${cancel.action}" data-id="${esc(cancel.id ?? '')}">${esc(cancel.label)}</button>` : ''}
         </div>
       </div>`;
   },
@@ -1382,9 +1397,10 @@ const Views = {
 
     let legend, caption;
     if (mode === 'level') {
-      caption = Store.data.settings.bodyWeightLbs
-        ? `Strength level vs. published standards (${STANDARDS_SOURCE})`
-        : 'Log your body weight above to see levels';
+      const { bodyWeightLbs, sex } = Store.data.settings;
+      caption = !bodyWeightLbs ? 'Log your body weight above to see levels'
+        : !sex ? 'Pick your sex in Settings to see levels'
+        : `Strength level vs. published standards (${STANDARDS_SOURCE})`;
       legend = `
         <div class="legend-levels">${LEVELS.map((label, i) =>
           `<span><i style="background:${LEVEL_COLORS[i]}"></i>${label}</span>`).join('')}</div>
@@ -1416,6 +1432,7 @@ const Views = {
     const name = MUSCLES[id];
     if (mode === 'level') {
       if (!Store.data.settings.bodyWeightLbs) return `${name}: log your body weight to see levels`;
+      if (!Store.data.settings.sex) return `${name}: pick your sex in Settings to see levels`;
       const value = Stats.muscleLevels()[id];
       if (value) return `${name}: ${LEVELS[value.level]} (${value.exercise})`;
       return Stats.hasStandards(id) ? `${name}: no logged exercise with a standard yet` : `${name}: no exercises with standards`;

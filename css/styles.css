@@ -792,6 +792,8 @@ main.is-searching { padding-bottom: 100vh; }
 .preview-head { display: flex; align-items: center; gap: 10px; }
 .preview-last { margin: 12px 0 6px; font-size: 13px; color: var(--muted); }
 .preview-tip { margin: 14px 0 0; font-size: 14px; }
+/* "Try 140 lbs today": every set hit the top of its range last time */
+.ex-sub.next-weight { color: var(--accent); font-weight: 600; }
 
 /* Next, once an exercise is filled in */
 .next-ex { margin-top: 12px; }
