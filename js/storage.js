@@ -108,7 +108,7 @@ function newId() {
 }
 
 // Estimated 1-rep max in lbs (Epley formula: weight × (1 + reps ÷ 30)).
-// null for bodyweight sets or sets without reps.
+// null for sets with no weight (a bodyweight set saved without one) or no reps.
 function estimateMax(set) {
   if (!set.weight || !set.reps) return null;
   return set.weight * (1 + set.reps / 30);
@@ -452,6 +452,15 @@ const Store = {
     this.save();
   },
 
+  // The weight a new set starts with (lbs or null): your body weight from Settings on a
+  // bodyweight exercise, otherwise last time's weight. It's only a starting value, so
+  // a weighted pull-up can just be typed over.
+  startWeight(refId, lastWeight) {
+    const bodyWeight = this.data.settings.bodyWeightLbs;
+    if (bodyWeight != null && Library.forExercise({ refId }).equipment === 'Bodyweight') return bodyWeight;
+    return lastWeight ?? null;
+  },
+
   // Adds an exercise (one set, or `sets`), weights prefilled from the last time it was done. Returns its id.
   // A missed exercise being made up also has its target reps and makeupFor
   // ({ workoutId, exerciseId } of the planned exercise; see streak.js).
@@ -462,7 +471,7 @@ const Store = {
     const history = this.exerciseHistory(refId);
     const lastSets = history[history.length - 1]?.sets || [];
     draft.entries[id] = Array.from({ length: sets }, (_, i) =>
-      ({ weight: (lastSets[i] || lastSets[lastSets.length - 1])?.weight ?? null, reps: '' }));
+      ({ weight: this.startWeight(refId, (lastSets[i] || lastSets[lastSets.length - 1])?.weight), reps: '' }));
     this.save();
     return id;
   },
@@ -500,7 +509,7 @@ const Store = {
     const refId = draft.swaps[exerciseId] || workout.exercises.find(e => e.id === exerciseId).refId;
     const history = this.exerciseHistory(refId);
     const lastTime = history[history.length - 1]?.sets[rows.length]?.weight ?? null;
-    rows.push({ weight: rows[rows.length - 1]?.weight ?? lastTime, reps: '', ...(workout.quick ? {} : { extra: true }) });
+    rows.push({ weight: rows[rows.length - 1]?.weight ?? this.startWeight(refId, lastTime), reps: '', ...(workout.quick ? {} : { extra: true }) });
     this.save();
   },
 
@@ -526,7 +535,7 @@ const Store = {
   },
 
   // Makes sure there's a draft for this workout with one row per target set, then any extra sets.
-  // Each set's weight (lbs, or null) starts as last time's weight; reps start empty.
+  // Each set's weight (lbs, or null) starts from startWeight(); reps start empty.
   ensureDraft(workout) {
     let draft = this.data.draft;
     if (!draft || draft.workoutId !== workout.id) {
@@ -535,11 +544,12 @@ const Store = {
     }
     for (const ex of workout.exercises) {
       const lastSets = this.lastFor(ex)?.sets || [];
+      const refId = this.swappedRef(ex.id) || ex.refId;
       const rows = draft.entries[ex.id] || [];
       const planned = rows.filter(r => !r.extra);
       // Keeps rows already typed in; adds or trims if the set count was edited. Extra sets stay after them.
       draft.entries[ex.id] = [
-        ...Array.from({ length: ex.sets }, (_, i) => planned[i] || { weight: lastSets[i]?.weight ?? null, reps: '' }),
+        ...Array.from({ length: ex.sets }, (_, i) => planned[i] || { weight: this.startWeight(refId, lastSets[i]?.weight), reps: '' }),
         ...rows.filter(r => r.extra),
       ];
     }
@@ -710,7 +720,7 @@ const Store = {
   // What's still empty in the workout in progress, shown before finishing:
   //   [{ name: 'Barbell Bench Press', problems: ['Set 3: no reps', 'Set 2: no weight'] }]
   // A set with no reps won't be saved. A missing weight is only flagged on
-  // non-bodyweight exercises (bodyweight sets are meant to have no weight).
+  // non-bodyweight exercises (a bodyweight set can have none, if no body weight is in Settings).
   draftGaps() {
     const draft = this.data.draft;
     const workout = this.draftWorkout();

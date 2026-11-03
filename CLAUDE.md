@@ -54,7 +54,8 @@ Rule of thumb: **storage.js** knows about data, **views.js** knows about HTML, *
 
 - **Weights are stored in one unit (lbs) and converted for display.** Heights are stored in inches. The Units setting only changes what's shown. Always use `Units.showWeight()` / `Units.readWeight()` (and the height equivalents) when showing or reading a weight — never save kg.
 - **Dumbbell weights are per dumbbell** (the weight of one dumbbell, not both added together). The strength standards in `standards.js` are per dumbbell too; barbell weights include the bar.
-- **Estimated max uses the Epley formula**: `weight × (1 + reps ÷ 30)` — `estimateMax()` in `storage.js`. Sets with no weight (bodyweight) or no reps have no estimate. Use this function everywhere; don't add a second formula.
+- **Estimated max uses the Epley formula**: `weight × (1 + reps ÷ 30)` — `estimateMax()` in `storage.js`. Sets with no weight or no reps have no estimate. Use this function everywhere; don't add a second formula.
+- **Bodyweight exercises start with your body weight**: new sets on an exercise with the Bodyweight equipment are filled in from Settings (`Store.startWeight()`), over last time's weight, and can be typed over. With no body weight set they stay empty ("BW"), so they have no estimate.
 - **Muscle list and set counting**: the muscle catalog is `MUSCLE_GROUPS` in `library.js`:
   - Chest: upper chest, mid chest, lower chest
   - Shoulders: front delts, side delts, rear delts

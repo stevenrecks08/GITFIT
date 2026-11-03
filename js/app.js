@@ -126,7 +126,7 @@ function startPastEdit(session) {
 
   const exercises = list.map(({ sets, ...entry }) => {
     const rows = sets.map(s => ({ weight: s.weight, reps: String(s.reps) }));
-    while (rows.length < (entry.targetSets || 0)) rows.push({ weight: null, reps: '' });
+    while (rows.length < (entry.targetSets || 0)) rows.push({ weight: Store.startWeight(entry.refId, null), reps: '' });
     return { entry, rows };
   });
   return { sessionId: session.id, exercises, original: JSON.stringify(exercises.map(e => e.rows)) };
