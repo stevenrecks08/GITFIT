@@ -2,11 +2,12 @@
 // Data is kept in the browser's localStorage, so it stays on this device only.
 //
 // All weights are saved in lbs and heights in inches, whatever the Units
-// setting says. units.js converts them for display.
+// setting says. Cardio distances are saved in miles, speeds in mph and
+// elevation in feet the same way. units.js converts them for display.
 //
 // Shape of the saved data:
 // {
-//   version: 11,
+//   version: 13,
 //   settings: { name, units: 'imperial' | 'metric', heightIn, bodyWeightLbs, sex: 'male' | 'female' | null,
 //               weeklyGoal (days a week you're trying to go, 1 to 7, or null until you've picked),
 //               setupDone (the first-time setup was finished or skipped),
@@ -56,7 +57,18 @@
 //     locks: { [week]: { [weekday]: { rest, workouts: [ { workoutId, plan } ] } } },  // each day of this week
 //                          // as it was when it passed (3 am the next morning), for the week view; see streak.js
 //     notices: [ text ]    // shown once, next time the app opens (freeze used / streak ended)
-//   }
+//   },
+//   // Cardio only adds to your record: it never touches the streak, the week's states or planned sets.
+//   // Which numbers each type uses is in CARDIO_TYPES in cardio.js. Any number can be null on a plan.
+//   cardioPlans: [         // planned cardio, shown as checkboxes on the week
+//     { id, type: 'walk' | 'run' | 'bike' | 'hike' | 'other', name (may be empty: shows the type's name),
+//       seconds, miles, feet (elevation), mph, incline (%), where ('outside' | 'treadmill', runs only),
+//       weekdays: [0 = Monday … 6 = Sunday], everyLiftingDay (true = any day with a workout, instead of weekdays) }
+//   ],
+//   cardioLog: [           // every cardio entry, in the order added (Cardio.newestFirst() sorts by date)
+//     { id, day: 'YYYY-MM-DD', planId (the plan it was checked from, or null for a one-off),
+//       type, name, seconds, miles, feet, mph, incline, where }  // its own copy, so changing a plan leaves it alone
+//   ]
 // }
 // Older sessions may be missing primary/secondary (they have a single "muscle" text
 // instead), ones saved before version 2 have targetReps instead of targetRepMin/Max,
@@ -72,9 +84,10 @@
 // so the app asks once) and days/goal on each new streak week. Old weeks keep their result.
 // Version 12: a set's weight on a bodyweight exercise is now only the added weight (null = none).
 // Older sets held the body weight there, and none had added weight, so those weights are cleared.
+// Version 13 added cardio: cardioPlans and cardioLog. Older data starts with both empty.
 
 const STORAGE_KEY = 'gitfit-data';
-const DATA_VERSION = 12;
+const DATA_VERSION = 13;
 
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
@@ -329,6 +342,9 @@ function normalize(data) {
     // Version 8 added quick workouts (draft.quick, session.quick).
     draft,
     streak: { start: null, weeks: [], notices: [], locks: {}, ...data.streak },
+    // Version 13: cardio. Only what's listed here is kept, on loading and on importing a backup.
+    cardioPlans: Array.isArray(data.cardioPlans) ? data.cardioPlans : [],
+    cardioLog: Array.isArray(data.cardioLog) ? data.cardioLog : [],
   };
 }
 
@@ -342,6 +358,41 @@ const Store = {
 
   save() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(this.data));
+  },
+
+  // ---------- Cardio (the rules and wording are in cardio.js) ----------
+
+  getCardioPlan(id) {
+    return this.data.cardioPlans.find(p => p.id === id) || null;
+  },
+
+  saveCardioPlan(id, fields) {
+    const plan = this.getCardioPlan(id);
+    if (plan) Object.assign(plan, fields);
+    else this.data.cardioPlans.push({ id: newId(), ...fields });
+    this.save();
+  },
+
+  // Entries already logged from it stay in the log.
+  deleteCardioPlan(id) {
+    this.data.cardioPlans = this.data.cardioPlans.filter(p => p.id !== id);
+    this.save();
+  },
+
+  getCardioEntry(id) {
+    return this.data.cardioLog.find(e => e.id === id) || null;
+  },
+
+  saveCardioEntry(id, fields) {
+    const entry = this.getCardioEntry(id);
+    if (entry) Object.assign(entry, fields);
+    else this.data.cardioLog.push({ id: newId(), ...fields });
+    this.save();
+  },
+
+  deleteCardioEntry(id) {
+    this.data.cardioLog = this.data.cardioLog.filter(e => e.id !== id);
+    this.save();
   },
 
   // ---------- Workouts and days ----------

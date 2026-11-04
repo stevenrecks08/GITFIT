@@ -2,11 +2,14 @@
 //
 // Saved data always uses one unit, no matter what the Units setting is:
 //   weights → lbs        heights → inches
+//   cardio distance → miles   speed → mph   elevation → feet
 // Only what's shown on screen (and read from input boxes) gets converted.
 // That way switching units converts old lifts instead of just relabeling them.
 
 const LBS_PER_KG = 2.20462262;
 const CM_PER_INCH = 2.54;
+const KM_PER_MILE = 1.609344;
+const FEET_PER_METER = 3.28084;
 
 // Accepts "62.5" or "62,5" (some iPhone keyboards type a comma).
 function parseNumber(text) {
@@ -60,5 +63,57 @@ const Units = {
     const inch = parseNumber(parts.in);
     if (ft === null && inch === null) return null;
     return (ft || 0) * 12 + (inch || 0);
+  },
+
+  // ---------- Cardio: same idea as weights. Empty text ↔ null. ----------
+
+  distanceUnit(system = this.current()) {
+    return this.isMetric(system) ? 'km' : 'mi';
+  },
+
+  speedUnit(system = this.current()) {
+    return this.isMetric(system) ? 'km/h' : 'mph';
+  },
+
+  elevationUnit(system = this.current()) {
+    return this.isMetric(system) ? 'm' : 'ft';
+  },
+
+  // Saved miles → text to show, rounded to 0.01 ("3.1").
+  showDistance(miles, system = this.current()) {
+    if (miles === null || miles === undefined) return '';
+    const value = this.isMetric(system) ? miles * KM_PER_MILE : miles;
+    return String(Number(value.toFixed(2)));
+  },
+
+  readDistance(text, system = this.current()) {
+    const n = parseNumber(text);
+    if (n === null) return null;
+    return Number((this.isMetric(system) ? n / KM_PER_MILE : n).toFixed(3));
+  },
+
+  // Saved mph → text to show, rounded to 0.1.
+  showSpeed(mph, system = this.current()) {
+    if (mph === null || mph === undefined) return '';
+    const value = this.isMetric(system) ? mph * KM_PER_MILE : mph;
+    return String(Number(value.toFixed(1)));
+  },
+
+  readSpeed(text, system = this.current()) {
+    const n = parseNumber(text);
+    if (n === null) return null;
+    return Number((this.isMetric(system) ? n / KM_PER_MILE : n).toFixed(3));
+  },
+
+  // Saved feet → text to show, as a whole number.
+  showElevation(feet, system = this.current()) {
+    if (feet === null || feet === undefined) return '';
+    return String(Math.round(this.isMetric(system) ? feet / FEET_PER_METER : feet));
+  },
+
+  readElevation(text, system = this.current()) {
+    const n = parseNumber(text);
+    if (n === null) return null;
+    return Number((this.isMetric(system) ? n * FEET_PER_METER : n).toFixed(2));
   },
 };

@@ -14,6 +14,8 @@
 //   #/log              → search exercises to see their log [Profile tab]
 //   #/log/<exercise>   → one exercise's log         [Profile tab]
 //   #/body-weight      → every body weight logged, to edit or delete [Profile tab]
+//   #/cardio           → the Cardio log: calendar and every entry [Profile tab]
+//   #/cardio/plan      → planned cardio (link under the week) [Workouts tab]
 // Using the URL means the browser/phone Back gesture works for free.
 
 const appEl = document.getElementById('app');
@@ -141,6 +143,69 @@ const map = { mode: 'growth', muscle: null, infoOpen: false };
 
 // Body weight log: the day whose weight is open for editing (null = none).
 let bwEditDay = null;
+
+// The Cardio log's calendar: the month shown (null = this month) and the day tapped.
+let cardioState = { month: null, day: null };
+
+// The cardio pop-up, while it's open (see Views.cardioForm()):
+//   { kind: 'entry' | 'plan', id (null = new), from: 'week' | 'log' | null, planId, day, weekdays,
+//     everyLiftingDay, type, name, seconds, miles, feet, mph, incline, where, error }
+let cardioForm = null;
+
+function showCardioForm(form) {
+  cardioForm = form;
+  overlayEl.innerHTML = Views.cardioForm(form);
+  overlayEl.className = 'overlay is-notice';
+  overlayEl.hidden = false;
+}
+
+// A new entry's form: today, unless a planned item's details say otherwise.
+function newCardioEntryForm(details = {}) {
+  return { kind: 'entry', id: null, from: null, planId: null, day: Cardio.today(), type: 'walk', name: '', ...details };
+}
+
+function editCardioEntry(id, from) {
+  const entry = Store.getCardioEntry(id);
+  if (entry) showCardioForm({ ...entry, kind: 'entry', from });
+}
+
+// Reads the boxes into cardioForm, so a redraw (a new type, the error line) keeps what's typed.
+// A converted number whose box wasn't changed keeps its saved value, not its rounded display
+// value (e.g. 3 mph → 4.8 km/h → 2.98 mph).
+function readCardioForm() {
+  const f = cardioForm;
+  const text = id => document.getElementById(`cardio-${id}`)?.value.trim() ?? null;
+  const positive = n => (n > 0 ? n : null);
+  const converted = (id, key, show, read) => {
+    const typed = text(id);
+    if (typed === null || typed === show.call(Units, f[key])) return;
+    f[key] = positive(read.call(Units, typed));
+  };
+  f.name = text('name');
+  f.type = text('type');
+  if (f.kind === 'entry') f.day = text('date');
+  else {
+    f.everyLiftingDay = document.getElementById('cardio-lifting').checked;
+    f.weekdays = [...overlayEl.querySelectorAll('input[name="cardio-weekday"]:checked')].map(box => Number(box.value));
+  }
+  const minutes = text('minutes');
+  if (minutes !== null) f.seconds = positive(Math.round((parseNumber(minutes) || 0) * 60) + Math.round(parseNumber(text('secs')) || 0));
+  converted('miles', 'miles', Units.showDistance, Units.readDistance);
+  converted('feet', 'feet', Units.showElevation, Units.readElevation);
+  converted('mph', 'mph', Units.showSpeed, Units.readSpeed);
+  if (text('incline') !== null) f.incline = parseNumber(text('incline'));
+  if (f.type === 'run' && !f.where) f.where = 'outside';
+}
+
+// What's wrong with the pop-up's entries, or null if it can be saved.
+function cardioFormProblem() {
+  const f = cardioForm;
+  if (f.kind === 'plan') return f.everyLiftingDay || f.weekdays.length ? null : 'Pick at least one day.';
+  if (!f.day) return 'Pick a date.';
+  if (f.day > dayKey(new Date())) return 'Pick today or an earlier date.';
+  if (Cardio.isComplete(f)) return null;
+  return f.type === 'run' ? 'A run needs a distance and a time.' : 'Type the minutes first.';
+}
 
 // A past workout being edited (nothing is saved until Save changes):
 //   { sessionId, exercises: [{ entry (the saved exercise, without its sets), rows: [{ weight (lbs or null), reps (text) }] }],
@@ -341,6 +406,9 @@ function currentRoute() {
   if (parts[0] === 'profile') return { view: 'profile', tab: 'profile' };
   if (parts[0] === 'settings') return { view: 'settings', tab: 'profile' };
   if (parts[0] === 'body-weight') return { view: 'body-weight', tab: 'profile' };
+  if (parts[0] === 'cardio') {
+    return parts[1] === 'plan' ? { view: 'cardio-plan', tab: 'workouts' } : { view: 'cardio-log', tab: 'profile' };
+  }
   if (parts[0] === 'log') {
     return parts[1]
       ? { view: 'exercise-log', refId: decodeURIComponent(parts[1]), tab: 'profile' }
@@ -381,6 +449,10 @@ function render() {
     screen = Views.settings();
   } else if (route.view === 'body-weight') {
     screen = Views.bodyWeightLog(bwEditDay);
+  } else if (route.view === 'cardio-log') {
+    screen = Views.cardioLog(cardioState);
+  } else if (route.view === 'cardio-plan') {
+    screen = Views.cardioPlans();
   } else if (route.view === 'log') {
     screen = Views.logSearch(logQuery);
   } else if (route.view === 'exercise-log') {
@@ -415,7 +487,7 @@ function render() {
   }
 
   // Opened from another screen: Back returns there.
-  if (['past', 'exercise-log'].includes(route.view) && returnStack.length) {
+  if (['past', 'exercise-log', 'cardio-plan'].includes(route.view) && returnStack.length) {
     screen.back = returnStack[returnStack.length - 1].hash;
   }
 
@@ -1331,6 +1403,125 @@ const actions = {
     document.querySelector('.log-day')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   },
 
+  // ---------- Cardio ----------
+
+  // + Add cardio: a one-off entry (the + menu, or the Cardio log).
+  'add-cardio'() {
+    setFabMenu(false);
+    showCardioForm(newCardioEntryForm());
+  },
+
+  // Tapped an unchecked row on the week: logs it with the planned numbers. If they aren't enough
+  // for an entry, the pop-up opens to fill them in, and it stays unchecked unless that's saved.
+  'cardio-check'(id) {
+    const [planId, day] = id.split('|');
+    const details = Cardio.details(Store.getCardioPlan(planId));
+    if (!Cardio.isComplete(details)) return showCardioForm(newCardioEntryForm({ ...details, planId, day }));
+    Store.saveCardioEntry(null, { ...details, planId, day });
+    render();
+  },
+
+  'cardio-future'(weekday) {
+    toast(`You can check this on ${WEEKDAYS[weekday]}`);
+  },
+
+  // Tapped a checked row on the week.
+  'cardio-entry'(id) {
+    editCardioEntry(id, 'week');
+  },
+
+  'cardio-log-edit'(id) {
+    editCardioEntry(id, 'log');
+  },
+
+  'cardio-log-delete'(id) {
+    askFirst({
+      title: 'Delete this cardio?',
+      lines: [`${Cardio.name(Store.getCardioEntry(id))} will be removed from your Cardio log.`],
+      confirmLabel: 'Delete cardio',
+      danger: true,
+    }, () => {
+      Store.deleteCardioEntry(id);
+      render();
+    });
+  },
+
+  'cardio-entry-delete'() {
+    actions['cardio-log-delete'](cardioForm.id);
+  },
+
+  'cardio-uncheck'() {
+    Store.deleteCardioEntry(cardioForm.id);
+    hideDialog();
+    render();
+  },
+
+  'cardio-where'(where) {
+    readCardioForm();
+    cardioForm.where = where;
+    showCardioForm(cardioForm);
+  },
+
+  'cardio-save'() {
+    readCardioForm();
+    const f = cardioForm;
+    f.error = cardioFormProblem();
+    if (f.error) return showCardioForm(f);
+    const details = Cardio.details(f);
+    if (f.kind === 'plan') {
+      Store.saveCardioPlan(f.id, { ...details, weekdays: f.everyLiftingDay ? [] : f.weekdays, everyLiftingDay: f.everyLiftingDay });
+    } else {
+      Store.saveCardioEntry(f.id, { ...details, day: f.day, planId: f.planId ?? null });
+    }
+    hideDialog();
+    render();
+  },
+
+  'cardio-cancel'() {
+    hideDialog();
+  },
+
+  // Calendar arrows on the Cardio log: dir is -1 (previous month) or 1 (next month).
+  'cardio-month'(dir) {
+    const shown = document.querySelector('.calendar').dataset.month;
+    const date = fromDayKey(`${shown}-01`);
+    date.setMonth(date.getMonth() + Number(dir));
+    cardioState.month = dayKey(date).slice(0, 7);
+    render();
+  },
+
+  // Tapped a highlighted day: show its entries (tap again to hide them).
+  'cardio-day'(key) {
+    cardioState.month = key.slice(0, 7);
+    cardioState.day = cardioState.day === key ? null : key;
+    render();
+    document.querySelector('.log-day')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  },
+
+  'open-planned-cardio'() {
+    goAndReturn('#/cardio/plan');
+  },
+
+  'cardio-plan-new'() {
+    showCardioForm({ kind: 'plan', id: null, type: 'walk', name: '', weekdays: [], everyLiftingDay: false });
+  },
+
+  'cardio-plan-edit'(id) {
+    showCardioForm({ ...Store.getCardioPlan(id), kind: 'plan' });
+  },
+
+  'cardio-plan-delete'(id) {
+    askFirst({
+      title: 'Delete this planned cardio?',
+      lines: [`${Cardio.name(Store.getCardioPlan(id))} will come off your week. Anything you already logged stays in your Cardio log.`],
+      confirmLabel: 'Delete planned cardio',
+      danger: true,
+    }, () => {
+      Store.deleteCardioPlan(id);
+      render();
+    });
+  },
+
   // Muscle map toggle: Growth or Sets.
   'map-mode'(mode) {
     map.mode = mode;
@@ -1793,6 +1984,32 @@ appEl.addEventListener('change', async event => {
   }
 });
 
+// The cardio pop-up. It's in the overlay, not the page, so it has its own listeners.
+overlayEl.addEventListener('input', event => {
+  if (!['cardio-miles', 'cardio-minutes', 'cardio-secs'].includes(event.target.id)) return;
+  const pace = document.getElementById('cardio-pace');
+  if (!pace) return;
+  readCardioForm();
+  const text = Cardio.paceText(cardioForm.miles, cardioForm.seconds);
+  pace.textContent = text ? `Pace: ${text}` : '';
+});
+
+overlayEl.addEventListener('change', event => {
+  const input = event.target;
+  // A new type asks for different numbers. Any it shares with the old type stay.
+  if (input.id === 'cardio-type') {
+    readCardioForm();
+    showCardioForm(cardioForm);
+  }
+  // "Every lifting day" or particular days, not both.
+  if (input.id === 'cardio-lifting' && input.checked) {
+    overlayEl.querySelectorAll('input[name="cardio-weekday"]').forEach(box => { box.checked = false; });
+  }
+  if (input.name === 'cardio-weekday' && input.checked) {
+    document.getElementById('cardio-lifting').checked = false;
+  }
+});
+
 // ---------- Forms ----------
 
 appEl.addEventListener('submit', event => {
@@ -1910,7 +2127,8 @@ window.addEventListener('hashchange', () => {
   const top = returnStack[returnStack.length - 1];
   const back = top && top.hash === (location.hash || '#/') ? returnStack.pop() : null;
   const { view } = currentRoute();
-  if (!back && !['past', 'exercise-log'].includes(view)) returnStack = [];
+  if (!back && !['past', 'exercise-log', 'cardio-plan'].includes(view)) returnStack = [];
+  if (!['cardio-log', 'cardio-plan'].includes(view)) cardioState = { month: null, day: null };
 
   if (!['profile', 'exercise-log'].includes(view)) map.muscle = null;
   picker = newPicker();

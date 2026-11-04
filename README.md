@@ -20,7 +20,8 @@ manifest.json     Lets the app be "installed" to a phone home screen
 css/styles.css    All styling. Colors are at the top under :root
 js/library.js     Built-in exercise library and muscle list — add exercises here
 js/storage.js     All saving/loading (localStorage), plus export/import
-js/units.js       Converts weights/heights between saved units (lbs, inches) and shown units
+js/units.js       Converts weights, heights and cardio numbers between saved units (lbs, inches, miles, mph, feet) and shown units
+js/cardio.js      Cardio's types, rules and wording: which rows a day shows, this week's totals, pace
 js/stats.js       Works out per-muscle numbers (growth, sets per week) from saved workouts
 js/streak.js      The weekly streak: which weeks were hit, frozen or missed, and the freezes
 js/bodymap.js     The front/back muscle map drawing and its colors
@@ -34,7 +35,7 @@ The rule of thumb: **storage.js** knows about data, **views.js** knows about HTM
 
 ## Units
 
-All weights are **saved in lbs** and heights in **inches**, whatever the Units setting says. `units.js` converts them only for display, so switching units shows old lifts converted, not relabeled. When you show or read a weight anywhere new, go through `Units.showWeight()` / `Units.readWeight()`.
+All weights are **saved in lbs** and heights in **inches**, whatever the Units setting says. `units.js` converts them only for display, so switching units shows old lifts converted, not relabeled. When you show or read a weight anywhere new, go through `Units.showWeight()` / `Units.readWeight()`. Cardio works the same way: distance is saved in miles, speed in mph and elevation in feet, and shown as km, km/h and meters on Metric (`Units.showDistance()`, `showSpeed()`, `showElevation()` and their `read…` partners). There's no separate setting.
 
 ## Exercises and muscles
 
@@ -78,6 +79,7 @@ It's then saved automatically and included in backups.
 - **Extra sets** — every workout screen has "+ Add set", which copies the weight of the set above (if that's empty, the new set is too). On a planned workout it adds a bonus set for today (`extra: true` on the draft row, not on the plan); "− Remove set" only shows for those, so a planned set can't be removed (just leave it empty). They're saved and show in the log and maxes, but the week view still counts each exercise at most its planned sets. Swapping an exercise starts its sets over, without the extras.
 - **Bodyweight exercises** — the weight box reads "BW + [ ]" and only holds added weight, so it can stay blank (`Library.isRepsOnly()`). Sets with and without added weight count as two separate exercises: sets with none use **max reps** (on the map, 8 → 10 reps = +25%), and sets with added weight use an estimated max of that weight, like any other exercise. Their Log has a switch between the two, and the finish summary and map list them separately ("Pull-Up (weighted)").
 - **Workout progress badge** — a collapsed exercise shows ✓ once every set is filled in (reps, and a weight unless bodyweight), "1/3" part way, and nothing before the first set (`Store.draftProgress()`).
+- **Cardio** — much less strict than lifting: it only adds to your record. Nothing turns red or says Missed, there's no catch-up, and it never touches the weekly streak, Done/Partial/Missed or planned sets. The rules and wording are in `cardio.js`; the data is `cardioPlans` and `cardioLog`. *Planned cardio* (`#/cardio/plan`, `Views.cardioPlans()`, a link under the week and on the Cardio log) has a type, an optional name and optional numbers, on picked weekdays or on every lifting day (any day with a planned workout right now, so it follows a moved workout; a quick workout doesn't count). *On the week*, `cardioRows()` in `views.js` shows checkbox rows under that day's workouts (`Cardio.rowsFor()`). Tapping one saves an entry with the planned numbers; if they aren't enough for an entry (minutes, or distance and time on a run), the pop-up opens to fill them in. A later day can't be checked until it arrives. Tapping a checked row opens its numbers with Uncheck, which deletes the entry. One-offs and entries whose plan was deleted or moved show as checked rows too, with Delete instead. Each entry keeps its own copy of its numbers, so changing or deleting a plan never changes what's logged. *+ Add cardio* is in the + menu and on the Cardio log, with a date picker (today or any past date; a new entry is dated by the 3 am day). *The Cardio log* (`#/cardio`, `Views.cardioLog()`, from the Cardio card on Profile: "This week: X sessions · Y min") has a calendar and every entry, newest first, with Edit and Delete. The form is one pop-up for everything (`Views.cardioForm()`, `cardioForm` in `app.js`). Runs show their pace and take minutes and seconds; other types take minutes.
 - **More history** — every finished workout is in `Store.data.sessions` (oldest first), with date, workout name and each exercise's sets.
 - New screens follow the same pattern: a function in `views.js` that returns `{ title, back, html }`, and a route in `app.js`.
 

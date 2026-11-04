@@ -889,6 +889,59 @@ main.is-searching { padding-bottom: 100vh; }
 .custom-row.bw-editing { display: block; padding: 12px 0; }
 .bw-editing .bw-form { margin-top: 8px; }
 
+/* Cardio: checkbox rows under a day's workouts. Never any warning colors: it only adds to your record. */
+.cardio-rows { margin-top: 6px; }
+.cardio-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 5px 2px;
+  background: none;
+  border: none;
+  color: var(--text);
+  text-align: left;
+}
+.cardio-box {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--muted);
+  border-radius: 7px;
+  font-size: 15px;
+  font-weight: 800;
+}
+.cardio-row.is-checked .cardio-box { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.cardio-row-text { min-width: 0; }
+.cardio-row-name { display: block; font-size: 15px; font-weight: 600; }
+.cardio-row-meta { display: block; font-size: 13px; color: var(--muted); }
+.week-link { display: block; margin-top: 12px; padding: 10px 2px; color: var(--accent); font-size: 15px; font-weight: 600; text-decoration: none; }
+
+/* The Cardio card on Profile */
+.cardio-card { display: block; margin-top: 12px; color: var(--text); text-decoration: none; }
+.cardio-card:active { background: var(--surface-2); }
+.cardio-card-title { display: block; font-size: 17px; font-weight: 700; }
+.cardio-card-week { display: block; margin-top: 2px; font-size: 15px; color: var(--muted); }
+
+/* The Cardio log and planned cardio screens */
+.cardio-calendar, .cardio-plan-list { margin-top: 14px; }
+.cardio-day-entry { margin: 8px 0 0; }
+.cardio-day-entry strong, .cardio-day-entry span { display: block; }
+.cardio-day-entry span { font-size: 14px; color: var(--muted); }
+
+/* The cardio pop-up: can be taller than the screen, so it scrolls inside */
+.cardio-form { width: 100%; max-height: 100%; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.cardio-form h2 { margin-bottom: 0; }
+.cardio-form input[type="date"] { display: block; min-width: 0; -webkit-appearance: none; appearance: none; }
+.cardio-lifting-chip { margin-bottom: 6px; }
+.cardio-form .cardio-pace { margin: 8px 0 0; font-weight: 600; color: var(--accent); }
+.cardio-form .cardio-pace:empty { display: none; }
+.cardio-form .cardio-error { margin: 0; font-weight: 600; color: var(--danger); }
+
 /* Custom exercises in Settings */
 .custom-list { padding: 4px 14px; }
 .custom-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; }

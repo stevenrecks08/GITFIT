@@ -317,7 +317,8 @@ function maxChart(points, emptyNote, singles = [], label = 'Estimated max', sele
 
 // Month calendar. Days in `logged` are tappable; all others are grayed out.
 // minMonth/maxMonth ('YYYY-MM') limit the arrows. emptyNote is written over it when set.
-function logCalendar(month, logged, selected, minMonth, maxMonth, emptyNote) {
+// prefix = the start of the action names its taps run: "log-day" and "log-month" for an exercise's log.
+function logCalendar(month, logged, selected, minMonth, maxMonth, emptyNote, prefix = 'log') {
   const first = fromDayKey(`${month}-01`);
   const daysInMonth = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
   const blanks = (first.getDay() + 6) % 7; // weeks start on Monday
@@ -328,17 +329,17 @@ function logCalendar(month, logged, selected, minMonth, maxMonth, emptyNote) {
     const key = `${month}-${String(d).padStart(2, '0')}`;
     const classes = ['cal-day', key === today ? 'is-today' : '', key === selected ? 'is-selected' : ''].join(' ');
     cells += logged.has(key)
-      ? `<button type="button" class="${classes} is-logged" data-action="log-day" data-id="${key}">${d}</button>`
+      ? `<button type="button" class="${classes} is-logged" data-action="${prefix}-day" data-id="${key}">${d}</button>`
       : `<span class="${classes}">${d}</span>`;
   }
 
   return `
     <div class="card calendar" data-month="${month}">
       <div class="cal-head">
-        <button type="button" class="btn btn-small" data-action="log-month" data-id="-1"
+        <button type="button" class="btn btn-small" data-action="${prefix}-month" data-id="-1"
           ${month <= minMonth ? 'disabled' : ''} aria-label="Previous month">‹</button>
         <strong>${first.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</strong>
-        <button type="button" class="btn btn-small" data-action="log-month" data-id="1"
+        <button type="button" class="btn btn-small" data-action="${prefix}-month" data-id="1"
           ${month >= maxMonth ? 'disabled' : ''} aria-label="Next month">›</button>
       </div>
       <div class="cal-grid ${emptyNote ? 'is-empty' : ''}">
@@ -421,6 +422,27 @@ function logDayCard(entries, key, timed, bw) {
         ${entries.map(h => `<button type="button" class="btn btn-small" data-action="open-session" data-id="${esc(h.sessionId)}">See full workout: ${esc(h.workoutName || 'Workout')}</button>`).join('')}
       </div>
     </div>`;
+}
+
+// A day's cardio on the week: small checkbox rows under its workouts. An unchecked row stays plain,
+// even on a passed day. Tapping one logs it; a checked one opens to change it or uncheck it.
+function cardioRows(weekday) {
+  const rows = Cardio.rowsFor(weekday).map(({ day, plan, entry }) => {
+    const item = entry || plan;
+    const canCheck = entry || Cardio.canCheck(day);
+    const action = entry ? 'cardio-entry' : canCheck ? 'cardio-check' : 'cardio-future';
+    const id = entry ? entry.id : canCheck ? `${plan.id}|${day}` : weekday;
+    return `
+      <button type="button" class="cardio-row ${entry ? 'is-checked' : ''}" data-action="${action}" data-id="${esc(id)}"
+        role="checkbox" aria-checked="${Boolean(entry)}">
+        <span class="cardio-box" aria-hidden="true">${entry ? '✓' : ''}</span>
+        <span class="cardio-row-text">
+          <span class="cardio-row-name">${esc(Cardio.name(item))}</span>
+          ${Cardio.summary(item) ? `<span class="cardio-row-meta">${esc(Cardio.summary(item))}</span>` : ''}
+        </span>
+      </button>`;
+  }).join('');
+  return rows ? `<div class="cardio-rows">${rows}</div>` : '';
 }
 
 // Seven tappable day chips (Mon … Sun) as radio buttons named `name`, with `selected` checked.
@@ -565,6 +587,7 @@ const Views = {
       // An empty day is a rest day: its label, and a small link to add a workout (making it a training day).
       const empty = `
         <button type="button" class="day-add" data-action="new-workout-on" data-id="${weekday}">+ Add a workout to train this day</button>`;
+      const cardio = cardioRows(weekday);
       return `
         <section class="day-block ${rest ? 'is-rest' : ''} ${weekday === today ? 'is-today' : ''}" data-weekday="${weekday}">
           <div class="day-head">
@@ -574,6 +597,7 @@ const Views = {
             ${rest ? '<span class="rest-word">Rest day</span>' : ''}
           </div>
           ${cards}${quickOn[weekday].map(quickCard).join('')}
+          ${cardio}
           ${cards ? '' : empty}
         </section>`;
     }).join('');
@@ -592,6 +616,7 @@ const Views = {
           ${Store.data.workouts.length ? '' : '<p class="week-hint">Tap + to create your first workout.</p>'}
         </div>
         <div class="week">${days}</div>
+        <a class="week-link" href="#/cardio/plan">Planned cardio</a>
 
         <h2>Planned sets per week ${setsInfoButton(setsInfoOpen)}</h2>
         ${setsInfoBox(setsInfoOpen)}
@@ -604,8 +629,11 @@ const Views = {
           <button type="button" class="fab-option is-quick" data-action="quick-start">
             <strong>Quick workout</strong><span>A one-off, logged but not added to your week</span>
           </button>
+          <button type="button" class="fab-option" data-action="add-cardio">
+            <strong>Add cardio</strong><span>Log a walk, run, ride or hike, on any past date</span>
+          </button>
         </div>
-        <button type="button" class="fab" data-action="fab-menu" aria-label="New workout or quick workout" aria-expanded="false">
+        <button type="button" class="fab" data-action="fab-menu" aria-label="New workout, quick workout or cardio" aria-expanded="false">
           <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.6"
             stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
         </button>
@@ -1095,6 +1123,7 @@ const Views = {
         ${this.backupReminder()}
         ${this.streakCard()}
         <a class="btn" href="#/log">Log</a>
+        ${this.cardioCard()}
         ${this.bodyWeightCard()}
         ${this.muscleMap(map)}
       `,
@@ -1104,13 +1133,172 @@ const Views = {
   // A small reminder once there's something to lose and no backup in the last 30 days.
   backupReminder() {
     const { lastBackupAt } = Store.data.settings;
-    if (!Store.data.sessions.length) return '';
+    if (!Store.data.sessions.length && !Store.data.cardioLog.length) return '';
     const days = lastBackupAt ? Math.floor((Date.now() - new Date(lastBackupAt).getTime()) / (24 * 60 * 60 * 1000)) : null;
     if (days != null && days < BACKUP_REMINDER_DAYS) return '';
     return `
       <div class="card backup-note">
         <span>${days == null ? 'You haven\'t backed up yet.' : `Last backup: ${days} days ago.`} Your data only lives on this device.</span>
         <button type="button" class="btn btn-small" data-action="export">Back up</button>
+      </div>`;
+  },
+
+  // ---------- Cardio ----------
+
+  // The card on Profile: no goal and nothing negative, just what's been done this week.
+  cardioCard() {
+    const { sessions, minutes } = Cardio.thisWeek();
+    return `
+      <a class="card cardio-card" href="#/cardio">
+        <span class="cardio-card-title">Cardio</span>
+        <span class="cardio-card-week">This week: ${sessions} session${sessions === 1 ? '' : 's'} · ${minutes} min</span>
+      </a>`;
+  },
+
+  // The Cardio log: a calendar and every entry, newest first.
+  // state = { month ('YYYY-MM', null = this month), day (the day tapped, or null) }
+  cardioLog(state) {
+    const log = Cardio.newestFirst();
+    const logged = new Set(log.map(e => e.day));
+    const thisMonth = dayKey(new Date()).slice(0, 7);
+    const firstMonth = log.length ? log[log.length - 1].day.slice(0, 7) : thisMonth;
+    const day = logged.has(state.day) ? state.day : null;
+    const row = e => `
+      <div class="custom-row">
+        <span class="custom-info">
+          <strong>${esc(Cardio.name(e))}</strong>
+          <span>${fromDayKey(e.day).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</span>
+          <span>${esc(Cardio.summary(e))}</span>
+        </span>
+        <button type="button" class="btn btn-small" data-action="cardio-log-edit" data-id="${esc(e.id)}">Edit</button>
+        <button type="button" class="btn btn-small btn-danger" data-action="cardio-log-delete" data-id="${esc(e.id)}">Delete</button>
+      </div>`;
+    const dayCard = day ? `
+      <div class="card log-day">
+        <p class="log-day-date">${fromDayKey(day).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</p>
+        ${log.filter(e => e.day === day).map(e => `
+          <p class="cardio-day-entry"><strong>${esc(Cardio.name(e))}</strong><span>${esc(Cardio.summary(e))}</span></p>`).join('')}
+      </div>` : '';
+    return {
+      title: 'Cardio log',
+      back: '#/profile',
+      html: `
+        <div class="stack">
+          <button type="button" class="btn btn-primary" data-action="add-cardio">+ Add cardio</button>
+          <button type="button" class="btn" data-action="open-planned-cardio">Planned cardio</button>
+        </div>
+        <div class="cardio-calendar">
+          ${logCalendar(state.month || thisMonth, logged, day, firstMonth, thisMonth, log.length ? '' : 'Cardio you log will show here', 'cardio')}
+        </div>
+        ${dayCard}
+        ${log.length ? `<h2>Every entry</h2><div class="card custom-list">${log.map(row).join('')}</div>` : ''}`,
+    };
+  },
+
+  // Planned cardio: optional items that show as checkboxes on the week.
+  cardioPlans() {
+    const plans = Store.data.cardioPlans;
+    const row = plan => `
+      <div class="custom-row">
+        <span class="custom-info">
+          <strong>${esc(Cardio.name(plan))}</strong>
+          <span>${esc(Cardio.daysText(plan))}</span>
+          ${Cardio.summary(plan) ? `<span>${esc(Cardio.summary(plan))}</span>` : ''}
+        </span>
+        <button type="button" class="btn btn-small" data-action="cardio-plan-edit" data-id="${esc(plan.id)}">Edit</button>
+        <button type="button" class="btn btn-small btn-danger" data-action="cardio-plan-delete" data-id="${esc(plan.id)}">Delete</button>
+      </div>`;
+    return {
+      title: 'Planned cardio',
+      back: '#/',
+      html: `
+        <button type="button" class="btn btn-primary" data-action="cardio-plan-new">+ New planned cardio</button>
+        ${plans.length
+          ? `<div class="card custom-list cardio-plan-list">${plans.map(row).join('')}</div>`
+          : '<p class="empty">Nothing planned. Anything you add here shows as a checkbox under its days on the week.</p>'}`,
+    };
+  },
+
+  // The pop-up for one cardio entry or planned item.
+  // form = cardioForm in app.js: { kind: 'entry' | 'plan', id (null = new), from: 'week' | 'log' | null, … }
+  cardioForm(form) {
+    const isPlan = form.kind === 'plan';
+    const type = CARDIO_TYPES[form.type];
+    const box = (id, label, value, placeholder = '0', keyboard = 'decimal') => `
+      <div>
+        <label for="cardio-${id}">${label}</label>
+        <input id="cardio-${id}" type="text" inputmode="${keyboard}" value="${esc(value)}" placeholder="${esc(placeholder)}" autocomplete="off">
+      </div>`;
+    // A run's time has seconds too, since they change the pace.
+    const time = () => (form.type === 'run' ? `
+      <div>
+        <label for="cardio-minutes">Time</label>
+        <div class="row range-row">
+          <input id="cardio-minutes" type="text" inputmode="numeric" value="${form.seconds ? Math.floor(form.seconds / 60) : ''}" placeholder="0" aria-label="Minutes">
+          <span class="range-sep">min</span>
+          <input id="cardio-secs" type="text" inputmode="numeric" value="${form.seconds ? Math.round(form.seconds % 60) : ''}" placeholder="0" aria-label="Seconds">
+          <span class="range-sep">sec</span>
+        </div>
+        <p class="cardio-pace" id="cardio-pace">${Cardio.paceText(form.miles, form.seconds) ? `Pace: ${Cardio.paceText(form.miles, form.seconds)}` : ''}</p>
+      </div>` : box('minutes', 'Minutes', form.seconds ? String(Number((form.seconds / 60).toFixed(1))) : ''));
+    const where = () => `
+      <div class="segmented">
+        ${[['outside', 'Outside'], ['treadmill', 'Treadmill']].map(([id, label]) => `
+          <button type="button" class="segment ${(form.where || 'outside') === id ? 'is-active' : ''}" data-action="cardio-where" data-id="${id}">${label}</button>`).join('')}
+      </div>`;
+    const fieldHtml = {
+      seconds: time,
+      miles: () => box('miles', `Distance (${Units.distanceUnit()})`, Units.showDistance(form.miles)),
+      feet: () => box('feet', `Elevation (${Units.elevationUnit()})`, Units.showElevation(form.feet)),
+      mph: () => box('mph', `Speed (${Units.speedUnit()})`, Units.showSpeed(form.mph)),
+      incline: () => box('incline', 'Incline (%)', form.incline ?? ''),
+      where,
+    };
+    const days = () => `
+      <div>
+        <label>Days</label>
+        <label class="weekday-chip cardio-lifting-chip">
+          <input type="checkbox" id="cardio-lifting" ${form.everyLiftingDay ? 'checked' : ''}>
+          <span>Every lifting day</span>
+        </label>
+        <div class="weekday-pick">
+          ${WEEKDAYS.map((day, i) => `
+            <label class="weekday-chip">
+              <input type="checkbox" name="cardio-weekday" value="${i}" ${form.weekdays.includes(i) ? 'checked' : ''}>
+              <span>${day.slice(0, 3)}</span>
+            </label>`).join('')}
+        </div>
+      </div>`;
+    const date = () => `
+      <div>
+        <label for="cardio-date">Date</label>
+        <input id="cardio-date" type="date" value="${form.day}" max="${dayKey(new Date())}">
+      </div>`;
+    // Unchecking a planned item leaves its row to check again, so it needs no question.
+    // A one-off has no row to come back to, so Delete asks first.
+    let remove = '';
+    if (form.kind === 'entry' && form.id && form.from === 'week') {
+      remove = form.planId && Store.getCardioPlan(form.planId)
+        ? '<button type="button" class="btn" data-action="cardio-uncheck">Uncheck</button>'
+        : '<button type="button" class="btn btn-danger" data-action="cardio-entry-delete">Delete</button>';
+    }
+    const title = isPlan ? (form.id ? 'Edit planned cardio' : 'New planned cardio') : (form.id ? 'Edit cardio' : 'Add cardio');
+    return `
+      <div class="card notice cardio-form stack" role="dialog" aria-label="${title}">
+        <h2>${title}</h2>
+        <div>
+          <label for="cardio-type">Type</label>
+          <select id="cardio-type">
+            ${Object.entries(CARDIO_TYPES).map(([id, t]) => `<option value="${id}" ${id === form.type ? 'selected' : ''}>${esc(t.label)}</option>`).join('')}
+          </select>
+        </div>
+        ${box('name', 'Name', form.name, type.name, 'text')}
+        ${isPlan ? days() : date()}
+        ${type.fields.map(field => fieldHtml[field]()).join('')}
+        ${form.error ? `<p class="cardio-error" role="alert">${esc(form.error)}</p>` : ''}
+        <button type="button" class="btn btn-primary" data-action="cardio-save">Save</button>
+        ${remove}
+        <button type="button" class="btn" data-action="cardio-cancel">Cancel</button>
       </div>`;
   },
 
@@ -1807,8 +1995,8 @@ const Views = {
     return `
       <h2>Units</h2>
       <div class="choices">
-        ${unitOption('imperial', 'Imperial', 'lbs, ft/in')}
-        ${unitOption('metric', 'Metric', 'kg, cm')}
+        ${unitOption('imperial', 'Imperial', 'lbs, ft/in, miles')}
+        ${unitOption('metric', 'Metric', 'kg, cm, km')}
       </div>
 
       <h2>About you</h2>
