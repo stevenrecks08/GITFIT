@@ -257,7 +257,8 @@ function fromDayKey(key) {
 // show that day's sets; selected = the dayKey shown now (its dot is bigger).
 // tight = the scale hugs the numbers, so small changes show (body weight).
 // format = how a number on the side is written (run times are minutes and seconds).
-function maxChart(points, emptyNote, singles = [], label = 'Estimated max', selected = null, tight = false, format = Math.round) {
+// dayAction = what tapping a dot runs (with its dayKey).
+function maxChart(points, emptyNote, singles = [], label = 'Estimated max', selected = null, tight = false, format = Math.round, dayAction = 'log-day') {
   const W = 320, H = 170, L = 40, R = 10, T = 10, B = 24; // size and margins (SVG units)
 
   if (!points.length) {
@@ -291,7 +292,7 @@ function maxChart(points, emptyNote, singles = [], label = 'Estimated max', sele
   const line = points.map((p, i) => `${i ? 'L' : 'M'}${x(p.time).toFixed(1)},${y(p.value).toFixed(1)}`).join(' ');
   const dots = points.map(p => `<circle class="chart-dot" cx="${x(p.time).toFixed(1)}" cy="${y(p.value).toFixed(1)}" r="${p.dayKey && p.dayKey === selected ? 6 : 3.5}"/>`).join('');
   // A bigger invisible circle over each dot, so it's easy to tap.
-  const hits = points.filter(p => p.dayKey).map(p => `<circle class="chart-hit" cx="${x(p.time).toFixed(1)}" cy="${y(p.value).toFixed(1)}" r="14" data-action="log-day" data-id="${p.dayKey}"/>`).join('');
+  const hits = points.filter(p => p.dayKey).map(p => `<circle class="chart-hit" cx="${x(p.time).toFixed(1)}" cy="${y(p.value).toFixed(1)}" r="14" data-action="${dayAction}" data-id="${p.dayKey}"/>`).join('');
   const singleLine = singles.map((p, i) => `${i ? 'L' : 'M'}${x(p.time).toFixed(1)},${y(p.value).toFixed(1)}`).join(' ');
   const singleDots = singles.map(p => `<circle class="chart-single-dot" cx="${x(p.time).toFixed(1)}" cy="${y(p.value).toFixed(1)}" r="2.5"/>`).join('');
   // The "Actual 1-rep" key only shows once a 1-rep set has been logged.
@@ -1218,7 +1219,8 @@ const Views = {
     const sub = !latest ? '&nbsp;'
       : best.seconds < latest.seconds ? `Best ${clock(best.seconds)} on ${shortDate(fromDayKey(best.day))}`
       : `Logged ${shortDate(fromDayKey(latest.day))}`;
-    const points = runs.map(run => ({ time: fromDayKey(run.day).getTime(), value: run.seconds }));
+    // Tapping a dot opens its day on the calendar below (see 'cardio-dot' in app.js).
+    const points = runs.map(run => ({ time: fromDayKey(run.day).getTime(), value: run.seconds, dayKey: run.day }));
     return `
       <h2>Run times</h2>
       <div class="card">
@@ -1228,7 +1230,7 @@ const Views = {
         </div>
         <p class="log-max ${latest ? '' : 'is-blank'}">${latest ? clock(latest.seconds) : '—'}</p>
         <p class="log-sub">${sub}</p>
-        ${maxChart(points, `Log a ${picked.label === '5K' ? '5K' : '1 mile run'} to start the graph`, [], 'Time (lower is faster)', null, true, clock)}
+        ${maxChart(points, `Log a ${picked.label === '5K' ? '5K' : '1 mile run'} to start the graph`, [], 'Time (lower is faster)', state.day, true, clock, 'cardio-dot')}
       </div>`;
   },
 

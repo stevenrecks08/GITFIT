@@ -1502,6 +1502,14 @@ const actions = {
     render();
   },
 
+  // Tapped a dot on the Run times graph: goes to that day on the calendar, with its entries showing.
+  'cardio-dot'(key) {
+    cardioState.month = key.slice(0, 7);
+    cardioState.day = key;
+    render();
+    document.querySelector('.calendar').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  },
+
   // Calendar arrows on the Cardio log: dir is -1 (previous month) or 1 (next month).
   'cardio-month'(dir) {
     const shown = document.querySelector('.calendar').dataset.month;

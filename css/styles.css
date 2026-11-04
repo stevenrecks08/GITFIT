@@ -922,6 +922,8 @@ main.is-searching { padding-bottom: 100vh; }
 
 /* The Cardio tab */
 .cardio-week { margin-bottom: 12px; font-size: 17px; font-weight: 700; }
+/* A graph's dot scrolls here: stop just under the top bar, not behind it */
+.calendar { scroll-margin-top: calc(var(--topbar-h) + env(safe-area-inset-top) + 12px); }
 .cardio-plan-list { margin-bottom: 12px; }
 .cardio-plan-note { margin: 0 0 12px; font-size: 14px; }
 .cardio-day-entry { margin: 8px 0 0; }
