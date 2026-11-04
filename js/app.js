@@ -1457,6 +1457,14 @@ const actions = {
     showCardioForm(cardioForm);
   },
 
+  // The 5K button on a run: fills in the distance, and the name if there isn't one yet.
+  'cardio-5k'() {
+    readCardioForm();
+    cardioForm.miles = FIVE_K_MILES;
+    cardioForm.name = cardioForm.name || '5K run';
+    showCardioForm(cardioForm);
+  },
+
   'cardio-save'() {
     readCardioForm();
     const f = cardioForm;

@@ -1229,7 +1229,9 @@ const Views = {
       </div>`;
     const fieldHtml = {
       seconds: time,
-      miles: () => box('miles', `Distance (${Units.distanceUnit()})`, Units.showDistance(form.miles)),
+      miles: () => `
+        ${box('miles', `Distance (${Units.distanceUnit()})`, Units.showDistance(form.miles))}
+        ${form.type === 'run' ? '<button type="button" class="btn btn-small cardio-5k" data-action="cardio-5k">5K</button>' : ''}`,
       feet: () => box('feet', `Elevation (${Units.elevationUnit()})`, Units.showElevation(form.feet)),
       mph: () => box('mph', `Speed (${Units.speedUnit()})`, Units.showSpeed(form.mph)),
       incline: () => box('incline', 'Incline (%)', form.incline ?? ''),

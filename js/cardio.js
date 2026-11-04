@@ -19,6 +19,10 @@ const CARDIO_TYPES = {
 
 const CARDIO_NUMBERS = ['seconds', 'miles', 'feet', 'mph', 'incline', 'where'];
 
+// 5 km in saved miles, for the run form's 5K button. A 5K is a round number in km but not in
+// miles, so this lets it be logged exactly on Imperial too (shown as 3.11 mi).
+const FIVE_K_MILES = 3.107;
+
 const Cardio = {
   type(item) {
     return CARDIO_TYPES[item.type] || CARDIO_TYPES.other;
