@@ -933,7 +933,19 @@ main.is-searching { padding-bottom: 100vh; }
 .cardio-form h2 { margin-bottom: 0; }
 .cardio-form input[type="date"] { display: block; min-width: 0; -webkit-appearance: none; appearance: none; }
 .cardio-lifting-chip { margin-bottom: 6px; }
-.cardio-form .cardio-5k { margin-top: 0; justify-self: start; align-self: flex-start; }
+.cardio-distances { display: flex; flex-wrap: wrap; gap: 6px; }
+.cardio-distance {
+  flex: 1 1 auto;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+}
+.cardio-distance.is-active { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
 .cardio-form .cardio-pace { margin: 8px 0 0; font-weight: 600; color: var(--accent); }
 .cardio-form .cardio-pace:empty { display: none; }
 .cardio-form .cardio-error { margin: 0; font-weight: 600; color: var(--danger); }

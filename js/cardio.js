@@ -19,9 +19,16 @@ const CARDIO_TYPES = {
 
 const CARDIO_NUMBERS = ['seconds', 'miles', 'feet', 'mph', 'incline', 'where'];
 
-// 5 km in saved miles, for the run form's 5K button. A 5K is a round number in km but not in
-// miles, so this lets it be logged exactly on Imperial too (shown as 3.11 mi).
-const FIVE_K_MILES = 3.107;
+// The tappable distances on the run form, in saved miles. Race distances are round numbers in km
+// but not in miles, so these log them exactly on Imperial too (a 5K shows as 3.11 mi).
+// name = what a run with no name of its own is called once one is tapped.
+const RUN_DISTANCES = [
+  { label: '1 mile', miles: 1, name: '1 mile run' },
+  { label: '5K', miles: 3.107, name: '5K run' },
+  { label: '10K', miles: 6.214, name: '10K run' },
+  { label: 'Half', miles: 13.109, name: 'Half marathon' },
+  { label: 'Marathon', miles: 26.219, name: 'Marathon' },
+];
 
 const Cardio = {
   type(item) {

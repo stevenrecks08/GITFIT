@@ -1457,11 +1457,13 @@ const actions = {
     showCardioForm(cardioForm);
   },
 
-  // The 5K button on a run: fills in the distance, and the name if there isn't one yet.
-  'cardio-5k'() {
+  // A distance button on a run: fills in the distance. The name changes with it if it's empty or
+  // still another button's name, but one you typed yourself stays.
+  'cardio-distance'(miles) {
     readCardioForm();
-    cardioForm.miles = FIVE_K_MILES;
-    cardioForm.name = cardioForm.name || '5K run';
+    const picked = RUN_DISTANCES.find(d => d.miles === Number(miles));
+    cardioForm.miles = picked.miles;
+    if (!cardioForm.name || RUN_DISTANCES.some(d => d.name === cardioForm.name)) cardioForm.name = picked.name;
     showCardioForm(cardioForm);
   },
 
@@ -1991,6 +1993,15 @@ overlayEl.addEventListener('input', event => {
   readCardioForm();
   const text = Cardio.paceText(cardioForm.miles, cardioForm.seconds);
   pace.textContent = text ? `Pace: ${text}` : '';
+  // Typing another distance takes the highlight off a distance button, and the button's name
+  // with it, so a 4 mile run isn't left called "Marathon".
+  overlayEl.querySelectorAll('.cardio-distance').forEach(button => {
+    button.classList.toggle('is-active', Number(button.dataset.id) === cardioForm.miles);
+  });
+  const fromButton = RUN_DISTANCES.find(d => d.name === cardioForm.name);
+  if (event.target.id === 'cardio-miles' && fromButton && fromButton.miles !== cardioForm.miles) {
+    document.getElementById('cardio-name').value = '';
+  }
 });
 
 overlayEl.addEventListener('change', event => {

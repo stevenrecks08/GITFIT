@@ -1231,7 +1231,11 @@ const Views = {
       seconds: time,
       miles: () => `
         ${box('miles', `Distance (${Units.distanceUnit()})`, Units.showDistance(form.miles))}
-        ${form.type === 'run' ? '<button type="button" class="btn btn-small cardio-5k" data-action="cardio-5k">5K</button>' : ''}`,
+        ${form.type === 'run' ? `
+          <div class="cardio-distances">
+            ${RUN_DISTANCES.map(d => `
+              <button type="button" class="cardio-distance ${d.miles === form.miles ? 'is-active' : ''}" data-action="cardio-distance" data-id="${d.miles}">${d.label}</button>`).join('')}
+          </div>` : ''}`,
       feet: () => box('feet', `Elevation (${Units.elevationUnit()})`, Units.showElevation(form.feet)),
       mph: () => box('mph', `Speed (${Units.speedUnit()})`, Units.showSpeed(form.mph)),
       incline: () => box('incline', 'Incline (%)', form.incline ?? ''),
