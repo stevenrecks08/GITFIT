@@ -53,6 +53,12 @@ const Cardio = {
     return item.seconds > 0 && (item.type !== 'run' || item.miles > 0);
   },
 
+  // What the short pop-up asks for when a planned item is checked off: its time and distance, if
+  // its type has them and they weren't planned. In the order the type's form asks for them.
+  missingFields(item) {
+    return this.type(item).fields.filter(key => ['miles', 'seconds'].includes(key) && !(item[key] > 0));
+  },
+
   // "20 min", or "25.5 min" if it isn't a whole number.
   minutesText(seconds) {
     return `${Number((seconds / 60).toFixed(1))} min`;

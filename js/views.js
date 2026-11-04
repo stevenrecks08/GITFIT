@@ -1241,6 +1241,21 @@ const Views = {
       incline: () => box('incline', 'Incline (%)', form.incline ?? ''),
       where,
     };
+    // Checking off a planned item: just the numbers it's missing. The name, date and everything
+    // else planned are already known, and show on the line under its name.
+    if (form.quick) {
+      return `
+        <div class="card notice cardio-form stack" role="dialog" aria-label="Log ${esc(Cardio.name(form))}">
+          <div>
+            <h2>${esc(Cardio.name(form))}</h2>
+            <p class="cardio-quick-note">${esc(form.quickNote)}</p>
+          </div>
+          ${form.quick.map(field => fieldHtml[field]()).join('')}
+          ${form.error ? `<p class="cardio-error" role="alert">${esc(form.error)}</p>` : ''}
+          <button type="button" class="btn btn-primary" data-action="cardio-save">Save</button>
+          <button type="button" class="btn" data-action="cardio-cancel">Cancel</button>
+        </div>`;
+    }
     const days = () => `
       <div>
         <label>Days</label>

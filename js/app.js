@@ -180,9 +180,10 @@ function readCardioForm() {
     if (typed === null || typed === show.call(Units, f[key])) return;
     f[key] = positive(read.call(Units, typed));
   };
-  f.name = text('name');
-  f.type = text('type');
-  if (f.kind === 'entry') f.day = text('date');
+  // (The short pop-up for checking off a planned item doesn't have the name, type or date boxes.)
+  f.name = text('name') ?? f.name;
+  f.type = text('type') ?? f.type;
+  if (f.kind === 'entry') f.day = text('date') ?? f.day;
   else {
     f.everyLiftingDay = document.getElementById('cardio-lifting').checked;
     f.weekdays = [...overlayEl.querySelectorAll('input[name="cardio-weekday"]:checked')].map(box => Number(box.value));
@@ -1407,11 +1408,19 @@ const actions = {
   },
 
   // Tapped an unchecked row on the week: logs it with the planned numbers. If they aren't enough
-  // for an entry, the pop-up opens to fill them in, and it stays unchecked unless that's saved.
+  // for an entry, a short pop-up asks for just what's missing (see Views.cardioForm()), and it
+  // stays unchecked unless that's saved. Its first box is ready to type in.
   'cardio-check'(id) {
     const [planId, day] = id.split('|');
     const details = Cardio.details(Store.getCardioPlan(planId));
-    if (!Cardio.isComplete(details)) return showCardioForm(newCardioEntryForm({ ...details, planId, day }));
+    if (!Cardio.isComplete(details)) {
+      const date = fromDayKey(day).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+      showCardioForm(newCardioEntryForm({ ...details, planId, day,
+        quick: Cardio.missingFields(details), // kept as it opened, so a box doesn't vanish once it's filled in
+        quickNote: [date, Cardio.summary(details)].filter(Boolean).join(' · ') }));
+      overlayEl.querySelector('input')?.focus();
+      return;
+    }
     Store.saveCardioEntry(null, { ...details, planId, day });
     render();
   },
@@ -2000,7 +2009,9 @@ overlayEl.addEventListener('input', event => {
   });
   const fromButton = RUN_DISTANCES.find(d => d.name === cardioForm.name);
   if (event.target.id === 'cardio-miles' && fromButton && fromButton.miles !== cardioForm.miles) {
-    document.getElementById('cardio-name').value = '';
+    cardioForm.name = '';
+    const nameBox = document.getElementById('cardio-name'); // (the short pop-up has none)
+    if (nameBox) nameBox.value = '';
   }
 });
 
