@@ -14,8 +14,7 @@
 //   #/log              → search exercises to see their log [Profile tab]
 //   #/log/<exercise>   → one exercise's log         [Profile tab]
 //   #/body-weight      → every body weight logged, to edit or delete [Profile tab]
-//   #/cardio           → the Cardio log: calendar and every entry [Profile tab]
-//   #/cardio/plan      → planned cardio (link under the week) [Workouts tab]
+//   #/cardio           → this week's cardio, planned cardio, calendar and every entry [Cardio tab]
 // Using the URL means the browser/phone Back gesture works for free.
 
 const appEl = document.getElementById('app');
@@ -406,9 +405,7 @@ function currentRoute() {
   if (parts[0] === 'profile') return { view: 'profile', tab: 'profile' };
   if (parts[0] === 'settings') return { view: 'settings', tab: 'profile' };
   if (parts[0] === 'body-weight') return { view: 'body-weight', tab: 'profile' };
-  if (parts[0] === 'cardio') {
-    return parts[1] === 'plan' ? { view: 'cardio-plan', tab: 'workouts' } : { view: 'cardio-log', tab: 'profile' };
-  }
+  if (parts[0] === 'cardio') return { view: 'cardio', tab: 'cardio' };
   if (parts[0] === 'log') {
     return parts[1]
       ? { view: 'exercise-log', refId: decodeURIComponent(parts[1]), tab: 'profile' }
@@ -449,10 +446,8 @@ function render() {
     screen = Views.settings();
   } else if (route.view === 'body-weight') {
     screen = Views.bodyWeightLog(bwEditDay);
-  } else if (route.view === 'cardio-log') {
-    screen = Views.cardioLog(cardioState);
-  } else if (route.view === 'cardio-plan') {
-    screen = Views.cardioPlans();
+  } else if (route.view === 'cardio') {
+    screen = Views.cardio(cardioState);
   } else if (route.view === 'log') {
     screen = Views.logSearch(logQuery);
   } else if (route.view === 'exercise-log') {
@@ -487,7 +482,7 @@ function render() {
   }
 
   // Opened from another screen: Back returns there.
-  if (['past', 'exercise-log', 'cardio-plan'].includes(route.view) && returnStack.length) {
+  if (['past', 'exercise-log'].includes(route.view) && returnStack.length) {
     screen.back = returnStack[returnStack.length - 1].hash;
   }
 
@@ -1498,10 +1493,6 @@ const actions = {
     document.querySelector('.log-day')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   },
 
-  'open-planned-cardio'() {
-    goAndReturn('#/cardio/plan');
-  },
-
   'cardio-plan-new'() {
     showCardioForm({ kind: 'plan', id: null, type: 'walk', name: '', weekdays: [], everyLiftingDay: false });
   },
@@ -2127,8 +2118,8 @@ window.addEventListener('hashchange', () => {
   const top = returnStack[returnStack.length - 1];
   const back = top && top.hash === (location.hash || '#/') ? returnStack.pop() : null;
   const { view } = currentRoute();
-  if (!back && !['past', 'exercise-log', 'cardio-plan'].includes(view)) returnStack = [];
-  if (!['cardio-log', 'cardio-plan'].includes(view)) cardioState = { month: null, day: null };
+  if (!back && !['past', 'exercise-log'].includes(view)) returnStack = [];
+  if (view !== 'cardio') cardioState = { month: null, day: null };
 
   if (!['profile', 'exercise-log'].includes(view)) map.muscle = null;
   picker = newPicker();

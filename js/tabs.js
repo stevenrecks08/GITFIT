@@ -8,12 +8,15 @@
 const TAB_ICONS = {
   // Dumbbell
   workouts: `<path d="M6.5 6.5v11M17.5 6.5v11M3.5 9v6M20.5 9v6M6.5 12h11"/>`,
+  // Heart
+  cardio: `<path d="M12 20.5s-8.5-5.2-8.5-11.2A4.8 4.8 0 0 1 12 6.4a4.8 4.8 0 0 1 8.5 2.9c0 6-8.5 11.2-8.5 11.2z"/>`,
   // Person
-  profile: `<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/>`,
+  profile:`<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/>`,
 };
 
 const TABS = [
   { id: 'workouts', label: 'Workouts', href: '#/' },
+  { id: 'cardio', label: 'Cardio', href: '#/cardio' },
   { id: 'profile', label: 'Profile', href: '#/profile' },
 ];
 

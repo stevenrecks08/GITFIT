@@ -616,7 +616,6 @@ const Views = {
           ${Store.data.workouts.length ? '' : '<p class="week-hint">Tap + to create your first workout.</p>'}
         </div>
         <div class="week">${days}</div>
-        <a class="week-link" href="#/cardio/plan">Planned cardio</a>
 
         <h2>Planned sets per week ${setsInfoButton(setsInfoOpen)}</h2>
         ${setsInfoBox(setsInfoOpen)}
@@ -1123,7 +1122,6 @@ const Views = {
         ${this.backupReminder()}
         ${this.streakCard()}
         <a class="btn" href="#/log">Log</a>
-        ${this.cardioCard()}
         ${this.bodyWeightCard()}
         ${this.muscleMap(map)}
       `,
@@ -1145,19 +1143,22 @@ const Views = {
 
   // ---------- Cardio ----------
 
-  // The card on Profile: no goal and nothing negative, just what's been done this week.
-  cardioCard() {
-    const { sessions, minutes } = Cardio.thisWeek();
-    return `
-      <a class="card cardio-card" href="#/cardio">
-        <span class="cardio-card-title">Cardio</span>
-        <span class="cardio-card-week">This week: ${sessions} session${sessions === 1 ? '' : 's'} · ${minutes} min</span>
-      </a>`;
-  },
-
-  // The Cardio log: a calendar and every entry, newest first.
+  // The Cardio tab: this week (no goal and nothing negative), planned cardio, a calendar and every
+  // entry, newest first. Planned items go above the calendar since the entry list keeps growing.
   // state = { month ('YYYY-MM', null = this month), day (the day tapped, or null) }
-  cardioLog(state) {
+  cardio(state) {
+    const { sessions, minutes } = Cardio.thisWeek();
+    const plans = Store.data.cardioPlans;
+    const planRow = plan => `
+      <div class="custom-row">
+        <span class="custom-info">
+          <strong>${esc(Cardio.name(plan))}</strong>
+          <span>${esc(Cardio.daysText(plan))}</span>
+          ${Cardio.summary(plan) ? `<span>${esc(Cardio.summary(plan))}</span>` : ''}
+        </span>
+        <button type="button" class="btn btn-small" data-action="cardio-plan-edit" data-id="${esc(plan.id)}">Edit</button>
+        <button type="button" class="btn btn-small btn-danger" data-action="cardio-plan-delete" data-id="${esc(plan.id)}">Delete</button>
+      </div>`;
     const log = Cardio.newestFirst();
     const logged = new Set(log.map(e => e.day));
     const thisMonth = dayKey(new Date()).slice(0, 7);
@@ -1180,42 +1181,22 @@ const Views = {
           <p class="cardio-day-entry"><strong>${esc(Cardio.name(e))}</strong><span>${esc(Cardio.summary(e))}</span></p>`).join('')}
       </div>` : '';
     return {
-      title: 'Cardio log',
-      back: '#/profile',
+      title: 'Cardio',
+      back: null,
       html: `
-        <div class="stack">
-          <button type="button" class="btn btn-primary" data-action="add-cardio">+ Add cardio</button>
-          <button type="button" class="btn" data-action="open-planned-cardio">Planned cardio</button>
-        </div>
-        <div class="cardio-calendar">
-          ${logCalendar(state.month || thisMonth, logged, day, firstMonth, thisMonth, log.length ? '' : 'Cardio you log will show here', 'cardio')}
-        </div>
+        <div class="card cardio-week">This week: ${sessions} session${sessions === 1 ? '' : 's'} · ${minutes} min</div>
+        <button type="button" class="btn btn-primary" data-action="add-cardio">+ Add cardio</button>
+
+        <h2>Planned cardio</h2>
+        ${plans.length
+          ? `<div class="card custom-list cardio-plan-list">${plans.map(planRow).join('')}</div>`
+          : '<p class="muted cardio-plan-note">Anything you add here shows as a checkbox under its days on the week.</p>'}
+        <button type="button" class="btn" data-action="cardio-plan-new">+ New planned cardio</button>
+
+        <h2>Log</h2>
+        ${logCalendar(state.month || thisMonth, logged, day, firstMonth, thisMonth, log.length ? '' : 'Cardio you log will show here', 'cardio')}
         ${dayCard}
         ${log.length ? `<h2>Every entry</h2><div class="card custom-list">${log.map(row).join('')}</div>` : ''}`,
-    };
-  },
-
-  // Planned cardio: optional items that show as checkboxes on the week.
-  cardioPlans() {
-    const plans = Store.data.cardioPlans;
-    const row = plan => `
-      <div class="custom-row">
-        <span class="custom-info">
-          <strong>${esc(Cardio.name(plan))}</strong>
-          <span>${esc(Cardio.daysText(plan))}</span>
-          ${Cardio.summary(plan) ? `<span>${esc(Cardio.summary(plan))}</span>` : ''}
-        </span>
-        <button type="button" class="btn btn-small" data-action="cardio-plan-edit" data-id="${esc(plan.id)}">Edit</button>
-        <button type="button" class="btn btn-small btn-danger" data-action="cardio-plan-delete" data-id="${esc(plan.id)}">Delete</button>
-      </div>`;
-    return {
-      title: 'Planned cardio',
-      back: '#/',
-      html: `
-        <button type="button" class="btn btn-primary" data-action="cardio-plan-new">+ New planned cardio</button>
-        ${plans.length
-          ? `<div class="card custom-list cardio-plan-list">${plans.map(row).join('')}</div>`
-          : '<p class="empty">Nothing planned. Anything you add here shows as a checkbox under its days on the week.</p>'}`,
     };
   },
 
