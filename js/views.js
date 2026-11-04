@@ -256,7 +256,8 @@ function fromDayKey(key) {
 // label = what the line is, for the key under the graph. A point with a dayKey can be tapped to
 // show that day's sets; selected = the dayKey shown now (its dot is bigger).
 // tight = the scale hugs the numbers, so small changes show (body weight).
-function maxChart(points, emptyNote, singles = [], label = 'Estimated max', selected = null, tight = false) {
+// format = how a number on the side is written (run times are minutes and seconds).
+function maxChart(points, emptyNote, singles = [], label = 'Estimated max', selected = null, tight = false, format = Math.round) {
   const W = 320, H = 170, L = 40, R = 10, T = 10, B = 24; // size and margins (SVG units)
 
   if (!points.length) {
@@ -286,7 +287,7 @@ function maxChart(points, emptyNote, singles = [], label = 'Estimated max', sele
 
   const grid = [lo, (lo + hi) / 2, hi].map(v => `
     <line class="chart-grid" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/>
-    <text class="chart-label" x="${L - 6}" y="${y(v) + 4}" text-anchor="end">${Math.round(v)}</text>`).join('');
+    <text class="chart-label" x="${L - 6}" y="${y(v) + 4}" text-anchor="end">${format(v)}</text>`).join('');
   const line = points.map((p, i) => `${i ? 'L' : 'M'}${x(p.time).toFixed(1)},${y(p.value).toFixed(1)}`).join(' ');
   const dots = points.map(p => `<circle class="chart-dot" cx="${x(p.time).toFixed(1)}" cy="${y(p.value).toFixed(1)}" r="${p.dayKey && p.dayKey === selected ? 6 : 3.5}"/>`).join('');
   // A bigger invisible circle over each dot, so it's easy to tap.
@@ -1193,11 +1194,42 @@ const Views = {
           : '<p class="muted cardio-plan-note">Anything you add here shows as a checkbox under its days on the week.</p>'}
         <button type="button" class="btn" data-action="cardio-plan-new">+ New planned cardio</button>
 
+        ${this.cardioGraph(state)}
+
         <h2>Log</h2>
         ${logCalendar(state.month || thisMonth, logged, day, firstMonth, thisMonth, log.length ? '' : 'Cardio you log will show here', 'cardio')}
         ${dayCard}
         ${log.length ? `<h2>Every entry</h2><div class="card custom-list">${log.map(row).join('')}</div>` : ''}`,
     };
+  },
+
+  // A graph of times for one race distance, with a switch between the distances.
+  // It opens on the distance run most recently. state.graph = the label picked, if any.
+  cardioGraph(state) {
+    const latestOf = d => Cardio.runsOf(d.miles).at(-1)?.day || '';
+    const recent = [...RUN_GRAPHS].sort((a, b) => (latestOf(a) < latestOf(b) ? 1 : -1))[0];
+    const picked = RUN_GRAPHS.find(d => d.label === state.graph)
+      || (latestOf(recent) ? recent : RUN_GRAPHS.find(d => d.label === '5K'));
+    const runs = Cardio.runsOf(picked.miles);
+    const clock = seconds => formatClock(seconds * 1000);
+    const latest = runs[runs.length - 1];
+    const best = runs.reduce((top, run) => (!top || run.seconds < top.seconds ? run : top), null);
+    // Like the exercise log, the best only gets a line when the latest isn't it.
+    const sub = !latest ? '&nbsp;'
+      : best.seconds < latest.seconds ? `Best ${clock(best.seconds)} on ${shortDate(fromDayKey(best.day))}`
+      : `Logged ${shortDate(fromDayKey(latest.day))}`;
+    const points = runs.map(run => ({ time: fromDayKey(run.day).getTime(), value: run.seconds }));
+    return `
+      <h2>Run times</h2>
+      <div class="card">
+        <div class="segmented log-switch">
+          ${RUN_GRAPHS.map(d => `
+            <button type="button" class="segment ${d === picked ? 'is-active' : ''}" data-action="cardio-graph" data-id="${d.label}" aria-pressed="${d === picked}">${d.label}</button>`).join('')}
+        </div>
+        <p class="log-max ${latest ? '' : 'is-blank'}">${latest ? clock(latest.seconds) : '—'}</p>
+        <p class="log-sub">${sub}</p>
+        ${maxChart(points, `Log a ${picked.label === '5K' ? '5K' : '1 mile run'} to start the graph`, [], 'Time (lower is faster)', null, true, clock)}
+      </div>`;
   },
 
   // The pop-up for one cardio entry or planned item.

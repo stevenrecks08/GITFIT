@@ -30,6 +30,12 @@ const RUN_DISTANCES = [
   { label: 'Marathon', miles: 26.219, name: 'Marathon' },
 ];
 
+// The distances with a graph of times on the Cardio tab. Add a label here to graph another one.
+const RUN_GRAPHS = RUN_DISTANCES.filter(d => ['1 mile', '5K'].includes(d.label));
+
+// How close a run must be to count as that distance: a typed 3.1 mi is a 5K, 3.5 mi isn't.
+const RUN_GRAPH_MARGIN = 0.02;
+
 const Cardio = {
   type(item) {
     return CARDIO_TYPES[item.type] || CARDIO_TYPES.other;
@@ -138,6 +144,13 @@ const Cardio = {
     const entries = Store.data.cardioLog.filter(e => e.day >= start && e.day < end);
     const seconds = entries.reduce((sum, e) => sum + (e.seconds || 0), 0);
     return { sessions: entries.length, minutes: Math.round(seconds / 60) };
+  },
+
+  // Runs of about this distance with a time, oldest first, for its graph.
+  // Treadmill and outside runs count alike.
+  runsOf(miles) {
+    return this.newestFirst().reverse().filter(e => e.type === 'run' && e.seconds > 0
+      && Math.abs(e.miles - miles) <= miles * RUN_GRAPH_MARGIN);
   },
 
   // Every entry, newest date first (the last one added first, within a day).

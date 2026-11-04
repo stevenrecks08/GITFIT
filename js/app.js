@@ -143,7 +143,8 @@ const map = { mode: 'growth', muscle: null, infoOpen: false };
 // Body weight log: the day whose weight is open for editing (null = none).
 let bwEditDay = null;
 
-// The Cardio log's calendar: the month shown (null = this month) and the day tapped.
+// The Cardio tab: the calendar's month (null = this month), the day tapped, and (once one's
+// been tapped) graph, the distance picked on the Run times graph.
 let cardioState = { month: null, day: null };
 
 // The cardio pop-up, while it's open (see Views.cardioForm()):
@@ -1493,6 +1494,12 @@ const actions = {
 
   'cardio-cancel'() {
     hideDialog();
+  },
+
+  // The switch on the Run times graph.
+  'cardio-graph'(label) {
+    cardioState.graph = label;
+    render();
   },
 
   // Calendar arrows on the Cardio log: dir is -1 (previous month) or 1 (next month).
