@@ -255,61 +255,55 @@ button, .btn {
 .past-card .day-name { display: block; font-size: 19px; font-weight: 700; }
 .past-card .day-meta { display: block; font-size: 14px; color: var(--muted); margin-top: 2px; }
 
-/* ---------- The week (Workouts tab): each day with its workouts ----------
-   Three text sizes only: 18px (day names, workout titles), 15px (buttons), 13px (everything secondary).
-   Days are split by a thin line with more space above it than below; inside a day, the header and its content are 6px apart, so each day reads as one group. */
-.week-intro { margin: 4px 0 16px; }
-.banner + .week-intro { margin-top: 24px; }
-.week-title { display: flex; align-items: baseline; gap: 10px; }
-.week-title h2 { margin: 0; font-size: 13px; }
-.week-range { font-size: 13px; color: var(--muted); }
-.week-hint { margin: 4px 0 0; font-size: 13px; color: var(--muted); line-height: 1.4; }
+/* ---------- The Workouts tab: Next Up, today's cardio, the cycle ----------
+   Three text sizes only: 18px (workout titles), 15px (buttons), 13px (everything secondary). */
+.week-hint { margin: 0; font-size: 13px; color: var(--muted); line-height: 1.4; }
+.banner + .next-label { margin-top: 24px; }
 
-.week { margin-bottom: 22px; }
-.day-block {
-  position: relative;
-  margin: 0 -10px;
-  padding: 4px 10px 6px 7px;
-  border-left: 3px solid transparent;
-  border-radius: 0 var(--radius) var(--radius) 0;
-  transition: background-color 0.15s;
+/* Next Up: the next workout in the cycle, with a green edge and Start under it */
+.next-up {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-left: 3px solid var(--accent);
+  background: rgba(74, 222, 128, 0.06);
 }
-/* Each day after Monday starts with a thin line. It sits close above its own day and far from
-   the day before, so each day reads as its own block. */
-.day-block + .day-block { margin-top: 33px; }
-.day-block + .day-block::before {
-  content: '';
-  position: absolute;
-  top: -5px;
-  left: 7px;
-  right: 10px;
-  height: 1px;
-  background: var(--border);
-}
-.day-head {
+.next-up.is-empty { border-left-color: var(--border); background: var(--surface); }
+.next-up .workout-open { min-height: 0; }
+.next-up .day-meta { display: block; font-size: 13px; color: var(--muted); margin-top: 3px; }
+.next-rest { display: block; margin-top: 4px; font-size: 13px; font-weight: 600; color: var(--rest); }
+
+/* The cycle: numbered workout cards and small rest day rows; Edit / Done on the right of its heading */
+.cycle-head { display: flex; align-items: center; justify-content: space-between; margin: 18px 0 0; }
+.cycle-head h2 { margin: 0; }
+.cycle-head .text-btn { width: auto; min-height: 44px; padding: 0 4px; }
+.cycle-num { flex: 0 0 auto; min-width: 16px; font-size: 13px; font-weight: 600; color: var(--muted); text-align: center; }
+.cycle-item + .cycle-item { margin-top: 8px; }
+.cycle-item.is-next { box-shadow: inset 0 0 0 1px var(--accent); }
+.cycle-rest {
   display: flex;
   align-items: center;
-  gap: 8px;
-  min-height: 36px;
-  margin-bottom: 6px;
+  gap: 10px;
+  min-height: 44px;
+  padding: 0 12px 0 18px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
 }
-.day-head-name { font-size: 18px; font-weight: 600; }
-.day-head-date { font-size: 13px; color: var(--muted); white-space: nowrap; }
+.cycle-rest .rest-word { flex: 1; }
+.cycle-remove { font-size: 16px; }
+.cycle-add { margin-top: 10px; }
+.cycle-add .btn { flex: 1; }
+.cycle-tip { margin: 8px 0 0; font-size: 13px; }
+.cycle-rest.is-dragging { opacity: 0.3; }
 
-/* Today: a green "Today" pill, a green left edge and a slightly lighter background */
-.day-block.is-today { border-left-color: var(--accent); background: rgba(74, 222, 128, 0.05); }
+/* "Cardio after your lift", above Finish on a workout */
+.after-lift { margin-top: 18px; }
+body.is-reordering .after-lift { display: none; }
 
-/* The small "+ Add a workout to train this day" link on an empty (rest) day */
-.day-add {
-  min-height: 32px;
-  padding: 0 2px;
-  background: none;
-  border: none;
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 500;
-}
-.day-add:active { color: var(--text); }
+.goal-note { margin: 8px 0 0; font-size: 13px; }
 
 /* Workout cards: solid card, bold title, dim line under it, thin green strip on the left */
 .workout-card {
@@ -334,10 +328,7 @@ button, .btn {
   width: 3px;
   background: var(--accent);
 }
-.workout-card.is-partial::before { background: var(--partial); }
-.workout-card.is-missed::before { background: var(--missed); }
 .workout-card + .workout-card { margin-top: 8px; }
-/* The left side of a card: the workout, with Catch up under it when there is one */
 .workout-body { flex: 1; min-width: 0; }
 .workout-open {
   display: block;
@@ -368,26 +359,8 @@ button, .btn {
 }
 .icon-btn:active { color: var(--text); background: var(--surface-2); }
 
-/* Finished this week: a green "✓ Done" (the card stays full brightness) */
-.done-mark { color: var(--accent); font-weight: 600; }
-
-/* A workout on a day that has passed this week with sets missing: amber "Partial · 12/15 sets"
-   or muted red "Missed · 0/15 sets", and a small Catch up button under it on the left */
-.state-partial { color: var(--partial); font-weight: 600; }
-.state-missed { color: var(--missed); font-weight: 600; }
-.catch-up-btn { margin-top: 4px; min-height: 36px; padding: 0 10px; font-size: 13px; font-weight: 600; }
-
-/* A quick workout finished this week: the same card with blue instead of green, and no pencil */
-.workout-card.is-quick::before { background: var(--quick); }
-.workout-card.is-quick .done-mark { color: var(--quick); }
-.workout-card.is-quick .workout-open { flex: 1; min-width: 0; width: auto; min-height: 44px; }
-
-/* Rest days (no workouts): shorter, with a muted name, the small "Rest day" label and the add link */
+/* A rest day reminder in the cycle */
 .rest-word { color: var(--rest); font-size: 13px; font-weight: 600; }
-.day-block.is-rest { padding-bottom: 0; }
-.day-block.is-rest .day-head { min-height: 30px; margin-bottom: 0; }
-.day-block.is-rest .day-head-name { color: var(--muted); }
-
 
 /* Dragging a workout */
 .drag-ghost {
@@ -431,12 +404,9 @@ body.is-reordering .drag-ghost .icon-btn { display: none; }
 #plan-list .preview-ex #exercise-panel > .card { padding: 0; border: none; background: none; }
 #exercise-panel { scroll-margin-top: calc(var(--topbar-h) + env(safe-area-inset-top) + 12px); }
 .plan-end { margin-top: 12px; }
-/* Sets of this workout made up by a quick workout this week */
-.made-up-note { margin: 0 0 12px; font-size: 14px; color: var(--quick); font-weight: 600; }
 .start-row.is-empty { justify-content: flex-end; }
 .sets-step { flex: 0 0 56px; padding: 0; font-size: 22px; font-weight: 600; }
 .row.range-row #ex-sets { flex: 1; min-width: 0; text-align: center; }
-.day-block.is-drop-target { background: #16331f; border-left-color: var(--accent); opacity: 1; }
 body.is-dragging { -webkit-user-select: none; user-select: none; }
 
 /* The + button for a new workout, bottom right above the tab bar */
@@ -516,12 +486,6 @@ body.is-dragging { -webkit-user-select: none; user-select: none; }
 .btn-add-ex { margin-top: 4px; color: var(--text); font-weight: 600; }
 #quick-add-panel, #custom-form { scroll-margin-top: calc(var(--topbar-h) + env(safe-area-inset-top) + 12px); }
 
-/* "Missed this week" at the top of + Add exercise: small day headers, then each missed exercise */
-.missed-picker h3 { margin: 0 0 2px; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
-.missed-day { margin: 10px 0 4px; font-size: 13px; font-weight: 700; color: var(--text); }
-.missed-item .missed-sets { color: var(--partial); }
-.missed-picker + #quick-search { margin-top: 6px; }
-.ex-toggle .makeup-note { color: var(--partial); white-space: normal; }
 
 /* Day chips (Mon … Sun) on the new / edit workout screens */
 .weekday-pick { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
@@ -1167,12 +1131,6 @@ main.is-searching { padding-bottom: 100vh; }
 }
 .sets-row:active { opacity: 0.6; }
 .sets-row.is-muscle { min-height: 44px; font-size: 15px; }
-/* On the week, against the suggested range: red under it, green in it, blue over it, plain with none */
-.sets-row.is-low .sets-label, .sets-row.is-low .sets-num { color: var(--missed); font-weight: 600; }
-.sets-row.is-low .sets-bar i { background: var(--missed); }
-.sets-row.is-high .sets-bar i { background: var(--rest); }
-.sets-row.is-none .sets-bar i { background: var(--muted); }
-.sets-low { margin: 8px 0 4px; font-size: 14px; font-weight: 600; color: var(--missed); }
 .sets-row.is-changed .sets-label, .sets-row.is-changed .sets-num { color: var(--accent); font-weight: 600; }
 .sets-label { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .sets-bar { height: 6px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }

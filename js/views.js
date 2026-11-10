@@ -52,14 +52,6 @@ function nextWeightNote(ex) {
   return lbs ? `<span class="ex-sub next-weight">Try ${heavierText(lbs)} today</span>` : '';
 }
 
-// Why a workout on a passed day shows sets that weren't done in it: "9 sets made up by Hotel gym".
-function madeUpNote(workout) {
-  const madeUp = Object.entries(Streak.dayStates()[workout.id]?.madeUp || {});
-  if (!madeUp.length) return '';
-  const text = madeUp.map(([name, sets], i) => `${sets}${i ? '' : ` set${sets === 1 ? '' : 's'}`} ${i ? 'by' : 'made up by'} ${esc(name)}`).join(', ');
-  return `<p class="made-up-note">This week: ${text}</p>`;
-}
-
 // The column heading over the weight boxes. Dumbbell weights are per dumbbell, said quietly underneath.
 function weightHead(info, unit) {
   const label = Library.isRepsOnly(info.id) ? 'Added weight' : 'Weight';
@@ -108,7 +100,6 @@ function initials(name) {
 }
 
 const BACKUP_REMINDER_DAYS = 30;
-const LOW_NAMES_SHOWN = 4; // muscles named on the "Low this week" line before "and 3 more"
 
 // What the "i" next to the muscle map's caption says.
 const MAP_INFO = {
@@ -148,49 +139,45 @@ function setsRow(action, id, isOpen, label, fraction, sets, extraClass = '') {
     </button>`;
 }
 
-// Planned sets for the week or one day: a row with a bar for each muscle, under a small heading
-// for its group. Tapping a muscle shows the exercises behind its number.
-//   planned = Stats.weekPlannedSets() or dayPlannedSets()   open = Set of muscle ids that are expanded
-//   hideEmpty = leave out muscles with no sets (a single day, which would be full of zeros)
+// Sets per muscle (planned for the cycle or a workout, or logged in the last 7 days): a row with a
+// bar for each muscle, under a small heading for its group. Tapping a muscle shows the exercises
+// behind its number, each opening its workout (planned) or its log (logged).
+// All the bars share one scale (the most-trained muscle fills its bar), so any two can be compared.
+//   sets = Stats.cyclePlannedSets(), plannedSets([workout]) or actualSets()
+//   open = Set of muscle ids that are expanded
+//   hideEmpty = leave out muscles with no sets (a single workout, which would be full of zeros)
 //   changed = Set of muscle ids that just changed (shown in green)
-//   targets = compare each muscle with its suggested range for the week: red under it, green in it,
-//     blue over it, with a line at the top naming the low ones (Stats.targetState()).
-// Without targets (a single day), all the bars share one scale (the most-trained muscle fills its
-// bar), so any two can be compared.
-function plannedSetsTable(planned, open, { hideEmpty = false, changed = new Set(), targets = false } = {}) {
-  const { muscles, sources } = planned;
+//   table = which list this is (data-table), so app.js remembers its open rows separately
+//   empty = what it says when there's nothing at all
+function plannedSetsTable(sets, open, { hideEmpty = false, changed = new Set(), table = 'planned', empty = 'No exercises planned yet.' } = {}) {
+  const { muscles, sources } = sets;
   const values = Object.values(muscles);
-  if (!values.length) return '<p class="empty">No exercises planned yet.</p>';
+  if (!values.length) return `<p class="empty">${empty}</p>`;
   const scale = Math.max(...values);
-
-  const low = !targets ? [] : Object.keys(MUSCLES).filter(id => Stats.targetState(id, muscles[id] || 0).state === 'low').map(id => MUSCLES[id]);
-  const lowLine = low.length ? `
-    <p class="sets-low">Low this week: ${low.slice(0, LOW_NAMES_SHOWN).join(', ')}${low.length > LOW_NAMES_SHOWN ? ` and ${low.length - LOW_NAMES_SHOWN} more` : ''}</p>` : '';
 
   const blocks = MUSCLE_GROUPS.map(group => {
     const rows = Object.entries(group.muscles).filter(([id]) => !hideEmpty || muscles[id]).map(([id, name]) => {
-      const sets = muscles[id] || 0;
+      const count = muscles[id] || 0;
       const isOpen = open.has(id);
       const list = sources[id] || [];
       const detail = list.length
         ? `<ul class="sets-sources">${list.map(s => `
-            <li><button type="button" class="src-row" data-action="open-workout" data-id="${esc(s.workoutId)}">
+            <li><button type="button" class="src-row" data-action="${s.action}" data-id="${esc(s.id)}">
               <span class="src-name">${esc(s.name)}<span class="src-where">${esc(s.where)}</span></span>
               <span class="src-role is-${s.role}">${s.role}</span>
               <span class="src-num">${setsText(s.sets)}</span>
             </button></li>`).join('')}</ul>`
-        : '<p class="sets-none">No planned exercise trains this.</p>';
-      const target = targets ? Stats.targetState(id, sets) : null;
+        : `<p class="sets-none">${table === 'actual' ? 'Nothing logged trained this.' : 'No planned exercise trains this.'}</p>`;
       return `
         <div class="sets-block ${isOpen ? 'is-open' : ''}" data-block="${id}">
-          ${setsRow('toggle-muscle', id, isOpen, name, target ? target.fraction : sets / scale, sets,
-            `is-muscle ${target ? `is-${target.state}` : ''} ${changed.has(id) ? 'is-changed' : ''}`)}
+          ${setsRow('toggle-muscle', id, isOpen, name, count / scale, count,
+            `is-muscle ${changed.has(id) ? 'is-changed' : ''}`)}
           <div class="collapse"><div class="collapse-inner">${detail}</div></div>
         </div>`;
     }).join('');
     return rows ? `<p class="sets-heading">${group.name}</p>${rows}` : '';
   }).join('');
-  return `<div class="card sets-table">${lowLine}${blocks}</div>`;
+  return `<div class="card sets-table" data-table="${table}">${blocks}</div>`;
 }
 
 // The "i" by planned sets, and what it opens.
@@ -201,39 +188,37 @@ function setsInfoBox(open) {
   return `
     <div class="map-info" id="sets-info" ${open ? '' : 'hidden'}>
       <p>Each set counts as 1 set for an exercise's primary muscles, and ½ set for its secondary muscles.</p>
-      <p>On the week, each muscle is compared with a suggested range. It's only a suggestion: ${BIG_TARGET.join('–')} sets for bigger muscles, and ${SMALL_TARGET.join('–')} for smaller ones and each part of the chest. Red is under it, green is in it, and blue is over it.</p>
-      <p>Plain bars have no range, since those muscles usually get enough from other exercises.</p>
+      <p>The cycle is one time through it: a workout that's in it twice counts twice.</p>
     </div>`;
 }
 
 // The thin planned sets strip pinned to the bottom of a workout's screen. Closed: one line of
 // numbers, the muscles that just changed first (in green), then the most-trained. Tapping it opens
-// the full list, with a switch between the workout's day and the whole week.
-//   strip = { open, mode: 'day' or 'week', infoOpen }   openRows = Set of muscle ids expanded in its list
+// the full list, with a switch between this workout and the whole cycle.
+//   strip = { open, mode: 'workout' or 'cycle', infoOpen }   openRows = Set of muscle ids expanded in its list
 //   changed = Set of muscle ids changed by the last edit
 function plannedStrip(workout, strip, openRows, changed) {
-  const week = strip.mode === 'week';
-  const planned = week ? Stats.weekPlannedSets() : Stats.dayPlannedSets(workout.weekday);
+  const cycle = strip.mode === 'cycle';
+  const planned = cycle ? Stats.cyclePlannedSets() : Stats.plannedSets([workout]);
   const { muscles } = planned;
   const order = Object.keys(muscles).sort((a, b) => muscles[b] - muscles[a]).filter(id => !changed.has(id));
   const line = [...changed, ...order].map(id =>
     `<span class="${changed.has(id) ? 'is-changed' : ''}">${MUSCLES[id]} ${setsText(muscles[id] || 0)}</span>`).join(' · ');
-  const dayName = WEEKDAYS[workout.weekday];
   const segment = (id, label) => `
     <button type="button" class="segment ${strip.mode === id ? 'is-active' : ''}" data-action="strip-mode" data-id="${id}"
       aria-pressed="${strip.mode === id}">${label}</button>`;
   return `
     <div class="sets-strip ${strip.open ? 'is-open' : ''}" id="sets-strip">
       <button type="button" class="strip-bar" data-action="strip-toggle" aria-expanded="${strip.open}">
-        <strong>${week ? 'Week' : dayName.slice(0, 3)}</strong>
+        <strong>${cycle ? 'Cycle' : 'Workout'}</strong>
         <span class="strip-line">${line || 'No exercises planned yet'}</span>
         ${CHEVRON}
       </button>
       <div class="collapse"><div class="collapse-inner"><div class="strip-panel">
         <p class="strip-title">Planned sets ${setsInfoButton(strip.infoOpen)}</p>
         ${setsInfoBox(strip.infoOpen)}
-        <div class="segmented">${segment('day', dayName)}${segment('week', 'This week')}</div>
-        ${plannedSetsTable(planned, openRows, { hideEmpty: !week, changed, targets: week })}
+        <div class="segmented">${segment('workout', 'This workout')}${segment('cycle', 'Whole cycle')}</div>
+        ${plannedSetsTable(planned, openRows, { hideEmpty: !cycle, changed, table: 'strip' })}
       </div></div></div>
     </div>`;
 }
@@ -426,14 +411,14 @@ function logDayCard(entries, key, timed, bw) {
     </div>`;
 }
 
-// A day's cardio on the week: small checkbox rows under its workouts. An unchecked row stays plain,
-// even on a passed day. Tapping one logs it; a checked one opens to change it or uncheck it.
-function cardioRows(weekday) {
-  const rows = Cardio.rowsFor(weekday).map(({ day, plan, entry }) => {
+// Cardio checkbox rows (today's on the Workouts tab, or "after every lift" at the end of a workout).
+// rows = Cardio.rowsFor() or afterLiftRows(). Tapping an unchecked one logs it; a checked one opens
+// to change it or uncheck it.
+function cardioRows(rows) {
+  const html = rows.map(({ day, plan, entry }) => {
     const item = entry || plan;
-    const canCheck = entry || Cardio.canCheck(day);
-    const action = entry ? 'cardio-entry' : canCheck ? 'cardio-check' : 'cardio-future';
-    const id = entry ? entry.id : canCheck ? `${plan.id}|${day}` : weekday;
+    const action = entry ? 'cardio-entry' : 'cardio-check';
+    const id = entry ? entry.id : `${plan.id}|${day}`;
     return `
       <button type="button" class="cardio-row ${entry ? 'is-checked' : ''}" data-action="${action}" data-id="${esc(id)}"
         role="checkbox" aria-checked="${Boolean(entry)}">
@@ -444,25 +429,13 @@ function cardioRows(weekday) {
         </span>
       </button>`;
   }).join('');
-  return rows ? `<div class="cardio-rows">${rows}</div>` : '';
-}
-
-// Seven tappable day chips (Mon … Sun) as radio buttons named `name`, with `selected` checked.
-function weekdayPicker(name, selected) {
-  return `
-    <div class="weekday-pick" role="radiogroup">
-      ${WEEKDAYS.map((day, i) => `
-        <label class="weekday-chip">
-          <input type="radio" name="${name}" value="${i}" ${i === selected ? 'checked' : ''}>
-          <span>${day.slice(0, 3)}</span>
-        </label>`).join('')}
-    </div>`;
+  return html ? `<div class="cardio-rows">${html}</div>` : '';
 }
 
 // The weekly goal: chips 1 to 7, in the same style as the day chips.
 function goalPicker(name, selected) {
   return `
-    <div class="weekday-pick" role="radiogroup" aria-label="Days a week">
+    <div class="weekday-pick" role="radiogroup" aria-label="Workouts a week">
       ${[1, 2, 3, 4, 5, 6, 7].map(n => `
         <label class="weekday-chip">
           <input type="radio" name="${name}" value="${n}" ${n === selected ? 'checked' : ''}>
@@ -475,7 +448,7 @@ function goalPicker(name, selected) {
 const PENCIL_SVG = `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"
   stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>`;
 
-// This week's dates, Monday → Sunday: "Nov 2 – 8", or "Oct 26 – Nov 1" across two months.
+// A week's dates, Monday → Sunday: "Nov 2 – 8", or "Oct 26 – Nov 1" across two months.
 // (The week starts at 3 am Monday, the same as the streak.)
 function weekDates(now = Date.now()) {
   const start = weekStartOf(now);
@@ -484,13 +457,6 @@ function weekDates(now = Date.now()) {
   return start.getMonth() === end.getMonth()
     ? `${month(start)} ${start.getDate()} – ${end.getDate()}`
     : `${month(start)} ${start.getDate()} – ${month(end)} ${end.getDate()}`;
-}
-
-// The date of a weekday in this week, for its heading: "Oct 26".
-function dayDate(weekday, now = Date.now()) {
-  const start = weekStartOf(now);
-  const date = new Date(start.getFullYear(), start.getMonth(), start.getDate() + weekday);
-  return `${date.toLocaleDateString(undefined, { month: 'short' })} ${date.getDate()}`;
 }
 
 // The workout timer: "12:34" under an hour, "1:02:34" from an hour.
@@ -517,14 +483,13 @@ function formatHoursMinutes(ms) {
 
 const Views = {
 
-  // ---------- Home: the week, Monday to Sunday, with each day's workouts ----------
+  // ---------- Home: Next Up, today's cardio, the cycle and its planned sets ----------
   // openSets = which planned-sets rows are expanded (a Set of muscle ids); setsInfoOpen = its "i" is open
-  // A day with no workouts is a rest day automatically; tap a workout to start it (any day);
-  // hold a workout and drag it to move it to another day (see the drag code in app.js).
-  home(openSets, setsInfoOpen) {
+  // editing = the cycle's Edit is on (remove buttons and the add buttons show)
+  // Next Up is the workout after the one you did last (Store.nextUp()). Tap any workout in the cycle
+  // to do it out of order; hold and drag one to change the order (see the drag code in app.js).
+  home(openSets, setsInfoOpen, editing) {
     const draftWorkout = Store.draftWorkout();
-    const today = todayWeekday();
-    const thisWeek = weekKey(Date.now());
 
     const resume = draftWorkout ? `
       <div class="card banner stack">
@@ -532,77 +497,73 @@ const Views = {
         <button class="btn btn-primary" data-action="${draftWorkout.quick ? 'resume-quick' : 'open-workout'}" data-id="${draftWorkout.id}">Resume</button>
       </div>` : '';
 
-    // Quick workouts finished this week, on the day they were finished (a workout just after
-    // midnight belongs to the day before, like the streak's 3 am day change). Blue "✓ Done" cards;
-    // tapping one opens it in Past workouts. They aren't in the plan, so next week they're gone.
-    const quickOn = WEEKDAYS.map(() => []);
-    for (const s of Store.data.sessions) {
-      const time = new Date(s.date).getTime();
-      if (s.quick && weekKey(time) === thisWeek) quickOn[daysPassed(time)].push(s);
-    }
-    const quickCard = s => `
-      <div class="card workout-card is-quick">
-        <button class="workout-open" data-action="open-session" data-id="${esc(s.id)}">
-          <span class="workout-name">${esc(s.workoutName)}</span>
-          <span class="day-meta">Quick · ${s.exercises.length} exercise${s.exercises.length === 1 ? '' : 's'} · <span class="done-mark">✓ Done</span></span>
+    // "6 exercises · last done Mon, Nov 3"
+    const meta = w => {
+      const last = Store.lastSessionFor(w.id);
+      const count = w.exercises.length;
+      return `${count} exercise${count === 1 ? '' : 's'} · ${last ? `last done ${formatDate(last.date)}` : 'not done yet'}`;
+    };
+
+    // Next Up: the next workout in the cycle, with Start (unless a workout is already in progress:
+    // the banner above resumes that one).
+    const next = Store.nextUp();
+    const nextUp = next ? `
+      <h2 class="next-label">Next up</h2>
+      <div class="card next-up">
+        <button class="workout-open" data-action="open-slot" data-id="${esc(next.item.id)}">
+          <span class="workout-name">${esc(next.workout.name)}</span>
+          <span class="day-meta">${meta(next.workout)}</span>
+          ${next.restBefore ? '<span class="next-rest">Rest day planned before this one</span>' : ''}
         </button>
+        ${draftWorkout ? '' : `<button type="button" class="btn btn-primary" data-action="start-workout"
+          data-id="${esc(next.workout.id)}" data-slot="${esc(next.item.id)}" ${next.workout.exercises.length ? '' : 'disabled'}>Start workout</button>`}
+      </div>` : `
+      <div class="card next-up is-empty">
+        <p class="week-hint">Tap + to create your first workout. Your workouts make a cycle you go through in order, as many days a week as you like.</p>
       </div>`;
 
-    // Workouts on days that have passed this week: done, partial or missed (Streak.dayStates()).
-    const states = Streak.dayStates();
+    // Today's cardio: planned on today's weekday, and anything logged today.
+    const cardio = cardioRows(Cardio.rowsFor());
 
-    const days = WEEKDAYS.map((dayName, weekday) => {
-      const rest = Store.isRestDay(weekday);
-      const workouts = Store.workoutsOn(weekday);
-      const cards = workouts.map(w => {
-        const last = Store.lastSessionFor(w.id);
-        const count = w.exercises.length;
-        const state = states[w.id];
-        // A passed day's workout: "✓ Done" (with "caught up Wed" if it was made up later),
-        // amber "Partial · 12/15 sets" or red "Missed · 0/15 sets" (both with Catch up).
-        // Otherwise: finished this week → "✓ Done", or when it was last done.
-        const doneThisWeek = last && weekKey(new Date(last.date).getTime()) === thisWeek;
-        let when;
-        if (state && state.state !== 'done') {
-          const label = state.state === 'partial' ? 'Partial' : 'Missed';
-          when = ` · <span class="state-${state.state}">${label} · ${state.done}/${state.planned} sets</span>`;
-        } else if (state || doneThisWeek) {
-          when = ` · <span class="done-mark">✓ Done${state?.caughtUp ? ` · caught up ${state.caughtUp}` : ''}</span>`;
-        } else {
-          when = last ? ` · last ${formatDate(last.date)}` : '';
-        }
-        const catchUp = state && state.state !== 'done'
-          ? `<button type="button" class="btn btn-small catch-up-btn" data-action="catch-up" data-id="${w.id}">Catch up</button>` : '';
-        // The left strip follows the state: amber for Partial, red for Missed, otherwise green.
-        const stripClass = state && state.state !== 'done' ? `is-${state.state}` : '';
+    // The cycle, in order. The next one is marked; rest days are small reminders.
+    const remove = item => (editing ? `
+      <button type="button" class="icon-btn cycle-remove" data-action="cycle-remove" data-id="${esc(item.id)}"
+        aria-label="Remove from cycle">✕</button>` : '');
+    const items = Store.data.cycle.map((item, i) => {
+      if (item.kind === 'rest') {
         return `
-          <div class="card workout-card ${stripClass}" data-workout="${w.id}">
-            <div class="workout-body">
-              <button class="workout-open" data-action="open-workout" data-id="${w.id}">
-                <span class="workout-name">${esc(w.name)}</span>
-                <span class="day-meta">${count} exercise${count === 1 ? '' : 's'}${when}</span>
-              </button>
-              ${catchUp}
-            </div>
+          <div class="cycle-item cycle-rest" data-cycle-item="${esc(item.id)}">
+            <span class="cycle-num">${i + 1}</span>
+            <span class="rest-word">Rest day</span>
+            ${remove(item)}
           </div>`;
-      }).join('');
-      // An empty day is a rest day: its label, and a small link to add a workout (making it a training day).
-      const empty = `
-        <button type="button" class="day-add" data-action="new-workout-on" data-id="${weekday}">+ Add a workout to train this day</button>`;
-      const cardio = cardioRows(weekday);
+      }
+      const w = Store.getWorkout(item.workoutId);
+      const isNext = next && next.item === item;
       return `
-        <section class="day-block ${rest ? 'is-rest' : ''} ${weekday === today ? 'is-today' : ''}" data-weekday="${weekday}">
-          <div class="day-head">
-            <span class="day-head-name">${dayName}</span>
-            <span class="day-head-date">${dayDate(weekday)}</span>
-            ${weekday === today ? '<span class="tag tag-today">Today</span>' : ''}
-            ${rest ? '<span class="rest-word">Rest day</span>' : ''}
+        <div class="card workout-card cycle-item ${isNext ? 'is-next' : ''}" data-cycle-item="${esc(item.id)}">
+          <span class="cycle-num">${i + 1}</span>
+          <div class="workout-body">
+            <button class="workout-open" data-action="open-slot" data-id="${esc(item.id)}">
+              <span class="workout-name">${esc(w.name)}</span>
+              <span class="day-meta">${meta(w)}</span>
+            </button>
           </div>
-          ${cards}${quickOn[weekday].map(quickCard).join('')}
-          ${cardio}
-          ${cards ? '' : empty}
-        </section>`;
+          ${isNext ? '<span class="tag tag-today">Next</span>' : ''}
+          ${remove(item)}
+        </div>`;
     }).join('');
+    const cycle = Store.data.cycle.length ? `
+      <div class="cycle-head">
+        <h2>Your cycle</h2>
+        <button type="button" class="text-btn" data-action="cycle-edit">${editing ? 'Done' : 'Edit'}</button>
+      </div>
+      <div id="cycle-list">${items}</div>
+      ${editing ? `
+        <div class="row cycle-add">
+          <button type="button" class="btn" data-action="cycle-add-open">+ Add workout</button>
+          <button type="button" class="btn" data-action="cycle-add-rest">+ Add rest day</button>
+        </div>` : '<p class="muted cycle-tip">Tap a workout to do it out of order. Hold and drag to change the order.</p>'}` : '';
 
     return {
       title: 'GitFit',
@@ -610,25 +571,21 @@ const Views = {
       history: true,
       html: `
         ${resume}
-        <div class="week-intro">
-          <div class="week-title">
-            <h2>This week</h2>
-            <span class="week-range">${weekDates()}</span>
-          </div>
-          ${Store.data.workouts.length ? '' : '<p class="week-hint">Tap + to create your first workout.</p>'}
-        </div>
-        <div class="week">${days}</div>
+        ${nextUp}
+        ${cardio ? `<h2>Today's cardio</h2>${cardio}` : ''}
+        ${cycle}
 
-        <h2>Planned sets per week ${setsInfoButton(setsInfoOpen)}</h2>
-        ${setsInfoBox(setsInfoOpen)}
-        ${plannedSetsTable(Stats.weekPlannedSets(), openSets, { targets: true })}
+        ${Store.data.workouts.length ? `
+          <h2>Planned sets per cycle ${setsInfoButton(setsInfoOpen)}</h2>
+          ${setsInfoBox(setsInfoOpen)}
+          ${plannedSetsTable(Stats.cyclePlannedSets(), openSets)}` : ''}
 
         <div class="fab-menu" id="fab-menu" aria-hidden="true">
           <button type="button" class="fab-option" data-action="new-workout">
-            <strong>New workout</strong><span>Add a workout to your week</span>
+            <strong>New workout</strong><span>Add a workout to your cycle</span>
           </button>
           <button type="button" class="fab-option is-quick" data-action="quick-start">
-            <strong>Quick workout</strong><span>A one-off, logged but not added to your week</span>
+            <strong>Quick workout</strong><span>A one-off, logged but not added to your cycle</span>
           </button>
           <button type="button" class="fab-option" data-action="add-cardio">
             <strong>Add cardio</strong><span>Log a walk, run, ride or hike, on any past date</span>
@@ -643,7 +600,7 @@ const Views = {
   },
 
   // ---------- New workout (the + button), or a copy of one ----------
-  // form = { name, weekday, copyFrom (workout id, or null) }
+  // form = { name, copyFrom (workout id, or null) }. Either way it goes at the end of the cycle.
   newWorkout(form) {
     const source = form.copyFrom && Store.getWorkout(form.copyFrom);
     const count = source ? source.exercises.length : 0;
@@ -654,8 +611,7 @@ const Views = {
         <form id="new-workout-form" class="stack" autocomplete="off">
           <h2>Title</h2>
           <input id="new-workout-name" name="name" value="${esc(form.name)}" placeholder="e.g. Push, Legs, Upper (arm focus)" required>
-          <h2>Day</h2>
-          ${weekdayPicker('new-workout-day', form.weekday)}
+          <p class="muted">It goes at the end of your cycle. You can drag it to another place after.</p>
           ${source ? `<p class="muted">Copies all ${count} exercise${count === 1 ? '' : 's'} from ${esc(source.name)}. The copy is its own workout: changing one won't change the other.</p>` : ''}
           <button type="submit" class="btn btn-primary">${source ? 'Create copy' : 'Create workout'}</button>
         </form>`,
@@ -672,9 +628,9 @@ const Views = {
     return this.exercisePicker(picker, editing, canClose);
   },
 
-  // Move an exercise to another workout: its other workouts, in week order.
+  // Move an exercise to another workout: its other workouts, in cycle order.
   moveExercisePicker(exercise) {
-    const others = Store.data.workouts.filter(w => !w.exercises.includes(exercise)).sort((a, b) => a.weekday - b.weekday);
+    const others = [...new Set(Store.cycleWorkouts())].filter(w => !w.exercises.includes(exercise));
     return `
       <div class="card stack">
         <p class="muted move-title">Move to:</p>
@@ -682,14 +638,36 @@ const Views = {
           ${others.map(w => `
             <button type="button" class="lib-item" data-action="move-confirm" data-id="${esc(w.id)}">
               <span class="lib-name">${esc(w.name)}</span>
-              <span class="lib-meta">${WEEKDAYS[w.weekday]}</span>
+              <span class="lib-meta">${w.exercises.length} exercise${w.exercises.length === 1 ? '' : 's'}</span>
             </button>`).join('')}
         </div>
         <button type="button" class="btn" data-action="move-cancel">Cancel</button>
       </div>`;
   },
 
-  // The title, day, Copy and Delete of a workout (the pencil at the top of its screen).
+  // "+ Add workout" on the cycle (with Edit on): one of your workouts again, or a new one.
+  cycleAddPicker() {
+    const room = Store.cycleHasRoom();
+    const workouts = [...new Set(Store.cycleWorkouts())];
+    return `
+      <div class="card notice stack" role="dialog" aria-label="Add a workout to the cycle">
+        <h2>Add to your cycle</h2>
+        ${room ? `
+          <p class="muted move-title">One of your workouts again (the same workout, not a copy):</p>
+          <div class="lib-results">
+            ${workouts.map(w => `
+              <button type="button" class="lib-item" data-action="cycle-add-workout" data-id="${esc(w.id)}">
+                <span class="lib-name">${esc(w.name)}</span>
+                <span class="lib-meta">${w.exercises.length} exercise${w.exercises.length === 1 ? '' : 's'}</span>
+              </button>`).join('')}
+          </div>
+          <button type="button" class="btn btn-primary" data-action="new-workout">+ New workout</button>`
+          : `<p class="muted">Your cycle has ${MAX_CYCLE_WORKOUTS} workouts, the most it can hold. Remove one to add another.</p>`}
+        <button type="button" class="btn" data-action="dialog-cancel">Cancel</button>
+      </div>`;
+  },
+
+  // The title, Copy and Delete of a workout (the pencil at the top of its screen).
   // It's a pop-up, so what's typed is saved by Done (see 'details-done' in app.js).
   workoutDetails(workout) {
     return `
@@ -697,10 +675,6 @@ const Views = {
         <div>
           <label for="workout-name">Title</label>
           <input id="workout-name" value="${esc(workout.name)}" placeholder="e.g. Push, Legs, Upper (arm focus)" autocomplete="off">
-        </div>
-        <div>
-          <label>Day</label>
-          ${weekdayPicker('workout-day', workout.weekday)}
         </div>
         <button type="button" class="btn btn-primary" data-action="details-done">Done</button>
         <button type="button" class="btn" data-action="copy-workout" data-id="${workout.id}">Copy workout</button>
@@ -854,31 +828,10 @@ const Views = {
         + ${MUSCLES[id]} <span class="chip-group">${MUSCLE_GROUP_OF[id]}</span></button>`).join('');
   },
 
-  // "Missed this week" at the top of a quick workout's + Add exercise: planned exercises from
-  // days that have passed that still have sets missing, under "Tue · Pull" headers.
-  // Tapping one adds it with its missing sets and target reps. Nothing missed → nothing shown.
-  missedPicker() {
-    const missed = Store.missedThisWeek();
-    if (!missed.length) return '';
-    const groups = missed.map(w => `
-      <div class="missed-day">${WEEKDAYS[w.weekday].slice(0, 3)} · ${esc(w.name)}</div>
-      ${w.exercises.map(e => `
-        <button type="button" class="lib-item missed-item" data-action="quick-missed"
-          data-id="${esc(e.makeupFor.workoutId)}|${esc(e.makeupFor.exerciseId)}">
-          <span class="lib-name">${esc(Library.forExercise(e).name)}</span>
-          <span class="lib-meta missed-sets">${e.sets} set${e.sets === 1 ? '' : 's'} missed</span>
-        </button>`).join('')}`).join('');
-    return `
-      <div class="missed-picker">
-        <h3>Missed this week</h3>
-        ${groups}
-      </div>`;
-  },
-
   // ---------- A planned workout before it's started: look at it and change it, on one screen ----------
   // Shows what you did last time, each exercise's note and log. Each exercise has a pencil that
   // opens its sets & reps inside its card; hold and drag a card to change the order (app.js).
-  // The pencil at the top has the title, day, copy and delete. Start workout is what starts it
+  // The pencil at the top has the title, copy and delete. Start workout is what starts it
   // (and its timer). Dashed cards make it look different from the real thing.
   //   ui = { picker (the add/edit panel, see app.js), strip and stripRows (the planned sets strip),
   //          changed (muscles changed by the last edit) }
@@ -923,7 +876,6 @@ const Views = {
           ${hasExercises ? `<button type="button" class="btn btn-primary" data-action="start-workout" data-id="${workout.id}">Start workout</button>` : ''}
           <button type="button" class="icon-btn" data-action="workout-details" data-id="${workout.id}" aria-label="Edit ${esc(workout.name)}">${PENCIL_SVG}</button>
         </div>
-        ${madeUpNote(workout)}
         <div id="plan-list">${cards}</div>
         <div class="plan-end">
           ${adding ? `<h2>Add exercise</h2><div id="exercise-panel">${this.exercisePanel(picker, null, hasExercises)}</div>`
@@ -1030,10 +982,6 @@ const Views = {
       }
 
       const plannedName = swapped ? Library.forExercise(ex).name : '';
-      // A quick workout exercise added to make up a missed one: which day and workout.
-      const makeupWorkout = ex.makeupFor && Store.getWorkout(ex.makeupFor.workoutId);
-      const makeupNote = ex.makeupFor
-        ? `<span class="ex-sub makeup-note">Catching up${makeupWorkout ? ` ${WEEKDAYS[Streak.dayStates()[makeupWorkout.id]?.weekday ?? makeupWorkout.weekday].slice(0, 3)} · ${esc(makeupWorkout.name)}` : ''}</span>` : '';
       return `
         <div class="card workout-ex ${isOpen ? 'is-open' : ''}" id="ex-${ex.id}" ${ex.today ? '' : `data-plan-ex="${ex.id}"`}>
           <button class="ex-toggle" data-action="toggle-exercise" data-id="${ex.id}" aria-expanded="${isOpen}">
@@ -1042,7 +990,6 @@ const Views = {
               <span class="ex-title">${esc(info.name)}</span>
               ${swapped ? `<span class="ex-sub swap-note">Swapped for today · planned: ${esc(plannedName)}</span>` : ''}
               ${ex.today ? '<span class="ex-sub swap-note">Added for today only</span>' : ''}
-              ${makeupNote}
               <span class="ex-sub">${lastSummary(last, timed, bw)}</span>
               ${nextWeightNote(ex)}
             </span>
@@ -1061,10 +1008,10 @@ const Views = {
     const quickTop = quick ? `
       <input id="quick-name" class="quick-name" value="${esc(workout.name)}" placeholder="Quick workout"
         autocomplete="off" aria-label="Workout title">
-      ${workout.exercises.length ? '' : '<p class="muted quick-hint">Add the exercises you do as you go. This workout won\'t be added to your week.</p>'}` : '';
+      ${workout.exercises.length ? '' : '<p class="muted quick-hint">Add the exercises you do as you go. This workout won\'t be added to your cycle or count toward your streak.</p>'}` : '';
     const quickBottom = quickAdd.creating ? this.customExerciseForm(picker, 'Save and add') : quickAdd.open ? `
       <div class="card stack" id="quick-add-panel">
-        ${quick ? this.missedPicker() : '<p class="muted add-today-note">Just for today: your plan stays the same.</p>'}
+        ${quick ? '' : '<p class="muted add-today-note">Just for today: your plan stays the same.</p>'}
         <input type="search" id="quick-search" value="${esc(quickAdd.query)}"
           placeholder="Search name, muscle or equipment" autocomplete="off" aria-label="Search exercises to add">
         <div id="quick-results" class="lib-results">${this.libraryResults(quickAdd.query, 'quick-pick')}</div>
@@ -1072,6 +1019,9 @@ const Views = {
         <button type="button" class="btn" data-action="quick-add-cancel">Cancel</button>
       </div>` : `
       <button type="button" class="btn btn-add-ex" data-action="quick-add-open">+ Add exercise${quick ? '' : ' for today'}</button>`;
+
+    // "After every lift" cardio, to check off at the end (planned on the Cardio tab).
+    const afterLift = cardioRows(Cardio.afterLiftRows());
 
     // The strip that says you're really in a workout, with the sets logged so far.
     const totals = Store.draftTotals();
@@ -1092,6 +1042,7 @@ const Views = {
         <div id="exercise-list">${planCards}</div>
         ${todayCards}
         ${quickBottom}
+        ${afterLift ? `<div class="after-lift"><h2>Cardio after your lift</h2>${afterLift}</div>` : ''}
         <div class="finish-bar stack">
           <button class="btn btn-primary" data-action="finish">Finish workout</button>
           <button class="btn btn-danger" data-action="discard">Discard workout</button>
@@ -1102,7 +1053,8 @@ const Views = {
 
   // ---------- Profile: avatar + name. Settings open from the gear in the top bar. ----------
   // map = the muscle map: { mode ('growth' or 'level'), muscle (the tapped muscle or null), infoOpen }
-  profile(map) {
+  // openActual = which rows of "Actual sets, last 7 days" are expanded (a Set of muscle ids)
+  profile(map, openActual) {
     const s = Store.data.settings;
     const name = profileName();
     const height = Units.showHeight(s.heightIn);
@@ -1126,6 +1078,8 @@ const Views = {
         <a class="btn" href="#/log">Log</a>
         ${this.bodyWeightCard()}
         ${this.muscleMap(map)}
+        <h2>Actual sets, last 7 days</h2>
+        ${plannedSetsTable(Stats.actualSets(), openActual, { table: 'actual', empty: 'Sets you log will show here, counted over the last 7 days.' })}
       `,
     };
   },
@@ -1192,7 +1146,7 @@ const Views = {
         <h2>Planned cardio</h2>
         ${plans.length
           ? `<div class="card custom-list cardio-plan-list">${plans.map(planRow).join('')}</div>`
-          : '<p class="muted cardio-plan-note">Anything you add here shows as a checkbox under its days on the week.</p>'}
+          : '<p class="muted cardio-plan-note">Planned cardio shows as a checkbox: on the Workouts tab on its days, or at the end of every workout if you pick After every lift.</p>'}
         <button type="button" class="btn" data-action="cardio-plan-new">+ New planned cardio</button>
 
         ${this.cardioGraph(state)}
@@ -1294,8 +1248,8 @@ const Views = {
       <div>
         <label>Days</label>
         <label class="weekday-chip cardio-lifting-chip">
-          <input type="checkbox" id="cardio-lifting" ${form.everyLiftingDay ? 'checked' : ''}>
-          <span>Every lifting day</span>
+          <input type="checkbox" id="cardio-lifting" ${form.afterLift ? 'checked' : ''}>
+          <span>After every lift</span>
         </label>
         <div class="weekday-pick">
           ${WEEKDAYS.map((day, i) => `
@@ -1431,8 +1385,8 @@ const Views = {
               </button>`).join('')}
           </div>` : ''}
         <div class="card summary-week">
-          <div class="week-sets"><span>Days this week</span><strong>${week.days} / ${week.goal}</strong></div>
-          <div class="week-bar ${week.hit ? 'is-full' : ''}"><i style="width:${Math.min(100, week.days / week.goal * 100)}%"></i></div>
+          <div class="week-sets"><span>Workouts this week</span><strong>${week.workouts} / ${week.goal}</strong></div>
+          <div class="week-bar ${week.hit ? 'is-full' : ''}"><i style="width:${Math.min(100, week.workouts / week.goal * 100)}%"></i></div>
         </div>
         <div class="finish-bar">
           <button type="button" class="btn btn-primary" data-action="close-summary">Close</button>
@@ -1459,34 +1413,20 @@ const Views = {
     };
   },
 
-  // ---------- The one-time question for data from before the weekly goal existed ----------
-  // Tapping a number saves it and carries on (see the change listener in app.js).
-  goalPrompt() {
-    return {
-      title: 'Weekly goal',
-      back: null,
-      html: `
-        <p class="setup-intro">Your streak now counts days instead of sets. A week counts when you work out on enough different days. Any workout counts, and two on the same day count as one.</p>
-        <h2>How many days a week are you trying to go?</h2>
-        <div class="card">${goalPicker('goal-prompt', null)}</div>
-        <p class="muted setup-tip">You can change this any time in Settings.</p>
-      `,
-    };
-  },
-
   // ---------- Weekly streak (on Profile) ----------
   // The flame is gray until this week is hit, then green.
   streakCard() {
     const { started, start, totals, week, recent } = Streak.summary();
-    const fill = Math.min(100, week.days / week.goal * 100);
+    const fill = Math.min(100, week.workouts / week.goal * 100);
     const startLabel = start
       ? fromDayKey(start).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) : '';
     const headline = started ? `${totals.current}-week streak`
       : start ? `Streak starts ${startLabel}` : 'Log a workout to start a streak';
-    const left = week.goal - week.days;
+    const left = week.goal - week.workouts;
+    const plural = n => `workout${n === 1 ? '' : 's'}`;
     const sub = started
-      ? (week.hit ? 'This week is done 🔥' : `Work out ${left} more day${left === 1 ? '' : 's'} to hit this week`)
-      : start ? 'This week is practice' : `Your goal is ${week.goal} day${week.goal === 1 ? '' : 's'} a week`;
+      ? (week.hit ? 'This week is done 🔥' : `Do ${left} more ${plural(left)} to hit this week`)
+      : start ? 'This week is practice' : `Your goal is ${week.goal} ${plural(week.goal)} a week`;
 
     // How to earn the next freeze (one every WEEKS_PER_FREEZE weeks in a row).
     const toNext = WEEKS_PER_FREEZE - totals.current % WEEKS_PER_FREEZE;
@@ -1517,13 +1457,14 @@ const Views = {
         </div>
 
         <div class="week-sets">
-          <span>Days this week</span>
-          <strong>${week.days} / ${week.goal}</strong>
+          <span>Workouts this week</span>
+          <strong>${week.workouts} / ${week.goal}</strong>
         </div>
         <div class="week-bar ${week.hit ? 'is-full' : ''}" role="img"
-          aria-label="${week.days} of ${week.goal} days this week">
+          aria-label="${week.workouts} of ${week.goal} workouts this week">
           <i style="width:${fill}%"></i>
         </div>
+        ${week.nextGoal ? `<p class="earn-note">Your new goal of ${week.nextGoal} ${plural(week.nextGoal)} a week starts next week.</p>` : ''}
 
         <div class="streak-stats">
           <span>Best <strong>${totals.best}</strong></span>
@@ -1570,8 +1511,10 @@ const Views = {
   },
 
   // What happened to the streak while the app was closed (freeze used / streak ended).
-  // ---------- Past workouts: every finished workout, newest first ----------
-  history() {
+  // ---------- Past workouts: a calendar of the days you worked out, then every finished workout ----------
+  // The calendar is history only: nothing is planned on it. Tapping a day lists that day's workouts.
+  // state = { month ('YYYY-MM', null = this month), day (the day tapped, or null) }
+  history(state) {
     const today = dayKey(new Date());
     const yesterday = dayKey(new Date(Date.now() - 24 * 60 * 60 * 1000));
     const when = date => {
@@ -1612,10 +1555,29 @@ const Views = {
         </div>`;
     }).join('');
 
+    // The calendar: each day with a finished workout can be tapped. Days go by the date it was
+    // finished on the calendar (not the streak's 3 am day), like the exercise log's calendar.
+    const sessions = Store.data.sessions;
+    const logged = new Set(sessions.map(s => dayKey(s.date)));
+    const thisMonth = dayKey(new Date()).slice(0, 7);
+    const firstMonth = sessions.length ? dayKey(sessions[0].date).slice(0, 7) : thisMonth;
+    const day = logged.has(state.day) ? state.day : null;
+    const dayCard = day ? `
+      <div class="card log-day">
+        <p class="log-day-date">${fromDayKey(day).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</p>
+        <div class="stack log-day-links">
+          ${sessions.filter(s => dayKey(s.date) === day).map(s => `
+            <button type="button" class="btn btn-small" data-action="open-session" data-id="${esc(s.id)}">${esc(s.workoutName || 'Workout')}${s.quick ? ' · Quick' : ''} · ${plural(setCount(s), 'set')}</button>`).join('')}
+        </div>
+      </div>` : '';
+
     return {
       title: 'Past workouts',
       back: '#/',
-      html: html || '<p class="empty">No finished workouts yet.</p>',
+      html: `
+        ${logCalendar(state.month || thisMonth, logged, day, firstMonth, thisMonth, sessions.length ? '' : 'Days you work out will show here', 'history')}
+        ${dayCard}
+        ${html || '<p class="empty">No finished workouts yet.</p>'}`,
     };
   },
 
@@ -1820,7 +1782,7 @@ const Views = {
       return head(counted.length ? `${percent(average)} in ${Stats.GROWTH_WEEKS} weeks` : 'Not enough data') + countedRows + waitingRows;
     }
     // Nothing logged that trains it as a primary muscle: say so, and what's in the plan for it.
-    const planned = Stats.weekPlannedSets().sources[id] || [];
+    const planned = Stats.cyclePlannedSets().sources[id] || [];
     const secondary = planned.filter(s => s.role === 'secondary').map(s => s.name);
     const primary = planned.filter(s => s.role === 'primary').map(s => s.name);
     const named = names => esc(new Set(names).size > 1 ? `${names[0]} and others` : names[0]);
@@ -2066,11 +2028,12 @@ const Views = {
         </div>
       </div>
 
-      <h2>Weekly goal</h2>
+      <h2>Workouts per week</h2>
       <div class="card stack">
         <div>
-          <label>How many days a week are you trying to go?</label>
+          <label>How many workouts a week are you aiming for?</label>
           ${goalPicker('weeklyGoal', s.weeklyGoal)}
+          <p class="muted goal-note">Hit it to keep your streak going. Quick workouts don't count.${Store.data.streak.start ? ' A change starts next week.' : ''}</p>
         </div>
       </div>`;
   },

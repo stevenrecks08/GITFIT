@@ -282,7 +282,7 @@ const Library = {
   },
 
   // The muscle group (Chest, Shoulders, Back, Arms, Forearms, Core or Legs) an exercise
-  // belongs to, for makeup sets and swaps in the streak: the group most of its primary
+  // belongs to, for the muscle group chips in search: the group most of its primary
   // muscles are in. On a tie, the first primary muscle listed decides
   // (Deadlift: glutes + hamstrings + lower back → Legs; Hammer Curl: brachialis + brachioradialis → Arms).
   // null if it has no primary muscles.

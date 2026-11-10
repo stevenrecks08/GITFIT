@@ -7,9 +7,9 @@
 //
 // Shape of the saved data:
 // {
-//   version: 13,
+//   version: 14,
 //   settings: { name, units: 'imperial' | 'metric', heightIn, bodyWeightLbs, sex: 'male' | 'female' | null,
-//               weeklyGoal (days a week you're trying to go, 1 to 7, or null until you've picked),
+//               weeklyGoal (workouts a week you're aiming for, 1 to 7; a change counts from next week),
 //               setupDone (the first-time setup was finished or skipped),
 //               lastBackupAt (ISO, when Export was last used, or null) },
 //   bodyWeightLog: [ { day: 'YYYY-MM-DD', lbs } ],  // oldest first; one per day, for the Profile graph
@@ -18,52 +18,56 @@
 //     { id: 'custom-…', name, equipment, primary: [muscle ids], secondary: [muscle ids], custom: true,
 //       deleted (true once deleted: gone from search and workouts, kept so its past logs still have a name) }
 //   ],
-//   workouts: [            // your planned workouts; each sits on one weekday, any number per day
-//     { id, name (e.g. "Push"), weekday (0 = Monday … 6 = Sunday),
+//   workouts: [            // your workouts (every one is in the cycle at least once)
+//     { id, name (e.g. "Push"),
 //       exercises: [ { id, refId (library or custom exercise id), sets, repMin, repMax } ] }
 //   ],
-//   days: [                // always 7, Monday first. No longer used: a day with no workouts is
-//     { weekday, rest }    // a rest day automatically. Kept so older data and backups still match.
+//   cycle: [               // the order you do your workouts in, repeating (Push > Pull > Legs > Push …)
+//     { id, kind: 'workout', workoutId }   // a workout can be in it more than once (up to MAX_CYCLE_WORKOUTS)
+//     or { id, kind: 'rest' }              // a rest day reminder: Next Up skips it, it only shows in the list
 //   ],
 //   sessions: [            // one per finished workout, oldest first
-//     { id, workoutId, workoutName, date (ISO string, when Finish was tapped, or the last set's time
+//     { id, workoutId, workoutName, cycleItemId (the place in the cycle it was done as, or null),
+//       date (ISO string, when Finish was tapped, or the last set's time
 //                                         if "Use last set time" was picked for a workout left running),
 //       durationMs (how long it took, not counting pauses; missing on workouts saved before version 9),
-//       quick (true on a quick workout: a one-off, not in the plan; workoutId is null and plan is []),
-//       plan: [ { exerciseId, refId, sets } ],  // the workout's plan when it was logged (locks it for the week view)
+//       quick (true on a quick workout: a one-off, not in the cycle; workoutId is null and plan is []),
+//       plan: [ { exerciseId, refId, sets } ],  // the workout's plan when it was logged
 //       exercises: [ { exerciseId (the planned workout exercise it covers), refId, name, primary, secondary,
 //                      swappedFrom (the planned refId; only on exercises swapped for today),
 //                      targetSets, targetRepMin, targetRepMax,   // (not on quick workouts)
-//                      makeupFor: { workoutId, exerciseId }      // (quick workouts only: the missed
-//                                 // planned exercise it was added to make up, with its targetRepMin/Max)
+//                      makeupFor: { workoutId, exerciseId }      // (only on quick workouts from before
+//                                 // version 14: the missed exercise it made up; no longer used)
 //                      today (true on an exercise added for today only: not in the plan, no targets),
 //                      sets: [ { weight, reps } ] } ] }   // on a timed exercise (plank), reps = seconds, weight null
 //   ],
-//   draft: null or { workoutId, startedAt, entries: { [exerciseId]: [ { weight, reps, loggedAt?, extra? } ] },
+//   draft: null or { workoutId, cycleItemId (its place in the cycle, or null), startedAt,
+//                    entries: { [exerciseId]: [ { weight, reps, loggedAt?, extra? } ] },
 //                    swaps: { [exerciseId]: refId },  // exercises swapped for today only
 //                    added: [ { id, refId } ],        // exercises added for today only
 //                    pausedAt (ISO while the timer is paused, else null), pausedMs (earlier pauses) },
 //                    // loggedAt = when that set's reps were typed
 //          or, for a quick workout: { quick: true, workoutId: null, name, startedAt,
-//                    exercises: [ { id, refId, makeupFor?, repMin?, repMax? } ] (in the order added),
+//                    exercises: [ { id, refId } ] (in the order added),
 //                    entries, swaps: {} }
 //   streak: {              // the weekly streak; see streak.js
 //     start: 'YYYY-MM-DD' (Monday of the first tracked week) or null until a workout is logged,
 //     weeks: [ { week: 'YYYY-MM-DD' (its Monday), result: 'hit' | 'frozen' | 'missed',
-//                days (different days with a workout), goal (the weekly goal it was judged against) } ],
+//                workouts (finished workouts that week), goal (the weekly goal it was judged against) } ],
 //                // oldest first; changes only when a past workout is changed.
-//                // Weeks from before version 11 have logged and planned (sets) instead of days and goal,
-//                // may be 'empty', and are kept as they were.
-//     locks: { [week]: { [weekday]: { rest, workouts: [ { workoutId, plan } ] } } },  // each day of this week
-//                          // as it was when it passed (3 am the next morning), for the week view; see streak.js
+//                // Weeks from before version 14 have days (different days with a workout) instead of
+//                // workouts, and ones from before version 11 have logged and planned (sets) and no goal,
+//                // may be 'empty'. Both are kept as they were, never judged again.
+//     thisWeekGoal: { week, goal } or null,  // the goal this week started with (a change counts from next week)
 //     notices: [ text ]    // shown once, next time the app opens (freeze used / streak ended)
 //   },
-//   // Cardio only adds to your record: it never touches the streak, the week's states or planned sets.
+//   // Cardio only adds to your record: it never touches the streak, the cycle or planned sets.
 //   // Which numbers each type uses is in CARDIO_TYPES in cardio.js. Any number can be null on a plan.
-//   cardioPlans: [         // planned cardio, shown as checkboxes on the week
+//   cardioPlans: [         // planned cardio, shown as checkboxes
 //     { id, type: 'walk' | 'run' | 'bike' | 'hike' | 'other', name (may be empty: shows the type's name),
 //       seconds, miles, feet (elevation), mph, incline (%), where ('outside' | 'treadmill', runs only),
-//       weekdays: [0 = Monday … 6 = Sunday], everyLiftingDay (true = any day with a workout, instead of weekdays) }
+//       weekdays: [0 = Monday … 6 = Sunday] (shown on the Workouts tab on those days),
+//       afterLift (true = shown at the end of every workout instead of on weekdays) }
 //   ],
 //   cardioLog: [           // every cardio entry, in the order added (Cardio.newestFirst() sorts by date)
 //     { id, day: 'YYYY-MM-DD', planId (the plan it was checked from, or null for a one-off),
@@ -85,16 +89,18 @@
 // Version 12: a set's weight on a bodyweight exercise is now only the added weight (null = none).
 // Older sets held the body weight there, and none had added weight, so those weights are cleared.
 // Version 13 added cardio: cardioPlans and cardioLog. Older data starts with both empty.
+// Version 14 made workouts a repeating cycle instead of weekdays: each workout's weekday became its
+// place in the cycle (Monday first), and the unused days list and the week view's day locks went.
+// The streak now counts finished workouts (weeks judged before keep their days), the weekly goal
+// is workouts a week, and a cardio plan's everyLiftingDay became afterLift.
 
 const STORAGE_KEY = 'gitfit-data';
-const DATA_VERSION = 13;
+const DATA_VERSION = 14;
+
+// The most workouts a cycle can hold (rest day reminders don't count).
+const MAX_CYCLE_WORKOUTS = 7;
 
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-
-// Today's weekday with Monday = 0 (JavaScript's getDay() starts at Sunday = 0).
-function todayWeekday() {
-  return (new Date().getDay() + 6) % 7;
-}
 
 // To add a setting: give it a default here, a field in Views.settings(),
 // and a line in saveSettingsForm() in app.js.
@@ -104,7 +110,7 @@ const DEFAULT_SETTINGS = {
   heightIn: null,
   bodyWeightLbs: null,
   sex: null, // for strength standards: 'male' | 'female', or null until picked (no levels on the map)
-  weeklyGoal: null, // days a week, 1 to 7; picked in the first-time setup and changed in Settings
+  weeklyGoal: 4, // workouts a week, 1 to 7; picked in the first-time setup and changed in Settings
   setupDone: false,
   lastBackupAt: null,
 };
@@ -240,8 +246,7 @@ function daysToWorkouts(oldDays) {
 function normalize(data) {
   const oldDays = Array.isArray(data.days) ? data.days : [];
   const isOld = !Array.isArray(data.workouts);
-  const workouts = isOld ? daysToWorkouts(oldDays) : data.workouts;
-  const days = WEEKDAYS.map((_, weekday) => ({ weekday, rest: Boolean(oldDays.find(d => d.weekday === weekday)?.rest) }));
+  let workouts = isOld ? daysToWorkouts(oldDays) : data.workouts;
   const customExercises = Array.isArray(data.customExercises) ? data.customExercises : [];
   // Sample workouts (demo: true) came from a temporary demo file; they're dropped.
   const sessions = (Array.isArray(data.sessions) ? data.sessions : []).filter(s => !s.demo);
@@ -320,8 +325,34 @@ function normalize(data) {
   // Saved data from before sex could be left unpicked had 'male' as its default, so it keeps it.
   const settings = { ...DEFAULT_SETTINGS, ...(data.version != null ? { sex: 'male' } : {}), setupDone: data.version != null, ...data.settings };
 
-  // Version 11: anything but a whole number from 1 to 7 counts as not picked yet, and the app asks.
-  if (![1, 2, 3, 4, 5, 6, 7].includes(settings.weeklyGoal)) settings.weeklyGoal = null;
+  // The weekly goal is a whole number from 1 to 7. Anything else (data from before version 11 never
+  // had one) starts at the default.
+  if (![1, 2, 3, 4, 5, 6, 7].includes(settings.weeklyGoal)) settings.weeklyGoal = DEFAULT_SETTINGS.weeklyGoal;
+
+  // Version 14: the cycle. Workouts were on weekdays; they go into the cycle in week order
+  // (Monday first, and in their own order within a day), and their weekday is dropped.
+  let cycle = Array.isArray(data.cycle) ? data.cycle : null;
+  if (!cycle) {
+    workouts = workouts.map((w, i) => ({ w, i }))
+      .sort((a, b) => (a.w.weekday ?? 7) - (b.w.weekday ?? 7) || a.i - b.i)
+      .map(({ w }) => w);
+    cycle = workouts.map(w => ({ id: newId(), kind: 'workout', workoutId: w.id }));
+  }
+  for (const w of workouts) delete w.weekday;
+  // (A place in the cycle can't point at a workout that's gone.)
+  cycle = cycle.filter(item => item.kind === 'rest' || workouts.some(w => w.id === item.workoutId));
+
+  // Version 14: "every lifting day" cardio became "after every lift".
+  const cardioPlans = Array.isArray(data.cardioPlans) ? data.cardioPlans : [];
+  for (const plan of cardioPlans) {
+    plan.afterLift = Boolean(plan.afterLift || plan.everyLiftingDay);
+    delete plan.everyLiftingDay;
+    if (!Array.isArray(plan.weekdays) || plan.afterLift) plan.weekdays = [];
+  }
+
+  // Version 14: the week view's day locks are gone.
+  const streak = { start: null, weeks: [], notices: [], thisWeekGoal: null, ...data.streak };
+  delete streak.locks;
 
   // Version 10: the body weight graph starts from the weight already saved.
   const bodyWeightLog = Array.isArray(data.bodyWeightLog) ? data.bodyWeightLog : [];
@@ -336,14 +367,14 @@ function normalize(data) {
     exerciseNotes: data.exerciseNotes || {},
     customExercises,
     workouts,
-    days,
+    cycle,
     sessions,
-    // Version 6 added swaps to the draft, and the streak. Version 7 added streak locks.
+    // Version 6 added swaps to the draft, and the streak.
     // Version 8 added quick workouts (draft.quick, session.quick).
     draft,
-    streak: { start: null, weeks: [], notices: [], locks: {}, ...data.streak },
+    streak,
     // Version 13: cardio. Only what's listed here is kept, on loading and on importing a backup.
-    cardioPlans: Array.isArray(data.cardioPlans) ? data.cardioPlans : [],
+    cardioPlans,
     cardioLog: Array.isArray(data.cardioLog) ? data.cardioLog : [],
   };
 }
@@ -395,34 +426,62 @@ const Store = {
     this.save();
   },
 
-  // ---------- Workouts and days ----------
+  // ---------- Workouts and the cycle ----------
 
   getWorkout(id) {
     return this.data.workouts.find(w => w.id === id) || null;
   },
 
-  // A weekday's workouts, in the order they were put there.
-  workoutsOn(weekday) {
-    return this.data.workouts.filter(w => w.weekday === weekday);
+  getCycleItem(id) {
+    return this.data.cycle.find(item => item.id === id) || null;
   },
 
-  // A day with no workouts is a rest day; adding a workout makes it a training day.
-  isRestDay(weekday) {
-    return !this.workoutsOn(weekday).length;
+  // The workouts in the cycle, in order, a workout as many times as it's in it (rest days left out).
+  cycleWorkouts() {
+    return this.data.cycle.filter(item => item.kind === 'workout').map(item => this.getWorkout(item.workoutId));
   },
 
-  // The workouts that make up the week's plan (every workout, since each is on a day).
-  plannedWorkouts() {
-    return this.data.workouts;
+  // Is there room in the cycle for another workout?
+  cycleHasRoom() {
+    return this.cycleWorkouts().length < MAX_CYCLE_WORKOUTS;
   },
 
-  // A new workout. exercises (optional, for Copy workout) are copied with new ids,
-  // so the copy can be changed without touching the original.
-  addWorkout(name, weekday, exercises = []) {
-    const workout = { id: newId(), name, weekday, exercises: exercises.map(ex => ({ ...ex, id: newId() })) };
+  // A new workout, added to the end of the cycle. exercises (optional, for Copy workout) are copied
+  // with new ids, so the copy can be changed without touching the original.
+  addWorkout(name, exercises = []) {
+    const workout = { id: newId(), name, exercises: exercises.map(ex => ({ ...ex, id: newId() })) };
     this.data.workouts.push(workout);
+    this.data.cycle.push({ id: newId(), kind: 'workout', workoutId: workout.id });
     this.save();
     return workout;
+  },
+
+  // Adds a workout that's already in the cycle once more, or a rest day reminder (workoutId null),
+  // at the end of the cycle.
+  addToCycle(workoutId = null) {
+    this.data.cycle.push(workoutId ? { id: newId(), kind: 'workout', workoutId } : { id: newId(), kind: 'rest' });
+    this.save();
+  },
+
+  // Takes one place out of the cycle. A workout that isn't in the cycle anywhere else is deleted
+  // with it (app.js asks first), since every workout lives in the cycle.
+  removeFromCycle(itemId) {
+    const item = this.getCycleItem(itemId);
+    this.data.cycle = this.data.cycle.filter(i => i !== item);
+    if (item.kind === 'workout' && !this.data.cycle.some(i => i.workoutId === item.workoutId)) this.deleteWorkout(item.workoutId);
+    this.save();
+  },
+
+  // Is this the only place in the cycle that has its workout?
+  isOnlyPlaceFor(itemId) {
+    const item = this.getCycleItem(itemId);
+    return item.kind === 'workout' && this.data.cycle.filter(i => i.workoutId === item.workoutId).length === 1;
+  },
+
+  // Puts the cycle in this order (a list of its items' ids), after dragging one.
+  setCycleOrder(itemIds) {
+    this.data.cycle.sort((a, b) => itemIds.indexOf(a.id) - itemIds.indexOf(b.id));
+    this.save();
   },
 
   renameWorkout(id, name) {
@@ -430,21 +489,62 @@ const Store = {
     this.save();
   },
 
-  // Puts a workout on another weekday, after any workouts already there.
-  moveWorkout(id, weekday) {
-    const workout = this.getWorkout(id);
-    if (workout.weekday === weekday) return;
-    this.data.workouts = this.data.workouts.filter(w => w !== workout);
-    workout.weekday = weekday;
-    this.data.workouts.push(workout);
+  // Its finished sessions stay in history (they keep their own name and sets).
+  // It comes out of every place in the cycle too.
+  deleteWorkout(id) {
+    this.data.workouts = this.data.workouts.filter(w => w.id !== id);
+    this.data.cycle = this.data.cycle.filter(item => item.workoutId !== id);
+    if (this.data.draft && this.data.draft.workoutId === id) this.data.draft = null;
     this.save();
   },
 
-  // Its finished sessions stay in history (they keep their own name and sets).
-  deleteWorkout(id) {
-    this.data.workouts = this.data.workouts.filter(w => w.id !== id);
-    if (this.data.draft && this.data.draft.workoutId === id) this.data.draft = null;
-    this.save();
+  // Where in the cycle you last were: the index of the place the most recently finished planned
+  // workout was done as, or -1 if there's none (nothing finished, or it's no longer in the cycle).
+  // Always worked out from history, never saved, so it can't drift: undoing or deleting a workout
+  // moves it back by itself. Quick workouts don't count.
+  //   - its own place, if it's still in the cycle
+  //   - otherwise (a workout from before version 14, or its place was removed) the first place
+  //     with the same workout
+  //   - otherwise -1, so Next Up starts the cycle over
+  lastCycleIndex() {
+    const cycle = this.data.cycle;
+    const last = [...this.data.sessions].reverse().find(s => !s.quick && s.workoutId);
+    if (!last) return -1;
+    const own = cycle.findIndex(item => item.id === last.cycleItemId);
+    return own >= 0 ? own : cycle.findIndex(item => item.workoutId === last.workoutId);
+  },
+
+  // The workout to do next: the first workout after where you last were (going round to the start),
+  // skipping rest day reminders.
+  //   { item (its place in the cycle), workout, restBefore (a rest day reminder was skipped to get
+  //     here, so the screen can say so) }, or null if the cycle has no workouts.
+  nextUp() {
+    const cycle = this.data.cycle;
+    const from = this.lastCycleIndex();
+    let restBefore = false;
+    for (let step = 1; step <= cycle.length; step++) {
+      const item = cycle[(from + step + cycle.length) % cycle.length];
+      if (item.kind === 'rest') {
+        restBefore = true;
+        continue;
+      }
+      return { item, workout: this.getWorkout(item.workoutId), restBefore: restBefore && from >= 0 };
+    }
+    return null;
+  },
+
+  // Which place in the cycle a workout being started counts as: the one it was opened from, if
+  // that's this workout; otherwise the first place with this workout from Next Up on (so with a
+  // workout in the cycle twice, the next one coming up). null if it isn't in the cycle.
+  cyclePlaceFor(workoutId, itemId = null) {
+    if (this.getCycleItem(itemId)?.workoutId === workoutId) return itemId;
+    const cycle = this.data.cycle;
+    const start = Math.max(0, cycle.indexOf(this.nextUp()?.item));
+    for (let step = 0; step < cycle.length; step++) {
+      const item = cycle[(start + step) % cycle.length];
+      if (item.workoutId === workoutId) return item.id;
+    }
+    return null;
   },
 
   // ---------- Exercises ----------
@@ -648,44 +748,17 @@ const Store = {
     return ([...log].reverse().find(e => e.day <= day) || log[0])?.lbs || 0;
   },
 
-  // Adds an exercise (one set, or `sets`), weights prefilled from the last time it was done. Returns its id.
-  // A missed exercise being made up also has its target reps and makeupFor
-  // ({ workoutId, exerciseId } of the planned exercise; see streak.js).
+  // Adds an exercise with one set, its weight prefilled from the last time it was done. Returns its id.
   // On a planned workout it's added for today only (draft.added): the plan doesn't change.
-  quickAddExercise(refId, { sets = 1, repMin, repMax, makeupFor } = {}) {
+  quickAddExercise(refId) {
     const draft = this.data.draft;
     const id = newId();
-    (draft.quick ? draft.exercises : draft.added).push({ id, refId, ...(makeupFor ? { makeupFor, repMin, repMax } : {}) });
+    (draft.quick ? draft.exercises : draft.added).push({ id, refId });
     const history = this.exerciseHistory(refId);
     const lastSets = history[history.length - 1]?.sets || [];
-    draft.entries[id] = Array.from({ length: sets }, (_, i) =>
-      ({ weight: this.startWeight(refId, (lastSets[i] || lastSets[lastSets.length - 1])?.weight), reps: '' }));
+    draft.entries[id] = [{ weight: this.startWeight(refId, lastSets[0]?.weight), reps: '' }];
     this.save();
     return id;
-  },
-
-  // Planned exercises missed this week that aren't in the quick workout yet, by workout,
-  // for the Missed this week list and Catch up:
-  //   [{ workoutId, weekday, name, exercises: [{ refId, sets, repMin, repMax, makeupFor }] }]
-  missedThisWeek(onlyWorkoutId = null) {
-    const inDraft = (this.data.draft?.exercises || []).map(e => e.makeupFor).filter(Boolean);
-    const list = [];
-    for (const [workoutId, state] of Object.entries(Streak.dayStates())) {
-      if (onlyWorkoutId && workoutId !== onlyWorkoutId) continue;
-      const workout = this.getWorkout(workoutId);
-      const exercises = state.missing
-        .filter(m => !inDraft.some(f => f.workoutId === workoutId && f.exerciseId === m.exerciseId))
-        .map(m => {
-          // Target reps from the workout as it is now (a locked plan only has set counts).
-          const planned = workout?.exercises.find(e => e.id === m.exerciseId);
-          return { refId: m.refId, sets: m.sets, repMin: planned?.repMin, repMax: planned?.repMax,
-            makeupFor: { workoutId, exerciseId: m.exerciseId } };
-        });
-      if (!exercises.length) continue;
-      const name = workout?.name || this.lastSessionFor(workoutId)?.workoutName || 'Workout';
-      list.push({ workoutId, weekday: state.weekday, name, exercises });
-    }
-    return list.sort((a, b) => a.weekday - b.weekday);
   },
 
   // One more set row, with the weight of the set above. If that's empty, so is this one
@@ -726,10 +799,11 @@ const Store = {
 
   // Makes sure there's a draft for this workout with one row per target set, then any extra sets.
   // Each set's weight (lbs, or null) starts from startWeight(); reps start empty.
-  ensureDraft(workout) {
+  // cycleItemId = the place in the cycle a new draft counts as (see cyclePlaceFor()).
+  ensureDraft(workout, cycleItemId = null) {
     let draft = this.data.draft;
     if (!draft || draft.workoutId !== workout.id) {
-      draft = { workoutId: workout.id, startedAt: new Date().toISOString(), pausedAt: null, pausedMs: 0, entries: {}, swaps: {}, added: [] };
+      draft = { workoutId: workout.id, cycleItemId, startedAt: new Date().toISOString(), pausedAt: null, pausedMs: 0, entries: {}, swaps: {}, added: [] };
       this.data.draft = draft;
     }
     for (const ex of workout.exercises) {
@@ -872,22 +946,23 @@ const Store = {
           name: info.name,
           primary: info.primary,
           secondary: info.secondary,
-          // A quick workout has no targets, except a missed exercise being made up.
-          // Neither does one added for today, and it's left out of the plan below.
+          // A quick workout has no targets. Neither does one added for today, and it's left out of
+          // the plan below.
           ...(ex.today ? { today: true }
-            : !workout.quick ? { targetSets: ex.sets, targetRepMin: ex.repMin, targetRepMax: ex.repMax }
-            : ex.makeupFor ? { makeupFor: ex.makeupFor, targetRepMin: ex.repMin, targetRepMax: ex.repMax } : {}),
+            : !workout.quick ? { targetSets: ex.sets, targetRepMin: ex.repMin, targetRepMax: ex.repMax } : {}),
           sets,
         });
       }
     }
     if (!exercises.length) return null;
 
-    // A quick workout isn't in the plan: no workout id and no plan (see streak.js for how it counts).
+    // A quick workout isn't in the cycle: no workout id, no place in the cycle and no plan.
+    // It doesn't count toward the streak (see streak.js).
     const session = workout.quick ? {
       id: newId(),
       quick: true,
       workoutId: null,
+      cycleItemId: null,
       workoutName: workout.name.trim() || 'Quick workout',
       date,
       durationMs,
@@ -896,6 +971,7 @@ const Store = {
     } : {
       id: newId(),
       workoutId: workout.id,
+      cycleItemId: draft.cycleItemId || null,
       workoutName: workout.name,
       date,
       durationMs,
@@ -1100,7 +1176,8 @@ const Store = {
   // Replaces all data with the contents of a backup file. Throws if the file is invalid.
   importBackup(text) {
     const parsed = JSON.parse(text);
-    if (!parsed || !Array.isArray(parsed.days) || !Array.isArray(parsed.sessions)) {
+    // (Backups from before version 14 have days; newer ones have workouts instead.)
+    if (!parsed || !(Array.isArray(parsed.days) || Array.isArray(parsed.workouts)) || !Array.isArray(parsed.sessions)) {
       throw new Error('This file is not a GitFit backup.');
     }
     this.data = normalize(parsed);
