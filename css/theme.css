@@ -21,6 +21,7 @@
   --surface-1: #141415;       /* secondary containers (the weekly streak card) */
   --surface-2: #1c1c1e;       /* primary cards, list rows, pop-ups */
   --surface-3: #1f1f21;       /* inputs, inactive day cells, segmented tracks, unselected toggles */
+  --surface-field: #2c2c2e;   /* inputs that sit on a card or pop-up: lighter, since surface-3 barely shows on surface-2 */
   --divider: #141415;         /* tab bar top line, list separators */
   --text-primary: #ffffff;
   --text-secondary: #8e8e93;  /* meta lines, section labels, inactive tabs */
@@ -32,6 +33,8 @@
   --action: #ffffff;          /* primary buttons, the + button, selected states */
   --on-action: #000000;       /* text on white */
   --backdrop: rgba(0, 0, 0, 0.6); /* behind pop-ups */
+  --flame-core: #d9fbe6;      /* the streak flame's lighter inner flame, while the streak is alive */
+  --flame-off-core: #6e6e73;  /* …and at a streak of 0 (the outer flame is text-tertiary then) */
 
   /* The muscle map's color scale (Profile). A chart, so its colors mean growth and level, not "done".
      bodymap.js reads these; they must stay '#rrggbb' so it can blend between them. */

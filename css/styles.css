@@ -815,7 +815,7 @@ main.is-searching { padding-bottom: 100vh; }
   padding: 12px;
   border: none;
   border-radius: var(--r-control);
-  background: var(--surface-3);
+  background: var(--surface-field); /* (notes are always on a card) */
   color: var(--text-primary);
   font: inherit;
   font-size: var(--fs-body); /* 16px+ stops iPhone from zooming in on tap */
@@ -1000,11 +1000,13 @@ main.is-searching { padding-bottom: 100vh; }
 /* ---------- Weekly streak (Profile) ---------- */
 .streak-card { margin-top: 20px; }
 .streak-top { display: flex; align-items: center; gap: 12px; }
-/* The flame: green while the streak is alive, gray at 0 (one solid color, no glow) */
+/* The flame: green with a light inner flame while the streak is alive, gray at 0 (no glow) */
 .streak-flame { flex: 0 0 auto; width: 40px; height: 40px; }
 .streak-flame svg { display: block; width: 100%; height: 100%; }
-.flame-outer, .flame-inner { fill: var(--text-tertiary); }
-.streak-flame.is-lit :is(.flame-outer, .flame-inner), .celebrate :is(.flame-outer, .flame-inner) { fill: var(--success); }
+.flame-outer { fill: var(--text-tertiary); }
+.flame-inner { fill: var(--flame-off-core); }
+.streak-flame.is-lit .flame-outer, .celebrate .flame-outer { fill: var(--success); }
+.streak-flame.is-lit .flame-inner, .celebrate .flame-inner { fill: var(--flame-core); }
 .streak-count { font-size: var(--fs-stat); font-weight: 700; line-height: 1; }
 .streak-words { flex: 1; min-width: 0; margin-left: 4px; }
 .streak-words > * { display: block; }
@@ -1494,3 +1496,11 @@ body:has(.sets-strip) .toast { bottom: calc(60px + env(safe-area-inset-bottom));
   .overlay, .overlay * { animation: none !important; }
   .spark { display: none; }
 }
+
+/* ---------- Controls on a card or pop-up ---------- */
+/* On surface-2, surface-3 barely shows, so boxes, unselected toggles and secondary buttons there
+   are a step lighter (--surface-field). Kept last and weak on purpose (:where), so picked toggles,
+   white buttons and locked boxes keep their own look. */
+.card :where(input, select, textarea, .choice, .segmented, .chip-btn, .cardio-distance,
+  .btn:not(.btn-primary, .btn-danger)) { background: var(--surface-field); }
+.card .weekday-chip span { background: var(--surface-field); }
