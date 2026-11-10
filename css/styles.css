@@ -134,8 +134,6 @@ main {
   margin: 0 auto;
   padding: 16px var(--pad-screen) calc(var(--tabbar-h) + 32px + env(safe-area-inset-bottom));
 }
-/* …and above the + button on the Workouts tab */
-main:has(.fab) { padding-bottom: calc(var(--tabbar-h) + var(--fab) + 40px + env(safe-area-inset-bottom)); }
 
 /* Screens without the tab bar (everything but each tab's main screen) */
 .no-tabbar main { padding-bottom: calc(32px + env(safe-area-inset-bottom)); }
@@ -409,6 +407,9 @@ button.cycle-row:active { background: var(--surface-3); }
 .split-row { display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 8px var(--pad-card); border-bottom: 1px solid var(--divider); }
 .split-row:last-child { border-bottom: none; }
 .split-row .workout-open { flex: 1; min-width: 0; }
+/* A split that can't be picked (it's full, in the + menu's Planned workout) */
+.split-row .workout-open:disabled .workout-name { color: var(--text-tertiary); }
+.split-row .workout-open:disabled .day-meta { white-space: normal; }
 .notice .split-only { margin: 12px 0 0; }
 .cycle-rest.is-dragging { opacity: 0.3; }
 
@@ -508,13 +509,22 @@ body.is-reordering .drag-ghost .chev { display: none; }
 .row.range-row #ex-sets { flex: 1; min-width: 0; text-align: center; }
 body.is-dragging { -webkit-user-select: none; user-select: none; }
 
-/* The + button: a green rounded square with a black plus, bottom right above the tab bar
-   (the one solid green fill that isn't "done") */
+/* The + button: a green rounded square with a black plus, in the tab bar between Cardio and
+   Profile (the one solid green fill that isn't "done"). It isn't a tab, so it must not look like
+   one: no label, a solid fill, and it sits a little above the bar's edge. .tab-add is its place
+   in the bar, the same width as a tab. */
+.tab-add {
+  flex: 1;
+  max-width: 160px;
+  height: var(--tabbar-h);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
 .fab {
-  position: fixed;
-  right: var(--pad-screen);
-  bottom: calc(var(--tabbar-h) + 16px + env(safe-area-inset-bottom));
-  z-index: 15;
+  position: relative;
+  top: calc(-1 * var(--fab-lift));
+  flex: 0 0 auto;
   width: var(--fab);
   height: var(--fab);
   border: none;
@@ -527,12 +537,30 @@ body.is-dragging { -webkit-user-select: none; user-select: none; }
   color: var(--on-success);
 }
 .fab:active { transform: scale(0.94); }
+/* While its menu is open, the plus turns into a ✕ */
+.fab svg { transition: transform 0.15s; }
+.fab[aria-expanded="true"] svg { transform: rotate(45deg); }
 
-/* The + button's menu: its options pop up above it */
+/* While the menu is open the page behind it is darkened, like behind a pop-up, so the menu doesn't
+   blend into the cards. The layer belongs to the tab bar, which comes in front of the top bar for
+   that time so the whole screen darkens; the tabs and the + stay as they are. */
+.tabbar:has(.fab-menu.is-open) { z-index: 35; }
+.fab-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: var(--backdrop);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+.fab-menu.is-open + .fab-backdrop { opacity: 1; pointer-events: auto; }
+
+/* The + button's menu: its options pop up just above the tab bar */
 .fab-menu {
   position: fixed;
   right: var(--pad-screen);
-  bottom: calc(var(--tabbar-h) + 16px + var(--fab) + 12px + env(safe-area-inset-bottom));
+  bottom: calc(var(--tabbar-h) + var(--fab-lift) + 12px + env(safe-area-inset-bottom));
   z-index: 15;
   width: min(290px, calc(100vw - 2 * var(--pad-screen)));
   padding: 8px;
@@ -574,7 +602,7 @@ body.is-dragging { -webkit-user-select: none; user-select: none; }
 .fab-option span { display: block; font-size: var(--fs-small); color: var(--text-secondary); margin-top: 4px; }
 .fab-option + .fab-option { margin-top: 4px; }
 @media (prefers-reduced-motion: reduce) {
-  .fab-menu { transition: none; }
+  .fab-menu, .fab-backdrop, .fab svg { transition: none; }
 }
 
 /* Quick workout screen: the title box and the "+ Add exercise" button */

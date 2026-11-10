@@ -72,7 +72,7 @@
   --r-day: 8px;               /* day cells, day toggles */
   --r-control: 12px;          /* buttons, inputs, segmented controls, chips */
   --r-container: 14px;        /* secondary containers, list rows */
-  --r-fab: 18px;              /* the + button */
+  --r-fab: 16px;              /* the + button */
   --r-card: 20px;             /* primary cards, pop-ups */
   --r-pill: 999px;            /* tags, progress bars, the toast */
   --r-round: 50%;             /* dots, the avatar, small round buttons */
@@ -88,7 +88,8 @@
   /* ---------- Sizes ---------- */
   --tap: 52px;                /* minimum height for anything you tap */
   --btn-lg: 58px;             /* Start workout, Finish workout */
-  --fab: 64px;                /* the + button */
+  --fab: 54px;                /* the + button, in the tab bar */
+  --fab-lift: 8px;            /* how far the + button sits above the tabs' middle, so it stands out */
   --check: 30px;              /* checkboxes */
   --nav-icon: 28px;
   --tabbar-h: 58px;           /* tab bar, not counting the iPhone home-indicator area */

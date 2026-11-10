@@ -206,7 +206,8 @@ function setsInfoBox(open) {
 //   changed = Set of muscle ids changed by the last edit
 function plannedStrip(workout, strip, openRows, changed) {
   const cycle = strip.mode === 'cycle';
-  const planned = cycle ? Stats.cyclePlannedSets() : Stats.plannedSets([workout]);
+  // ("Whole cycle" is the cycle of this workout's own split, which is nearly always the one you're on.)
+  const planned = cycle ? Stats.cyclePlannedSets(Store.cycleOf(workout.id) || Store.activeCycle()) : Stats.plannedSets([workout]);
   const { muscles } = planned;
   const order = Object.keys(muscles).sort((a, b) => muscles[b] - muscles[a]).filter(id => !changed.has(id));
   const line = [...changed, ...order].map(id =>
@@ -539,6 +540,31 @@ function workoutMeta(w) {
   return `${count} exercise${count === 1 ? '' : 's'} · ${lastDoneText(w.id)}`;
 }
 
+// Where "Move to another workout" can send an exercise: the other workouts of the split its
+// workout is in, in cycle order.
+function moveTargets(exercise) {
+  const from = Store.data.workouts.find(w => w.exercises.includes(exercise));
+  const split = from && Store.cycleOf(from.id);
+  return split ? [...new Set(Store.cycleWorkouts(split))].filter(w => w !== from) : [];
+}
+
+// A split's row in a pop-up (Switch cycle, or the + menu's Planned workout): its name, "Selected"
+// on the one you're on, and its workouts' names under it. Tapping it runs `action` with its id.
+//   note = shown in place of the workouts' names; disabled = it can't be tapped
+function splitRowButton(split, action, { note = '', disabled = false } = {}) {
+  const names = Store.cycleWorkouts(split).map(w => w.name);
+  const on = split === Store.activeCycle();
+  return `
+    <button type="button" class="workout-open" data-action="${action}" data-id="${esc(split.id)}" ${disabled ? 'disabled' : ''}
+      ${action === 'split-pick' ? `aria-pressed="${on}"` : ''}>
+      <span class="workout-title-line">
+        <span class="workout-name">${esc(split.name)}</span>
+        ${on ? '<span class="tag tag-today">Selected</span>' : ''}
+      </span>
+      <span class="day-meta">${esc(note || (names.length ? names.join(' · ') : 'No workouts yet'))}</span>
+    </button>`;
+}
+
 const Views = {
 
   // ---------- Home: this week, Next Up, the rest of the cycle and today's cardio ----------
@@ -689,20 +715,7 @@ const Views = {
         ${hero}
         ${then}
         ${cardio ? `<h2>Today's cardio</h2>${cardio}` : ''}
-
-        <!-- (New workouts are made on Edit cycle, with + New workout.) -->
-        <div class="fab-menu" id="fab-menu" aria-hidden="true">
-          <button type="button" class="fab-option is-quick" data-action="quick-start">
-            <strong>Quick workout</strong><span>A one-off, logged but not added to your cycle</span>
-          </button>
-          <button type="button" class="fab-option" data-action="add-cardio">
-            <strong>Log cardio</strong><span>A walk, run, ride or hike, on any past date</span>
-          </button>
-        </div>
-        <button type="button" class="fab" data-action="fab-menu" aria-label="Quick workout or log cardio" aria-expanded="false">
-          <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.6"
-            stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-        </button>
+        <!-- (The + button and its menu are in the tab bar: see tabs.js.) -->
       `,
     };
   },
@@ -779,16 +792,19 @@ const Views = {
   // source = the workout being copied, or null for a new one. Either way it goes at the end of
   // the cycle. It's a form so the keyboard's Go button creates it too (see the overlay's 'submit'
   // in app.js).
-  newWorkoutDialog(source = null) {
+  // split = the split it goes in: the one you're on, unless the + menu's Planned workout picked
+  // another one (then the pop-up says which).
+  newWorkoutDialog(source = null, split = Store.activeCycle()) {
     const count = source ? source.exercises.length : 0;
+    const where = split === Store.activeCycle() ? 'your cycle' : esc(split.name);
     return `
       <form id="new-workout-form" class="card notice stack" role="dialog" aria-label="${source ? 'Copy workout' : 'New workout'}"
-        data-copy="${esc(source ? source.id : '')}" autocomplete="off">
+        data-copy="${esc(source ? source.id : '')}" data-split="${esc(split.id)}" autocomplete="off">
         <div>
           <label for="new-workout-name">${source ? 'Title of the copy' : 'New workout title'}</label>
           <input id="new-workout-name" name="name" value="${esc(source ? source.name : '')}" placeholder="e.g. Push, Legs, Upper (arm focus)" required>
         </div>
-        <p class="muted">${source ? `Copies all ${count} exercise${count === 1 ? '' : 's'} from ${esc(source.name)}. The copy is its own workout: changing one won't change the other. ` : ''}It goes at the end of your cycle.</p>
+        <p class="muted">${source ? `Copies all ${count} exercise${count === 1 ? '' : 's'} from ${esc(source.name)}. The copy is its own workout: changing one won't change the other. ` : ''}It goes at the end of ${where}.</p>
         <button type="submit" class="btn btn-primary">${source ? 'Create copy' : 'Create workout'}</button>
         <button type="button" class="btn" data-action="dialog-cancel">Cancel</button>
       </form>`;
@@ -805,9 +821,9 @@ const Views = {
     return this.exercisePicker(picker, editing, canClose, added);
   },
 
-  // Move an exercise to another workout: its other workouts, in cycle order.
+  // Move an exercise to another workout: the other workouts of its split, in cycle order.
   moveExercisePicker(exercise) {
-    const others = [...new Set(Store.cycleWorkouts())].filter(w => !w.exercises.includes(exercise));
+    const others = moveTargets(exercise);
     return `
       <div class="card stack">
         <p class="muted move-title">Move to:</p>
@@ -849,23 +865,12 @@ const Views = {
   // pencil to rename or delete it. Under them, + Create split and Done. It stays open while you
   // switch, so the split behind it can be seen changing; Done closes it.
   cycleSwitcher() {
-    const active = Store.activeCycle();
-    const rows = Store.data.cycles.map(split => {
-      const names = Store.cycleWorkouts(split).map(w => w.name);
-      const on = split === active;
-      return `
-        <div class="split-row">
-          <button type="button" class="workout-open" data-action="split-pick" data-id="${esc(split.id)}" aria-pressed="${on}">
-            <span class="workout-title-line">
-              <span class="workout-name">${esc(split.name)}</span>
-              ${on ? '<span class="tag tag-today">Selected</span>' : ''}
-            </span>
-            <span class="day-meta">${names.length ? esc(names.join(' · ')) : 'No workouts yet'}</span>
-          </button>
-          <button type="button" class="icon-btn" data-action="split-edit" data-id="${esc(split.id)}"
-            aria-label="Rename or delete ${esc(split.name)}">${PENCIL_SVG}</button>
-        </div>`;
-    }).join('');
+    const rows = Store.data.cycles.map(split => `
+      <div class="split-row">
+        ${splitRowButton(split, 'split-pick')}
+        <button type="button" class="icon-btn" data-action="split-edit" data-id="${esc(split.id)}"
+          aria-label="Rename or delete ${esc(split.name)}">${PENCIL_SVG}</button>
+      </div>`).join('');
     return `
       <div class="card notice stack" role="dialog" aria-label="Switch cycle">
         <h2>Your splits</h2>
@@ -878,12 +883,16 @@ const Views = {
   // + Create split: asks for its name, then how it starts: empty, or with a copy of the workouts
   // of the split you're on (the user's choice; only offered when that split has workouts).
   // It's a form, so the keyboard's Go button makes an empty one (see the overlay's 'submit' in
-  // app.js). Cancel goes back to the list of splits.
-  newCycleDialog() {
+  // app.js).
+  //   from = where it was opened: 'switcher' (the Switch cycle pop-up: Cancel and creating both go
+  //   back to its list of splits) or 'menu' (the + button's New split: Cancel just closes it, and
+  //   creating opens the new split on Edit cycle)
+  newCycleDialog(from = 'switcher') {
     const active = Store.activeCycle();
     const canCopy = Store.cycleWorkouts().length > 0;
     return `
-      <form id="new-cycle-form" class="card notice stack" role="dialog" aria-label="Create split" autocomplete="off">
+      <form id="new-cycle-form" class="card notice stack" role="dialog" aria-label="Create split" autocomplete="off"
+        data-from="${from}">
         <div>
           <label for="new-cycle-name">New split name</label>
           <input id="new-cycle-name" name="name" maxlength="40" placeholder="e.g. Push Pull Legs, Upper Lower" required>
@@ -891,8 +900,28 @@ const Views = {
         ${canCopy ? `<p class="muted">Start it empty, or with a copy of every workout in ${esc(active.name)}. The copies are their own workouts: changing one split won't change the other.</p>` : ''}
         <button type="submit" class="btn btn-primary">${canCopy ? 'Start empty' : 'Create split'}</button>
         ${canCopy ? `<button type="button" class="btn" data-action="split-create-copy">Copy ${esc(active.name)}</button>` : ''}
-        <button type="button" class="btn" data-action="switch-cycle">Cancel</button>
+        <button type="button" class="btn" data-action="${from === 'menu' ? 'dialog-cancel' : 'switch-cycle'}">Cancel</button>
       </form>`;
+  },
+
+  // The + menu's Planned workout, with more than one split: which split the new workout goes in.
+  // Picking one opens the usual New workout pop-up for it. A split that already has the most
+  // workouts a cycle can hold can't be picked.
+  workoutSplitPicker() {
+    const rows = Store.data.cycles.map(split => {
+      const full = !Store.cycleHasRoom(split);
+      return `
+        <div class="split-row">
+          ${splitRowButton(split, 'new-workout-in', full
+            ? { disabled: true, note: `Full: it has ${MAX_CYCLE_WORKOUTS} workouts, the most a cycle can hold` } : {})}
+        </div>`;
+    }).join('');
+    return `
+      <div class="card notice stack" role="dialog" aria-label="Add the new workout to which split?">
+        <h2>Add it to which split?</h2>
+        <div class="split-list">${rows}</div>
+        <button type="button" class="btn" data-action="dialog-cancel">Cancel</button>
+      </div>`;
   },
 
   // A split's pencil in the Switch cycle pop-up: its name, and Delete split (the only split left
@@ -1025,7 +1054,7 @@ const Views = {
           <button type="button" class="btn" data-action="cancel-edit">Cancel</button>
           ${editing ? `<button type="button" class="btn btn-danger" data-action="delete-exercise" data-id="${editing.id}">Delete</button>` : ''}
         </div>
-        ${editing && new Set(Store.cycleWorkouts()).size > 1 ? '<button type="button" class="text-btn" data-action="move-open">Move to another workout</button>' : ''}
+        ${editing && moveTargets(editing).length ? '<button type="button" class="text-btn" data-action="move-open">Move to another workout</button>' : ''}
       </form>`;
   },
 

@@ -167,9 +167,10 @@ const Stats = {
     return { muscles, sources };
   },
 
-  // Planned sets for one time through the cycle (a workout in it twice counts twice).
-  cyclePlannedSets() {
-    return this.plannedSets(Store.cycleWorkouts());
+  // Planned sets for one time through the cycle (a workout in it twice counts twice): the cycle
+  // of the split you're on, unless another split is given.
+  cyclePlannedSets(cycle = Store.activeCycle()) {
+    return this.plannedSets(Store.cycleWorkouts(cycle));
   },
 
   // Sets actually logged in the last 7 days (now back to the same time a week ago), in the same

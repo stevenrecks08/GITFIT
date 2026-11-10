@@ -364,7 +364,7 @@ function discardOtherDraft(then) {
   });
 }
 
-// Opens or closes the + button's menu (New workout / Quick workout).
+// Opens or closes the + button's menu (the + is in the tab bar: see tabs.js).
 function setFabMenu(open) {
   const menu = document.getElementById('fab-menu');
   if (!menu) return;
@@ -397,8 +397,9 @@ function hideDialog() {
 
 // The New workout pop-up (or Copy workout, with source = the workout being copied). Its title box
 // is ready to type in straight away; a copy's title is selected, so typing replaces it.
-function showNewWorkoutDialog(source) {
-  overlayEl.innerHTML = Views.newWorkoutDialog(source);
+// split = the split it goes in (the one you're on, unless another is given).
+function showNewWorkoutDialog(source, split = Store.activeCycle()) {
+  overlayEl.innerHTML = Views.newWorkoutDialog(source, split);
   overlayEl.className = 'overlay is-notice';
   overlayEl.hidden = false;
   const box = document.getElementById('new-workout-name');
@@ -415,14 +416,24 @@ function showSplits() {
 }
 
 // Create split, from its pop-up: makes it (empty, or with a copy of the workouts of the split
-// you're on), switches to it, and goes back to the list of splits, where it's now the selected one.
+// you're on) and switches to it. Opened from Switch cycle, it goes back to the list of splits,
+// where it's now the selected one. Opened from the + button's New split, it goes to Edit cycle,
+// which now shows the new split, ready for its workouts.
 function createSplit(copy) {
+  const fromMenu = document.getElementById('new-cycle-form').dataset.from === 'menu';
   const name = document.getElementById('new-cycle-name').value.trim();
   if (!name) {
     toast('Give the split a name');
     return;
   }
   Store.addCycle(name, copy ? Store.activeCycle() : null);
+  if (fromMenu) {
+    hideDialog();
+    toast(`Created ${name}. You're on it now`);
+    if (currentRoute().view === 'cycle') render();
+    else go('#/cycle');
+    return;
+  }
   render(); // (Edit cycle, behind the pop-up, now shows the new split)
   showSplits();
 }
@@ -965,9 +976,34 @@ const actions = {
     go('#/quick');
   },
 
-  // The + button: opens (or closes) the small menu: New workout / Quick workout.
+  // The + button in the tab bar: opens (or closes) its menu: Quick workout, Quick cardio, Planned
+  // workout, Planned cardio and New split (ADD_OPTIONS in tabs.js). Tapping an option closes the
+  // menu first (see the 'click' listener below), then runs that option's action.
   'fab-menu'() {
     setFabMenu(!document.getElementById('fab-menu').classList.contains('is-open'));
+  },
+
+  // The + menu's Planned workout: a new workout in your cycle. With more than one split it first
+  // asks which split it goes in; either way the usual New workout pop-up comes next.
+  'add-planned-workout'() {
+    if (Store.data.cycles.length === 1) return actions['new-workout']();
+    overlayEl.innerHTML = Views.workoutSplitPicker();
+    overlayEl.className = 'overlay is-notice';
+    overlayEl.hidden = false;
+  },
+
+  // Picked the split for it: on to the New workout pop-up, which makes it in that split.
+  'new-workout-in'(splitId) {
+    showNewWorkoutDialog(null, Store.getCycle(splitId));
+  },
+
+  // The + menu's New split: the Create split pop-up on its own (not from Switch cycle), with its
+  // name box ready to type in.
+  'add-split'() {
+    overlayEl.innerHTML = Views.newCycleDialog('menu');
+    overlayEl.className = 'overlay is-notice';
+    overlayEl.hidden = false;
+    document.getElementById('new-cycle-name').focus();
   },
 
   // Quick workout: a one-off that's logged but not added to the week.
@@ -1067,11 +1103,12 @@ const actions = {
     saveWorkoutDetails();
     hideDialog();
     render(); // (the title may just have been changed)
-    if (!Store.cycleHasRoom()) {
-      toast(`Your cycle has ${MAX_CYCLE_WORKOUTS} workouts, the most it can hold`);
+    const split = Store.cycleOf(id); // (the copy goes in the same split as the workout it's a copy of)
+    if (!Store.cycleHasRoom(split)) {
+      toast(`${split === Store.activeCycle() ? 'Your cycle' : split.name} has ${MAX_CYCLE_WORKOUTS} workouts, the most it can hold`);
       return;
     }
-    showNewWorkoutDialog(Store.getWorkout(id));
+    showNewWorkoutDialog(Store.getWorkout(id), split);
   },
 
   // The pencil on an exercise: opens its sets & reps inside its card, or closes them if they're open.
@@ -1633,6 +1670,11 @@ const actions = {
     }
     hideDialog();
     render();
+    // Made from the + button on another tab, a new plan or one-off entry may not show on that
+    // screen, so a message says it's saved. (Checking off a planned row ticks its box instead.)
+    if (!f.id && !f.planId && currentRoute().view !== 'cardio') {
+      toast(f.kind === 'plan' ? 'Planned cardio added to the Cardio tab' : 'Cardio logged');
+    }
   },
 
   'cardio-cancel'() {
@@ -1755,7 +1797,7 @@ function toggleSetsBlock(openSet, id, button) {
 
 document.addEventListener('click', event => {
   const button = event.target.closest('[data-action]');
-  if (!event.target.closest('.fab-menu, .fab')) setFabMenu(false); // tap anywhere else closes the + menu
+  if (!event.target.closest('.fab')) setFabMenu(false); // a tap on one of its options, or anywhere else, closes the + menu
   if (!button) return;
   actions[button.dataset.action](button.dataset.id, button);
 });
@@ -2174,16 +2216,20 @@ overlayEl.addEventListener('submit', event => {
     toast('Give the workout a title');
     return;
   }
-  if (!Store.cycleHasRoom()) {
+  // The split it goes in: the one you're on, unless the + menu's Planned workout picked another.
+  const split = Store.getCycle(form.dataset.split) || Store.activeCycle();
+  if (!Store.cycleHasRoom(split)) {
     hideDialog();
-    toast(`Your cycle has ${MAX_CYCLE_WORKOUTS} workouts, the most it can hold`);
+    toast(`${split === Store.activeCycle() ? 'Your cycle' : split.name} has ${MAX_CYCLE_WORKOUTS} workouts, the most it can hold`);
     return;
   }
   const source = Store.getWorkout(form.dataset.copy);
-  const workout = Store.addWorkout(name, source ? source.exercises : []);
+  const workout = Store.addWorkout(name, source ? source.exercises : [], split);
   hideDialog();
-  toast(source ? 'Copied to the end of your cycle' : `Added ${name} to the end of your cycle`);
-  (currentRoute().view === 'cycle' ? goAndReturn : go)(`#/workout/${workout.id}`);
+  const where = split === Store.activeCycle() ? 'your cycle' : split.name;
+  toast(source ? `Copied to the end of ${where}` : `Added ${name} to the end of ${where}`);
+  // (Made from the + button on the Cardio or Profile tab, Back returns to that tab too.)
+  (['home', 'workout'].includes(currentRoute().view) ? go : goAndReturn)(`#/workout/${workout.id}`);
 });
 
 appEl.addEventListener('submit', event => {

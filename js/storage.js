@@ -543,17 +543,19 @@ const Store = {
     return cycle.items.filter(item => item.kind === 'workout').map(item => this.getWorkout(item.workoutId));
   },
 
-  // Is there room in the cycle for another workout?
-  cycleHasRoom() {
-    return this.cycleWorkouts().length < MAX_CYCLE_WORKOUTS;
+  // Is there room in the cycle for another workout? (The split you're on, unless another is given.)
+  cycleHasRoom(cycle = this.activeCycle()) {
+    return this.cycleWorkouts(cycle).length < MAX_CYCLE_WORKOUTS;
   },
 
   // A new workout, added to the end of the cycle. exercises (optional, for Copy workout) are copied
   // with new ids, so the copy can be changed without touching the original.
-  addWorkout(name, exercises = []) {
+  // cycle = the split it goes in: the one you're on, unless the + menu's Planned workout picked
+  // another (or a workout of another split is being copied).
+  addWorkout(name, exercises = [], cycle = this.activeCycle()) {
     const workout = { id: newId(), name, exercises: exercises.map(ex => ({ ...ex, id: newId() })) };
     this.data.workouts.push(workout);
-    this.cycleItems().push({ id: newId(), kind: 'workout', workoutId: workout.id });
+    cycle.items.push({ id: newId(), kind: 'workout', workoutId: workout.id });
     this.save();
     return workout;
   },
