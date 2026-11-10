@@ -391,6 +391,25 @@ button.cycle-row:active { background: var(--surface-3); }
 .cycle-add .row { gap: 8px; }
 .cycle-add .row .btn { padding: 0 8px; }
 .cycle-tip { margin: 8px 0 0; font-size: var(--fs-small); }
+/* The top of Edit cycle: the name of the split you're on, and Switch cycle on its right */
+.cycle-head { margin-top: 0; }
+.cycle-head h2 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cycle-head .text-btn { flex: 0 0 auto; margin-left: 12px; }
+
+/* The Switch cycle pop-up: your splits as rows that reach the pop-up's edges. Tapping a row
+   switches to that split; its pencil renames or deletes it. A long list scrolls inside the pop-up. */
+.split-list {
+  max-height: 40vh;
+  margin-left: calc(-1 * var(--pad-card));
+  margin-right: calc(-1 * var(--pad-card));
+  border-top: 1px solid var(--divider);
+  border-bottom: 1px solid var(--divider);
+  overflow-y: auto;
+}
+.split-row { display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 8px var(--pad-card); border-bottom: 1px solid var(--divider); }
+.split-row:last-child { border-bottom: none; }
+.split-row .workout-open { flex: 1; min-width: 0; }
+.notice .split-only { margin: 12px 0 0; }
 .cycle-rest.is-dragging { opacity: 0.3; }
 
 /* "Cardio after your lift", above Finish on a workout */

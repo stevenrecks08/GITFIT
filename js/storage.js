@@ -7,7 +7,7 @@
 //
 // Shape of the saved data:
 // {
-//   version: 14,
+//   version: 15,
 //   settings: { name, units: 'imperial' | 'metric', heightIn, bodyWeightLbs, sex: 'male' | 'female' | null,
 //               weeklyGoal (workouts a week you're aiming for, 1 to 7; a change counts from next week),
 //               setupDone (the first-time setup was finished or skipped),
@@ -18,16 +18,22 @@
 //     { id: 'custom-…', name, equipment, primary: [muscle ids], secondary: [muscle ids], custom: true,
 //       deleted (true once deleted: gone from search and workouts, kept so its past logs still have a name) }
 //   ],
-//   workouts: [            // your workouts (every one is in the cycle at least once)
+//   workouts: [            // your workouts, of every split (each belongs to one split: the one
+//                          // whose cycle it's in, at least once)
 //     { id, name (e.g. "Push"),
 //       exercises: [ { id, refId (library or custom exercise id), sets, repMin, repMax } ] }
 //   ],
-//   cycle: [               // the order you do your workouts in, repeating (Push > Pull > Legs > Push …)
-//     { id, kind: 'workout', workoutId }   // a workout can be in it more than once (up to MAX_CYCLE_WORKOUTS)
-//     or { id, kind: 'rest' }              // a rest day reminder: Next Up skips it, it only shows in the list
+//   cycles: [              // your splits. Each is a cycle of its own workouts; there's always at least one
+//     { id, name (e.g. "Push Pull Legs"),
+//       items: [             // the order you do its workouts in, repeating (Push > Pull > Legs > Push …)
+//         { id, kind: 'workout', workoutId }   // a workout can be in it more than once (up to MAX_CYCLE_WORKOUTS)
+//         or { id, kind: 'rest' }              // a rest day reminder: Next Up skips it, it only shows in the list
+//       ] }
 //   ],
+//   activeCycleId,         // the split you're on: "the cycle" everywhere in the app means this one's items
 //   sessions: [            // one per finished workout, oldest first
 //     { id, workoutId, workoutName, cycleItemId (the place in the cycle it was done as, or null),
+//       cycleId (the split it was done in, so each split's Next Up goes by its own workouts; null on a quick workout),
 //       date (ISO string, when Finish was tapped, or the last set's time
 //                                         if "Use last set time" was picked for a workout left running),
 //       durationMs (how long it took, not counting pauses; missing on workouts saved before version 9),
@@ -93,12 +99,18 @@
 // place in the cycle (Monday first), and the unused days list and the week view's day locks went.
 // The streak now counts finished workouts (weeks judged before keep their days), the weekly goal
 // is workouts a week, and a cardio plan's everyLiftingDay became afterLift.
+// Version 15 added splits: several cycles to switch between, each with its own workouts. The one
+// cycle there was (the "cycle" list) became the first split's items, named DEFAULT_CYCLE_NAME, and
+// every planned workout finished before then got that split's id as its cycleId.
 
 const STORAGE_KEY = 'gitfit-data';
-const DATA_VERSION = 14;
+const DATA_VERSION = 15;
 
 // The most workouts a cycle can hold (rest day reminders don't count).
 const MAX_CYCLE_WORKOUTS = 7;
+
+// What the first split is called until it's renamed (Switch cycle → its pencil).
+const DEFAULT_CYCLE_NAME = 'My split';
 
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
@@ -332,15 +344,31 @@ function normalize(data) {
   // Version 14: the cycle. Workouts were on weekdays; they go into the cycle in week order
   // (Monday first, and in their own order within a day), and their weekday is dropped.
   let cycle = Array.isArray(data.cycle) ? data.cycle : null;
-  if (!cycle) {
+  if (!cycle && !Array.isArray(data.cycles)) {
     workouts = workouts.map((w, i) => ({ w, i }))
       .sort((a, b) => (a.w.weekday ?? 7) - (b.w.weekday ?? 7) || a.i - b.i)
       .map(({ w }) => w);
     cycle = workouts.map(w => ({ id: newId(), kind: 'workout', workoutId: w.id }));
   }
   for (const w of workouts) delete w.weekday;
-  // (A place in the cycle can't point at a workout that's gone.)
-  cycle = cycle.filter(item => item.kind === 'rest' || workouts.some(w => w.id === item.workoutId));
+
+  // Version 15: splits. The one cycle there was becomes the first split, and every planned
+  // workout finished so far was done in it.
+  let cycles = Array.isArray(data.cycles) ? data.cycles.filter(c => c && c.id) : [];
+  if (!cycles.length) {
+    cycles = [{ id: newId(), name: DEFAULT_CYCLE_NAME, items: cycle || [] }];
+    for (const session of sessions) {
+      if (!session.quick && session.workoutId) session.cycleId = cycles[0].id;
+    }
+  }
+  for (const c of cycles) {
+    c.name = c.name || DEFAULT_CYCLE_NAME;
+    // (A place in a cycle can't point at a workout that's gone.)
+    c.items = (Array.isArray(c.items) ? c.items : [])
+      .filter(item => item.kind === 'rest' || workouts.some(w => w.id === item.workoutId));
+  }
+  // The split you're on: the saved one if it's still there, otherwise the first.
+  const activeCycleId = cycles.some(c => c.id === data.activeCycleId) ? data.activeCycleId : cycles[0].id;
 
   // Version 14: "every lifting day" cardio became "after every lift".
   const cardioPlans = Array.isArray(data.cardioPlans) ? data.cardioPlans : [];
@@ -367,7 +395,8 @@ function normalize(data) {
     exerciseNotes: data.exerciseNotes || {},
     customExercises,
     workouts,
-    cycle,
+    cycles,
+    activeCycleId,
     sessions,
     // Version 6 added swaps to the draft, and the streak.
     // Version 8 added quick workouts (draft.quick, session.quick).
@@ -426,19 +455,92 @@ const Store = {
     this.save();
   },
 
-  // ---------- Workouts and the cycle ----------
+  // ---------- Splits ----------
+  // A split is a cycle of its own workouts, with a name. You're on one at a time (the active one),
+  // and "the cycle" everywhere else in the app means its places. Switching is the Switch cycle
+  // pop-up on Edit cycle. Workouts aren't shared between splits: a copy of a split gets copies.
+
+  // The split you're on.
+  activeCycle() {
+    return this.data.cycles.find(c => c.id === this.data.activeCycleId) || this.data.cycles[0];
+  },
+
+  getCycle(id) {
+    return this.data.cycles.find(c => c.id === id) || null;
+  },
+
+  // The places of the split you're on, in order.
+  cycleItems() {
+    return this.activeCycle().items;
+  },
+
+  // The split a workout belongs to, or null if there's no such workout.
+  cycleOf(workoutId) {
+    return this.data.cycles.find(c => c.items.some(item => item.workoutId === workoutId)) || null;
+  },
+
+  switchCycle(id) {
+    if (!this.getCycle(id)) return;
+    this.data.activeCycleId = id;
+    this.save();
+  },
+
+  // A new split, which becomes the one you're on. With copyFrom (another split), it starts with a
+  // copy of each of that split's workouts in the same order, rest days too. The copies are their
+  // own workouts, so changing one split never changes the other.
+  addCycle(name, copyFrom = null) {
+    const cycle = { id: newId(), name, items: [] };
+    const copies = {}; // a copied workout's id → its copy's id (a workout in the cycle twice is copied once)
+    for (const item of copyFrom ? copyFrom.items : []) {
+      if (item.kind === 'workout' && !copies[item.workoutId]) {
+        const source = this.getWorkout(item.workoutId);
+        const copy = { id: newId(), name: source.name, exercises: source.exercises.map(ex => ({ ...ex, id: newId() })) };
+        this.data.workouts.push(copy);
+        copies[item.workoutId] = copy.id;
+      }
+      cycle.items.push(item.kind === 'workout'
+        ? { id: newId(), kind: 'workout', workoutId: copies[item.workoutId] }
+        : { id: newId(), kind: 'rest' });
+    }
+    this.data.cycles.push(cycle);
+    this.data.activeCycleId = cycle.id;
+    this.save();
+    return cycle;
+  },
+
+  renameCycle(id, name) {
+    this.getCycle(id).name = name;
+    this.save();
+  },
+
+  // Deletes a split and its workouts (a workout of it that's in progress is discarded). Workouts
+  // already finished stay in history. The last split left can't be deleted. If it was the one
+  // you're on, the first split left takes its place.
+  deleteCycle(id) {
+    const cycle = this.getCycle(id);
+    if (!cycle || this.data.cycles.length < 2) return;
+    const gone = new Set(cycle.items.filter(item => item.kind === 'workout').map(item => item.workoutId));
+    this.data.workouts = this.data.workouts.filter(w => !gone.has(w.id));
+    if (this.data.draft && gone.has(this.data.draft.workoutId)) this.data.draft = null;
+    this.data.cycles = this.data.cycles.filter(c => c !== cycle);
+    if (this.data.activeCycleId === id) this.data.activeCycleId = this.data.cycles[0].id;
+    this.save();
+  },
+
+  // ---------- Workouts and the cycle (of the split you're on) ----------
 
   getWorkout(id) {
     return this.data.workouts.find(w => w.id === id) || null;
   },
 
+  // A place in the cycle, by its id (null if it's not in the split you're on).
   getCycleItem(id) {
-    return this.data.cycle.find(item => item.id === id) || null;
+    return this.cycleItems().find(item => item.id === id) || null;
   },
 
   // The workouts in the cycle, in order, a workout as many times as it's in it (rest days left out).
-  cycleWorkouts() {
-    return this.data.cycle.filter(item => item.kind === 'workout').map(item => this.getWorkout(item.workoutId));
+  cycleWorkouts(cycle = this.activeCycle()) {
+    return cycle.items.filter(item => item.kind === 'workout').map(item => this.getWorkout(item.workoutId));
   },
 
   // Is there room in the cycle for another workout?
@@ -451,7 +553,7 @@ const Store = {
   addWorkout(name, exercises = []) {
     const workout = { id: newId(), name, exercises: exercises.map(ex => ({ ...ex, id: newId() })) };
     this.data.workouts.push(workout);
-    this.data.cycle.push({ id: newId(), kind: 'workout', workoutId: workout.id });
+    this.cycleItems().push({ id: newId(), kind: 'workout', workoutId: workout.id });
     this.save();
     return workout;
   },
@@ -459,28 +561,29 @@ const Store = {
   // Adds a workout that's already in the cycle once more, or a rest day reminder (workoutId null),
   // at the end of the cycle.
   addToCycle(workoutId = null) {
-    this.data.cycle.push(workoutId ? { id: newId(), kind: 'workout', workoutId } : { id: newId(), kind: 'rest' });
+    this.cycleItems().push(workoutId ? { id: newId(), kind: 'workout', workoutId } : { id: newId(), kind: 'rest' });
     this.save();
   },
 
   // Takes one place out of the cycle. A workout that isn't in the cycle anywhere else is deleted
   // with it (app.js asks first), since every workout lives in the cycle.
   removeFromCycle(itemId) {
+    const cycle = this.activeCycle();
     const item = this.getCycleItem(itemId);
-    this.data.cycle = this.data.cycle.filter(i => i !== item);
-    if (item.kind === 'workout' && !this.data.cycle.some(i => i.workoutId === item.workoutId)) this.deleteWorkout(item.workoutId);
+    cycle.items = cycle.items.filter(i => i !== item);
+    if (item.kind === 'workout' && !cycle.items.some(i => i.workoutId === item.workoutId)) this.deleteWorkout(item.workoutId);
     this.save();
   },
 
   // Is this the only place in the cycle that has its workout?
   isOnlyPlaceFor(itemId) {
     const item = this.getCycleItem(itemId);
-    return item.kind === 'workout' && this.data.cycle.filter(i => i.workoutId === item.workoutId).length === 1;
+    return item.kind === 'workout' && this.cycleItems().filter(i => i.workoutId === item.workoutId).length === 1;
   },
 
   // Puts the cycle in this order (a list of its items' ids), after dragging one.
   setCycleOrder(itemIds) {
-    this.data.cycle.sort((a, b) => itemIds.indexOf(a.id) - itemIds.indexOf(b.id));
+    this.cycleItems().sort((a, b) => itemIds.indexOf(a.id) - itemIds.indexOf(b.id));
     this.save();
   },
 
@@ -493,34 +596,35 @@ const Store = {
   // It comes out of every place in the cycle too.
   deleteWorkout(id) {
     this.data.workouts = this.data.workouts.filter(w => w.id !== id);
-    this.data.cycle = this.data.cycle.filter(item => item.workoutId !== id);
+    for (const cycle of this.data.cycles) cycle.items = cycle.items.filter(item => item.workoutId !== id);
     if (this.data.draft && this.data.draft.workoutId === id) this.data.draft = null;
     this.save();
   },
 
-  // Where in the cycle you last were: the index of the place the most recently finished planned
-  // workout was done as, or -1 if there's none (nothing finished, or it's no longer in the cycle).
+  // Where in a split's cycle you last were (the split you're on, unless another is given): the
+  // index of the place the most recently finished planned workout of that split was done as, or
+  // -1 if there's none (nothing finished in it, or it's no longer in the cycle).
   // Always worked out from history, never saved, so it can't drift: undoing or deleting a workout
-  // moves it back by itself. Quick workouts don't count.
+  // moves it back by itself, and switching back to a split carries on where it was left. Quick
+  // workouts and other splits' workouts don't count.
   //   - its own place, if it's still in the cycle
   //   - otherwise (a workout from before version 14, or its place was removed) the first place
   //     with the same workout
   //   - otherwise -1, so Next Up starts the cycle over
-  lastCycleIndex() {
-    const cycle = this.data.cycle;
-    const last = [...this.data.sessions].reverse().find(s => !s.quick && s.workoutId);
+  lastCycleIndex(cycle = this.activeCycle()) {
+    const last = [...this.data.sessions].reverse().find(s => !s.quick && s.workoutId && s.cycleId === cycle.id);
     if (!last) return -1;
-    const own = cycle.findIndex(item => item.id === last.cycleItemId);
-    return own >= 0 ? own : cycle.findIndex(item => item.workoutId === last.workoutId);
+    const own = cycle.items.findIndex(item => item.id === last.cycleItemId);
+    return own >= 0 ? own : cycle.items.findIndex(item => item.workoutId === last.workoutId);
   },
 
   // The workout to do next: the first workout after where you last were (going round to the start),
   // skipping rest day reminders.
   //   { item (its place in the cycle), workout, restBefore (a rest day reminder was skipped to get
   //     here, so the screen can say so) }, or null if the cycle has no workouts.
-  nextUp() {
-    const cycle = this.data.cycle;
-    const from = this.lastCycleIndex();
+  nextUp(split = this.activeCycle()) {
+    const cycle = split.items;
+    const from = this.lastCycleIndex(split);
     let restBefore = false;
     for (let step = 1; step <= cycle.length; step++) {
       const item = cycle[(from + step + cycle.length) % cycle.length];
@@ -536,10 +640,13 @@ const Store = {
   // Which place in the cycle a workout being started counts as: the one it was opened from, if
   // that's this workout; otherwise the first place with this workout from Next Up on (so with a
   // workout in the cycle twice, the next one coming up). null if it isn't in the cycle.
+  // (It goes by the workout's own split, which is nearly always the one you're on.)
   cyclePlaceFor(workoutId, itemId = null) {
-    if (this.getCycleItem(itemId)?.workoutId === workoutId) return itemId;
-    const cycle = this.data.cycle;
-    const start = Math.max(0, cycle.indexOf(this.nextUp()?.item));
+    const split = this.cycleOf(workoutId);
+    if (!split) return null;
+    const cycle = split.items;
+    if (cycle.find(item => item.id === itemId)?.workoutId === workoutId) return itemId;
+    const start = Math.max(0, cycle.indexOf(this.nextUp(split)?.item));
     for (let step = 0; step < cycle.length; step++) {
       const item = cycle[(start + step) % cycle.length];
       if (item.workoutId === workoutId) return item.id;
@@ -963,6 +1070,7 @@ const Store = {
       quick: true,
       workoutId: null,
       cycleItemId: null,
+      cycleId: null,
       workoutName: workout.name.trim() || 'Quick workout',
       date,
       durationMs,
@@ -972,6 +1080,7 @@ const Store = {
       id: newId(),
       workoutId: workout.id,
       cycleItemId: draft.cycleItemId || null,
+      cycleId: this.cycleOf(workout.id)?.id || null, // the split it was done in
       workoutName: workout.name,
       date,
       durationMs,
@@ -1275,7 +1384,7 @@ const Store = {
     };
   },
 
-  // Wipes everything and starts over with an empty week and default settings.
+  // Wipes everything and starts over with one empty split and default settings.
   deleteAll() {
     this.data = emptyData();
     this.save();

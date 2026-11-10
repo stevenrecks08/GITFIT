@@ -499,23 +499,27 @@ function formatHoursMinutes(ms) {
 
 // Short labels for the week strip, from each workout's name: its first letter, or more letters if
 // a workout earlier in the cycle already has those (Push → P, Pull → Pu, Legs → L).
+// Each split's workouts are labeled on their own, so a week with workouts from two splits (the
+// week you switched) still shows each one's usual label.
 // Returns { [workoutId]: label }.
 function workoutLabels() {
   const labels = {};
-  const used = new Set();
-  for (const w of new Set(Store.cycleWorkouts())) {
-    const name = w.name.trim() || 'W';
-    let n = 1;
-    while (n < name.length && used.has(name.slice(0, n).toLowerCase())) n++;
-    let label = name.slice(0, n);
-    for (let k = 2; used.has(label.toLowerCase()); k++) label = name.slice(0, n) + k; // (the same name twice)
-    used.add(label.toLowerCase());
-    labels[w.id] = label;
+  for (const split of Store.data.cycles) {
+    const used = new Set();
+    for (const w of new Set(Store.cycleWorkouts(split))) {
+      const name = w.name.trim() || 'W';
+      let n = 1;
+      while (n < name.length && used.has(name.slice(0, n).toLowerCase())) n++;
+      let label = name.slice(0, n);
+      for (let k = 2; used.has(label.toLowerCase()); k++) label = name.slice(0, n) + k; // (the same name twice)
+      used.add(label.toLowerCase());
+      labels[w.id] = label;
+    }
   }
   return labels;
 }
 
-// A finished workout's label: its workout's, or (a workout no longer in the cycle) its first letter.
+// A finished workout's label: its workout's, or (a workout that's been deleted) its first letter.
 function sessionLabel(session, labels) {
   return labels[session.workoutId] || (session.workoutName || 'W').trim().slice(0, 1);
 }
@@ -545,7 +549,7 @@ const Views = {
   // its planned sets are on the Edit cycle screen (cycleEdit()).
   home() {
     const draftWorkout = Store.draftWorkout();
-    const cycle = Store.data.cycle;
+    const cycle = Store.cycleItems(); // (of the split you're on)
     // A place's number in the cycle, the same as on Edit cycle (rest days count as places).
     const cycleNum = item => `<span class="cycle-num" aria-label="Number ${cycle.indexOf(item) + 1} in your cycle">${cycle.indexOf(item) + 1}</span>`;
 
@@ -586,7 +590,8 @@ const Views = {
     // The big card: the workout in progress (with its timer, sets so far and Resume), or else Next
     // Up (with Start). One card, so a workout in progress isn't shown twice.
     const next = Store.nextUp();
-    // The place in the cycle the workout in progress counts as (none for a quick workout).
+    // The place in the cycle the workout in progress counts as (none for a quick workout, or for
+    // one started in another split before switching: the list below then starts with Next Up).
     const draftItem = draftWorkout && !draftWorkout.quick ? Store.getCycleItem(Store.data.draft.cycleItemId) : null;
     let hero;
     if (draftWorkout) {
@@ -621,9 +626,13 @@ const Views = {
         </div>`;
     }
     // No workouts yet: the way to make the first one (under a quick workout in progress, if any).
+    // (With no workouts there's no "Then" heading to hold the Edit cycle link. An empty split still
+    // needs the link while there are other splits: Edit cycle is where you switch back to one.)
     if (!next) {
       hero = `${hero || ''}
-        <h2>Next up</h2>
+        ${Store.data.cycles.length > 1
+          ? '<div class="section-head"><h2>Next up</h2><a class="text-btn" href="#/cycle">Edit cycle</a></div>'
+          : '<h2>Next up</h2>'}
         <div class="card next-up is-empty">
           <p class="week-hint">Your workouts make a cycle you go through in order, as many days a week as you like.</p>
           <button type="button" class="btn btn-primary" data-action="new-workout">Create your first workout</button>
@@ -701,14 +710,16 @@ const Views = {
   // ---------- Edit cycle: the cycle in order, and its planned sets ----------
   // Tap a workout to open its screen (to change its exercises); hold and drag a place to change the
   // order (see the drag code in app.js); ✕ takes a place out. The next one is marked; rest days are
-  // small reminders.
+  // small reminders. At the top: the name of the split you're on, and Switch cycle (a pop-up to
+  // change to another split or make one, cycleSwitcher()).
   //   openSets = which planned-sets rows are expanded (a Set of muscle ids); setsInfoOpen = its "i" is open
   cycleEdit(openSets, setsInfoOpen) {
     const next = Store.nextUp();
+    const hasWorkouts = Store.cycleWorkouts().length > 0;
     const remove = item => `
       <button type="button" class="icon-btn cycle-remove" data-action="cycle-remove" data-id="${esc(item.id)}"
         aria-label="Remove from cycle">✕</button>`;
-    const items = Store.data.cycle.map((item, i) => {
+    const items = Store.cycleItems().map((item, i) => {
       if (item.kind === 'rest') {
         return `
           <div class="cycle-item cycle-rest" data-cycle-item="${esc(item.id)}">
@@ -738,6 +749,10 @@ const Views = {
       title: 'Edit cycle',
       back: '#/',
       html: `
+        <div class="section-head cycle-head">
+          <h2>${esc(Store.activeCycle().name)}</h2>
+          <button type="button" class="text-btn" data-action="switch-cycle">Switch cycle</button>
+        </div>
         ${items ? `
           <div id="cycle-list">${items}</div>
           <p class="muted cycle-tip">Tap a workout to change its exercises. Hold and drag to change the order.</p>`
@@ -747,11 +762,11 @@ const Views = {
         <div class="cycle-add stack">
           <button type="button" class="btn" data-action="new-workout">+ New workout</button>
           <div class="row">
-            ${Store.data.workouts.length ? '<button type="button" class="btn" data-action="cycle-add-open">+ Repeat a workout</button>' : ''}
+            ${hasWorkouts ? '<button type="button" class="btn" data-action="cycle-add-open">+ Repeat a workout</button>' : ''}
             <button type="button" class="btn" data-action="cycle-add-rest">+ Add rest day</button>
           </div>
         </div>
-        ${Store.data.workouts.length ? `
+        ${hasWorkouts ? `
           <h2>Planned sets per cycle ${setsInfoButton(setsInfoOpen)}</h2>
           ${setsInfoBox(setsInfoOpen)}
           ${plannedSetsTable(Stats.cyclePlannedSets(), openSets)}` : ''}
@@ -827,6 +842,74 @@ const Views = {
           : `<p class="muted">Your cycle has ${MAX_CYCLE_WORKOUTS} workouts, the most it can hold. Remove one to add another.</p>`}
         <button type="button" class="btn" data-action="dialog-cancel">Cancel</button>
       </div>`;
+  },
+
+  // ---------- Switch cycle: a pop-up on Edit cycle ----------
+  // Your splits, one row each: tap one to switch to it (the one you're on says "Selected"), or its
+  // pencil to rename or delete it. Under them, + Create split and Done. It stays open while you
+  // switch, so the split behind it can be seen changing; Done closes it.
+  cycleSwitcher() {
+    const active = Store.activeCycle();
+    const rows = Store.data.cycles.map(split => {
+      const names = Store.cycleWorkouts(split).map(w => w.name);
+      const on = split === active;
+      return `
+        <div class="split-row">
+          <button type="button" class="workout-open" data-action="split-pick" data-id="${esc(split.id)}" aria-pressed="${on}">
+            <span class="workout-title-line">
+              <span class="workout-name">${esc(split.name)}</span>
+              ${on ? '<span class="tag tag-today">Selected</span>' : ''}
+            </span>
+            <span class="day-meta">${names.length ? esc(names.join(' · ')) : 'No workouts yet'}</span>
+          </button>
+          <button type="button" class="icon-btn" data-action="split-edit" data-id="${esc(split.id)}"
+            aria-label="Rename or delete ${esc(split.name)}">${PENCIL_SVG}</button>
+        </div>`;
+    }).join('');
+    return `
+      <div class="card notice stack" role="dialog" aria-label="Switch cycle">
+        <h2>Your splits</h2>
+        <div class="split-list">${rows}</div>
+        <button type="button" class="btn" data-action="split-new">+ Create split</button>
+        <button type="button" class="btn btn-primary" data-action="dialog-cancel">Done</button>
+      </div>`;
+  },
+
+  // + Create split: asks for its name, then how it starts: empty, or with a copy of the workouts
+  // of the split you're on (the user's choice; only offered when that split has workouts).
+  // It's a form, so the keyboard's Go button makes an empty one (see the overlay's 'submit' in
+  // app.js). Cancel goes back to the list of splits.
+  newCycleDialog() {
+    const active = Store.activeCycle();
+    const canCopy = Store.cycleWorkouts().length > 0;
+    return `
+      <form id="new-cycle-form" class="card notice stack" role="dialog" aria-label="Create split" autocomplete="off">
+        <div>
+          <label for="new-cycle-name">New split name</label>
+          <input id="new-cycle-name" name="name" maxlength="40" placeholder="e.g. Push Pull Legs, Upper Lower" required>
+        </div>
+        ${canCopy ? `<p class="muted">Start it empty, or with a copy of every workout in ${esc(active.name)}. The copies are their own workouts: changing one split won't change the other.</p>` : ''}
+        <button type="submit" class="btn btn-primary">${canCopy ? 'Start empty' : 'Create split'}</button>
+        ${canCopy ? `<button type="button" class="btn" data-action="split-create-copy">Copy ${esc(active.name)}</button>` : ''}
+        <button type="button" class="btn" data-action="switch-cycle">Cancel</button>
+      </form>`;
+  },
+
+  // A split's pencil in the Switch cycle pop-up: its name, and Delete split (the only split left
+  // can't be deleted, so there's always a cycle). Done saves the name and goes back to the list.
+  cycleDetails(split) {
+    return `
+      <form id="cycle-details-form" class="card notice stack" role="dialog" aria-label="Edit ${esc(split.name)}"
+        data-id="${esc(split.id)}" autocomplete="off">
+        <div>
+          <label for="cycle-name">Split name</label>
+          <input id="cycle-name" name="name" maxlength="40" value="${esc(split.name)}" placeholder="e.g. Push Pull Legs, Upper Lower">
+        </div>
+        <button type="submit" class="btn btn-primary">Done</button>
+        ${Store.data.cycles.length > 1
+          ? `<button type="button" class="btn btn-danger" data-action="split-delete" data-id="${esc(split.id)}">Delete split</button>`
+          : '<p class="muted split-only">This is your only split, so it can\'t be deleted.</p>'}
+      </form>`;
   },
 
   // The title, Copy and Delete of a workout (the pencil at the top of its screen).
@@ -942,7 +1025,7 @@ const Views = {
           <button type="button" class="btn" data-action="cancel-edit">Cancel</button>
           ${editing ? `<button type="button" class="btn btn-danger" data-action="delete-exercise" data-id="${editing.id}">Delete</button>` : ''}
         </div>
-        ${editing && Store.data.workouts.length > 1 ? '<button type="button" class="text-btn" data-action="move-open">Move to another workout</button>' : ''}
+        ${editing && new Set(Store.cycleWorkouts()).size > 1 ? '<button type="button" class="text-btn" data-action="move-open">Move to another workout</button>' : ''}
       </form>`;
   },
 

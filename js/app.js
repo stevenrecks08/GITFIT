@@ -406,6 +406,27 @@ function showNewWorkoutDialog(source) {
   box.select();
 }
 
+// The Switch cycle pop-up on Edit cycle: the list of your splits (see Views.cycleSwitcher). Its
+// other pop-ups (Create split, a split's pencil, "Delete split?") come back to it.
+function showSplits() {
+  overlayEl.innerHTML = Views.cycleSwitcher();
+  overlayEl.className = 'overlay is-notice';
+  overlayEl.hidden = false;
+}
+
+// Create split, from its pop-up: makes it (empty, or with a copy of the workouts of the split
+// you're on), switches to it, and goes back to the list of splits, where it's now the selected one.
+function createSplit(copy) {
+  const name = document.getElementById('new-cycle-name').value.trim();
+  if (!name) {
+    toast('Give the split a name');
+    return;
+  }
+  Store.addCycle(name, copy ? Store.activeCycle() : null);
+  render(); // (Edit cycle, behind the pop-up, now shows the new split)
+  showSplits();
+}
+
 // A yes/no pop-up that runs `then` if the answer is yes. (The app's own pop-up, not the browser's.)
 //   options = { title, lines, confirmLabel, danger }
 function askFirst(options, then) {
@@ -756,6 +777,68 @@ const actions = {
     render();
   },
 
+  // ---------- Splits (the Switch cycle pop-up on Edit cycle) ----------
+
+  // Switch cycle at the top of Edit cycle: opens the list of your splits. (Cancel in its other
+  // pop-ups comes back here too.)
+  'switch-cycle'() {
+    showSplits();
+  },
+
+  // Tapped a split in the list: you're on that one now. The pop-up stays open (Done closes it),
+  // and Edit cycle behind it changes to that split. A workout in progress carries on as it is.
+  'split-pick'(id) {
+    if (id === Store.activeCycle().id) return;
+    Store.switchCycle(id);
+    render();
+    showSplits();
+  },
+
+  // + Create split: asks for its name, with the box ready to type in.
+  'split-new'() {
+    overlayEl.innerHTML = Views.newCycleDialog();
+    document.getElementById('new-cycle-name').focus();
+  },
+
+  // "Copy <the split you're on>" in that pop-up. (Start empty is the form's own button: see the
+  // overlay's 'submit' below.)
+  'split-create-copy'() {
+    createSplit(true);
+  },
+
+  // A split's pencil: its name and Delete split.
+  'split-edit'(id) {
+    overlayEl.innerHTML = Views.cycleDetails(Store.getCycle(id));
+  },
+
+  // Delete split asks first: its workouts go with it. Cancel goes back to the list of splits.
+  'split-delete'(id) {
+    const split = Store.getCycle(id);
+    const workouts = [...new Set(Store.cycleWorkouts(split))];
+    const lines = [`${workouts.length
+      ? `Its ${workouts.length === 1 ? 'workout' : `${workouts.length} workouts`} (${workouts.map(w => w.name).join(', ')}) will be deleted with it. `
+      : ''}Workouts you've already finished stay in Past workouts and your logs.`];
+    if (workouts.some(w => w.id === Store.data.draft?.workoutId)) {
+      lines.push('You\'re in the middle of one of its workouts: what you\'ve logged today will be discarded.');
+    }
+    showDialog({
+      title: `Delete ${split.name}?`,
+      lines,
+      confirm: { label: 'Delete split', action: 'split-delete-confirm', id },
+      cancel: { label: 'Cancel', action: 'switch-cycle' },
+      danger: true,
+    });
+  },
+
+  // (If it was the split you were on, the first one left is now.)
+  'split-delete-confirm'(id) {
+    const name = Store.getCycle(id).name;
+    Store.deleteCycle(id);
+    toast(`Deleted ${name}`);
+    render();
+    showSplits();
+  },
+
   // Next on a filled-in exercise: closes it and opens the next one. If every set hit the top of
   // its rep range, a small message suggests going heavier next time.
   'next-exercise'(id) {
@@ -1066,7 +1149,7 @@ const actions = {
 
   'delete-workout'(id) {
     const workout = Store.getWorkout(id);
-    const places = Store.data.cycle.filter(item => item.workoutId === id).length;
+    const places = Store.cycleOf(id).items.filter(item => item.workoutId === id).length;
     const lines = [`${workout.name} will be removed from your cycle${places > 1 ? ` (all ${places} places)` : ''}. Workouts you've already finished with it stay in Past workouts and your logs.`];
     if (Store.data.draft?.workoutId === id) lines.push('You\'re in the middle of this workout: what you\'ve logged today will be discarded.');
     showDialog({
@@ -2072,6 +2155,19 @@ overlayEl.addEventListener('change', event => {
 overlayEl.addEventListener('submit', event => {
   event.preventDefault();
   const form = event.target;
+
+  // Create split → Start empty (its Copy button is 'split-create-copy' in the actions).
+  if (form.id === 'new-cycle-form') return createSplit(false);
+
+  // A split's pencil → Done: saves its name (an empty one keeps the old name), back to the list.
+  if (form.id === 'cycle-details-form') {
+    const name = new FormData(form).get('name').trim();
+    if (name) Store.renameCycle(form.dataset.id, name);
+    render(); // (its name is at the top of Edit cycle)
+    showSplits();
+    return;
+  }
+
   if (form.id !== 'new-workout-form') return;
   const name = new FormData(form).get('name').trim();
   if (!name) {
