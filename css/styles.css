@@ -126,8 +126,6 @@ body.has-back { --header-h: calc(var(--topbar-h) + var(--back-row-h)); }
   color: var(--text-primary);
 }
 .timer-btn:active { background: var(--surface-2); }
-/* On the "Workout in progress" banner */
-.banner-timer { margin-left: 8px; color: var(--text-secondary); }
 
 /* ---------- Page layout ---------- */
 /* Bottom padding leaves room so the last item can scroll above the tab bar */
@@ -289,7 +287,6 @@ button, .btn {
 
 /* This week (surface-1): flame, streak and workouts so far on top; Mon → Sun cells under it */
 .week-card { background: var(--surface-1); border-radius: var(--r-container); }
-.banner + .week-card { margin-top: 16px; }
 .week-card-top { display: flex; align-items: center; gap: 8px; }
 .week-card .streak-flame { width: 28px; height: 28px; }
 .week-card-streak { flex: 1; font-size: var(--fs-meta); color: var(--text-secondary); }
@@ -321,23 +318,51 @@ button, .btn {
 .wd-box.has-workout { background: var(--success); color: var(--on-success); font-size: var(--fs-meta); font-weight: 800; }
 .wd-box.is-today { outline: var(--focus-ring) solid var(--text-primary); outline-offset: 2px; }
 
-/* Next Up: the next workout in the cycle (primary card), with Start under it */
+/* Next Up: the next workout in the cycle (primary card), with Start under it.
+   A workout in progress uses the same card, with Resume. */
 .next-up {
   display: flex;
   flex-direction: column;
   gap: 20px;
 }
-.next-up .workout-open { min-height: 0; }
+/* Its small number in the cycle sits to the left of the name and the line under it, the same
+   way as on the rows under "Then" */
+.next-up .workout-open { display: flex; align-items: center; gap: 12px; min-height: 0; }
+.next-up-main { flex: 1; min-width: 0; }
 .next-up .workout-name { font-size: var(--fs-card-title); font-weight: 700; letter-spacing: var(--card-title-tracking); white-space: normal; }
 .next-up .day-meta { display: block; margin-top: 4px; font-size: var(--fs-meta); color: var(--text-secondary); }
 .next-rest { display: block; margin-top: 4px; font-size: var(--fs-meta); font-weight: 600; color: var(--info); }
 
-/* A heading with a link on its right ("Next up · Edit cycle") */
+/* A heading with a link on its right ("Then · Edit cycle") */
 .section-head { display: flex; align-items: center; justify-content: space-between; margin: var(--gap-section) 0 var(--gap-label); }
 .section-head h2 { margin: 0; }
 .section-head .text-btn { display: flex; align-items: center; width: auto; min-height: 44px; margin: -12px 0; padding: 0 4px; }
-/* "Do a different workout": a centered link under Next Up */
-.text-btn.other-workout { margin-top: 8px; }
+
+/* "Then": the rest of the cycle under Next Up, as rows in one card. Each has its small number in
+   the cycle, its name, when it was last done, and an arrow (it opens the workout's screen). */
+.cycle-rows { padding: 0; overflow: hidden; }
+.cycle-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 64px;
+  padding: 12px var(--pad-card); /* the same as Next Up's card, so the numbers line up */
+  border: none;
+  border-bottom: 1px solid var(--divider);
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+}
+.cycle-row:last-child { border-bottom: none; }
+button.cycle-row:active { background: var(--surface-3); }
+.cycle-row-main { flex: 1; min-width: 0; }
+.cycle-row .day-meta { display: block; margin-top: 4px; font-size: var(--fs-meta); color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cycle-row .chev { flex: 0 0 auto; }
+/* A rest day reminder is a thinner, gray row; "+ Add your next workout" is a green link */
+.cycle-row.is-rest { min-height: 44px; padding-top: 0; padding-bottom: 0; }
+.cycle-row.is-add { justify-content: center; min-height: var(--tap); color: var(--success); font-size: var(--fs-meta); font-weight: 600; }
 
 /* Edit cycle: numbered workout cards and small rest day rows */
 .cycle-num { flex: 0 0 auto; min-width: 16px; font-size: var(--fs-small); font-weight: 600; color: var(--text-secondary); text-align: center; }
@@ -361,8 +386,10 @@ button, .btn {
 .workout-title-line { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .workout-title-line .workout-name { min-width: 0; }
 .workout-title-line .tag { flex: 0 0 auto; }
+/* + New workout (wide), then + Repeat a workout and + Add rest day side by side */
 .cycle-add { margin-top: 12px; }
-.cycle-add .btn { flex: 1; }
+.cycle-add .row { gap: 8px; }
+.cycle-add .row .btn { padding: 0 8px; }
 .cycle-tip { margin: 8px 0 0; font-size: var(--fs-small); }
 .cycle-rest.is-dragging { opacity: 0.3; }
 
@@ -434,11 +461,9 @@ body.is-reordering .after-lift { display: none; }
 .workout-card.is-dragging, .preview-ex.is-dragging { opacity: 0.3; }
 
 /* While an exercise is held: every card shrinks to its name, so the whole list fits on screen */
-body.is-reordering #plan-list .preview-last,
-body.is-reordering #plan-list .log-sets,
-body.is-reordering #plan-list .ex-note,
-body.is-reordering #plan-list .btn,
-body.is-reordering #plan-list .icon-btn,
+body.is-reordering #plan-list .collapse,
+body.is-reordering #plan-list .preview-line,
+body.is-reordering #plan-list .chev,
 body.is-reordering .plan-end,
 body.is-reordering .sets-strip,
 body.is-reordering .ex-body,
@@ -448,11 +473,9 @@ body.is-reordering .finish-bar { display: none; }
 #exercise-list .ex-toggle { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 /* Exercises added for today only sit just below the ones that can be dragged */
 #exercise-list:not(:empty) + .workout-ex { margin-top: var(--gap-row); }
-body.is-reordering .drag-ghost .preview-last,
-body.is-reordering .drag-ghost .log-sets,
-body.is-reordering .drag-ghost .ex-note,
-body.is-reordering .drag-ghost .btn,
-body.is-reordering .drag-ghost .icon-btn { display: none; }
+body.is-reordering .drag-ghost .collapse,
+body.is-reordering .drag-ghost .preview-line,
+body.is-reordering .drag-ghost .chev { display: none; }
 /* Holding a card picks it up; don't select its text or show the iPhone callout menu */
 #plan-list .preview-ex { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; scroll-margin-top: calc(var(--header-h) + env(safe-area-inset-top) + 12px); }
 #plan-list input, #plan-list textarea { -webkit-user-select: text; user-select: text; }
@@ -573,9 +596,8 @@ body.is-dragging { -webkit-user-select: none; user-select: none; }
 }
 /* "Next": green text on a soft green tint */
 .tag.tag-today { padding: 4px 8px; border-radius: var(--r-badge); background: var(--accent-tint); color: var(--success); font-weight: 700; line-height: 1; }
-
-/* "Workout in progress" with Resume */
-.banner { background: var(--surface-2); }
+/* "✓ Added", on an exercise in the search that's already in the workout: the same look */
+.tag.tag-added { border-radius: var(--r-badge); background: var(--accent-tint); color: var(--success); font-weight: 600; }
 
 /* ---------- Forms ---------- */
 label { display: block; font-size: var(--fs-meta); color: var(--text-secondary); margin-bottom: 8px; }
@@ -822,6 +844,19 @@ main.is-searching { padding-bottom: 100vh; }
 .preview-head { display: flex; align-items: center; gap: 12px; }
 .preview-last { margin: 12px 0 8px; font-size: var(--fs-small); color: var(--text-secondary); }
 .preview-tip { margin: 16px 0 0; font-size: var(--fs-meta); }
+.preview-tip + .preview-tip { margin-top: 8px; }
+/* On a workout's screen an exercise's row is a button that opens it up. A down arrow on the right
+   says so; it turns to point up once it's open. */
+.preview-toggle { width: 100%; padding: 0; border: none; background: none; color: var(--text-primary); font: inherit; text-align: left; }
+.preview-toggle .chev { flex: 0 0 auto; width: 18px; height: 18px; transform: rotate(90deg); }
+.preview-ex.is-open > .preview-toggle .chev { transform: rotate(-90deg); }
+.preview-ex.is-open > .collapse { grid-template-rows: 1fr; }
+/* Last time's sets on one line, cut short with "…" if they don't fit */
+.preview-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* What's inside: last time's sets in full, the note, then Edit and Log */
+.preview-more { padding-top: 4px; }
+.preview-actions { margin-top: 12px; gap: 8px; }
+.preview-actions .btn svg { margin-right: 8px; color: var(--success); }
 /* "Try 140 lbs today": every set hit the top of its range last time */
 .ex-sub.next-weight { color: var(--text-primary); font-weight: 600; }
 

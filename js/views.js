@@ -88,11 +88,11 @@ function logButton(refId) {
   return `<button type="button" class="btn btn-small" data-action="view-log" data-id="${esc(refId)}">Log</button>`;
 }
 
-// One exercise in a search list.
-function libItem(e, action, meta) {
+// One exercise in a search list. isAdded = it's already in the workout being added to.
+function libItem(e, action, meta, isAdded = false) {
   return `
     <button type="button" class="lib-item" data-action="${action}" data-id="${esc(e.id)}">
-      <span class="lib-name">${esc(e.name)} ${e.custom ? '<span class="tag">Custom</span>' : ''}</span>
+      <span class="lib-name">${esc(e.name)} ${e.custom ? '<span class="tag">Custom</span>' : ''}${isAdded ? '<span class="tag tag-added">✓ Added</span>' : ''}</span>
       <span class="lib-meta">${esc(meta ?? `${e.equipment} · ${Library.primaryLabel(e)}`)}</span>
     </button>`;
 }
@@ -537,18 +537,17 @@ function workoutMeta(w) {
 
 const Views = {
 
-  // ---------- Home: this week, Next Up and today's cardio ----------
-  // Next Up is the workout after the one you did last (Store.nextUp()). "Do a different workout"
-  // opens a sheet with every workout in the cycle (otherWorkoutSheet()). The cycle itself and its
-  // planned sets are on the Edit cycle screen (cycleEdit()).
+  // ---------- Home: this week, Next Up, the rest of the cycle and today's cardio ----------
+  // Next Up is the workout after the one you did last (Store.nextUp()), on a big card with Start.
+  // Under it, "Then" lists the rest of the cycle in the order it's coming, each with its number in
+  // the cycle (so it's clear where the cycle starts) and when it was last done; tapping one opens
+  // its screen. A workout in progress takes Next Up's place, with Resume. Changing the cycle and
+  // its planned sets are on the Edit cycle screen (cycleEdit()).
   home() {
     const draftWorkout = Store.draftWorkout();
-
-    const resume = draftWorkout ? `
-      <div class="card banner stack">
-        <div><strong>Workout in progress:</strong> ${esc(draftWorkout.name)}<span class="banner-timer"><span data-timer>${formatClock(Store.draftElapsed())}</span><span data-timer-paused ${Store.isDraftPaused() ? '' : 'hidden'}> · Paused</span></span></div>
-        <button class="btn btn-primary" data-action="${draftWorkout.quick ? 'resume-quick' : 'open-workout'}" data-id="${draftWorkout.id}">Resume</button>
-      </div>` : '';
+    const cycle = Store.data.cycle;
+    // A place's number in the cycle, the same as on Edit cycle (rest days count as places).
+    const cycleNum = item => `<span class="cycle-num" aria-label="Number ${cycle.indexOf(item) + 1} in your cycle">${cycle.indexOf(item) + 1}</span>`;
 
     // This week: the streak, workouts so far against this week's goal, and Mon → Sun with a short
     // label on each day a workout was finished (two in a day: "P/L"). Today is outlined and days to
@@ -584,29 +583,90 @@ const Views = {
         <div class="week-days">${cells}</div>
       </div>`;
 
-    // Next Up: the next workout in the cycle, with Start and "Do a different workout" (unless a
-    // workout is already in progress: the banner above resumes that one).
+    // The big card: the workout in progress (with its timer, sets so far and Resume), or else Next
+    // Up (with Start). One card, so a workout in progress isn't shown twice.
     const next = Store.nextUp();
-    const nextUp = next ? `
-      <div class="section-head">
+    // The place in the cycle the workout in progress counts as (none for a quick workout).
+    const draftItem = draftWorkout && !draftWorkout.quick ? Store.getCycleItem(Store.data.draft.cycleItemId) : null;
+    let hero;
+    if (draftWorkout) {
+      const totals = Store.draftTotals();
+      const resume = `data-action="${draftWorkout.quick ? 'resume-quick' : 'open-workout'}" data-id="${esc(draftWorkout.id)}"`;
+      hero = `
+        <h2>In progress</h2>
+        <div class="card next-up">
+          <button class="workout-open" ${resume}>
+            ${draftItem ? cycleNum(draftItem) : ''}
+            <span class="next-up-main">
+              <span class="workout-name">${esc(draftWorkout.name || 'Quick workout')}</span>
+              <span class="day-meta"><span data-timer>${formatClock(Store.draftElapsed())}</span><span data-timer-paused ${Store.isDraftPaused() ? '' : 'hidden'}> · Paused</span> · ${totals.filled} / ${totals.total} sets</span>
+            </span>
+          </button>
+          <button type="button" class="btn btn-primary" ${resume}>Resume</button>
+        </div>`;
+    } else if (next) {
+      hero = `
         <h2>Next up</h2>
-        <a class="text-btn" href="#/cycle">Edit cycle</a>
-      </div>
-      <div class="card next-up">
-        <button class="workout-open" data-action="open-slot" data-id="${esc(next.item.id)}">
-          <span class="workout-name">${esc(next.workout.name)}</span>
-          <span class="day-meta">${workoutMeta(next.workout)}</span>
-          ${next.restBefore ? '<span class="next-rest">Rest day planned before this one</span>' : ''}
-        </button>
-        ${draftWorkout ? '' : `<button type="button" class="btn btn-primary" data-action="start-workout"
-          data-id="${esc(next.workout.id)}" data-slot="${esc(next.item.id)}" ${next.workout.exercises.length ? '' : 'disabled'}>Start workout</button>`}
-      </div>
-      ${draftWorkout ? '' : '<button type="button" class="text-btn other-workout" data-action="other-open">Do a different workout</button>'}` : `
-      <h2>Next up</h2>
-      <div class="card next-up is-empty">
-        <p class="week-hint">Your workouts make a cycle you go through in order, as many days a week as you like.</p>
-        <button type="button" class="btn btn-primary" data-action="new-workout">Create your first workout</button>
-      </div>`;
+        <div class="card next-up">
+          <button class="workout-open" data-action="open-slot" data-id="${esc(next.item.id)}">
+            ${cycleNum(next.item)}
+            <span class="next-up-main">
+              <span class="workout-name">${esc(next.workout.name)}</span>
+              <span class="day-meta">${workoutMeta(next.workout)}</span>
+              ${next.restBefore ? '<span class="next-rest">Rest day planned before this one</span>' : ''}
+            </span>
+          </button>
+          <button type="button" class="btn btn-primary" data-action="start-workout"
+            data-id="${esc(next.workout.id)}" data-slot="${esc(next.item.id)}" ${next.workout.exercises.length ? '' : 'disabled'}>Start workout</button>
+        </div>`;
+    }
+    // No workouts yet: the way to make the first one (under a quick workout in progress, if any).
+    if (!next) {
+      hero = `${hero || ''}
+        <h2>Next up</h2>
+        <div class="card next-up is-empty">
+          <p class="week-hint">Your workouts make a cycle you go through in order, as many days a week as you like.</p>
+          <button type="button" class="btn btn-primary" data-action="new-workout">Create your first workout</button>
+        </div>`;
+    }
+
+    // "Then": the rest of the cycle, in the order it's coming. It starts after the workout on the
+    // big card. (A quick workout in progress isn't in the cycle, so then the list starts with Next
+    // Up itself, marked "Next".) Tapping a workout opens its screen, where Start workout is.
+    let then = '';
+    if (next) {
+      const anchor = draftWorkout ? draftItem : next.item;
+      const start = cycle.indexOf(anchor || next.item);
+      const places = cycle.map((_, i) => cycle[(start + i) % cycle.length]).filter(item => item !== anchor);
+      const rows = places.map(item => {
+        if (item.kind === 'rest') {
+          return `<div class="cycle-row is-rest">${cycleNum(item)}<span class="rest-word">Rest day</span></div>`;
+        }
+        const w = Store.getWorkout(item.workoutId);
+        return `
+          <button type="button" class="cycle-row" data-action="open-slot" data-id="${esc(item.id)}">
+            ${cycleNum(item)}
+            <span class="cycle-row-main">
+              <span class="workout-title-line">
+                <span class="workout-name">${esc(w.name)}</span>
+                ${item === next.item ? '<span class="tag tag-today">Next</span>' : ''}
+              </span>
+              <span class="day-meta">${workoutMeta(w)}</span>
+            </span>
+            ${CHEVRON}
+          </button>`;
+      });
+      // With only one workout so far, the way to make the next one is right here.
+      if (new Set(Store.cycleWorkouts()).size === 1) {
+        rows.push('<button type="button" class="cycle-row is-add" data-action="new-workout">+ Add your next workout</button>');
+      }
+      then = `
+        <div class="section-head">
+          <h2>Then</h2>
+          <a class="text-btn" href="#/cycle">Edit cycle</a>
+        </div>
+        ${rows.length ? `<div class="card cycle-rows">${rows.join('')}</div>` : ''}`;
+    }
 
     // Today's cardio: planned on today's weekday, and anything logged today.
     const cardio = cardioRows(Cardio.rowsFor());
@@ -616,12 +676,12 @@ const Views = {
       back: null,
       history: true,
       html: `
-        ${resume}
         ${weekCard}
-        ${nextUp}
+        ${hero}
+        ${then}
         ${cardio ? `<h2>Today's cardio</h2>${cardio}` : ''}
 
-        <!-- (New workouts are made on Edit cycle, with + Add workout.) -->
+        <!-- (New workouts are made on Edit cycle, with + New workout.) -->
         <div class="fab-menu" id="fab-menu" aria-hidden="true">
           <button type="button" class="fab-option is-quick" data-action="quick-start">
             <strong>Quick workout</strong><span>A one-off, logged but not added to your cycle</span>
@@ -636,27 +696,6 @@ const Views = {
         </button>
       `,
     };
-  },
-
-  // "Do a different workout" under Next Up: every workout in the cycle (each once, in cycle order)
-  // with when it was last done. Tapping one starts it (see 'start-workout' in app.js); Next Up then
-  // carries on from it.
-  otherWorkoutSheet() {
-    const next = Store.nextUp();
-    return `
-      <div class="card notice stack" role="dialog" aria-label="Do a different workout">
-        <h2>Do a different workout</h2>
-        <div class="lib-results">
-          ${[...new Set(Store.cycleWorkouts())].map(w => `
-            <button type="button" class="lib-item" data-action="start-workout" data-id="${esc(w.id)}"
-              ${w.exercises.length ? '' : 'disabled'}>
-              <span class="lib-name">${esc(w.name)}${next?.workout === w ? ' <span class="tag tag-today">Next</span>' : ''}</span>
-              <span class="lib-meta">${w.exercises.length ? workoutMeta(w) : 'No exercises yet'}</span>
-            </button>`).join('')}
-        </div>
-        <a class="btn" href="#/cycle" data-action="dialog-cancel">Edit cycle</a>
-        <button type="button" class="btn" data-action="dialog-cancel">Cancel</button>
-      </div>`;
   },
 
   // ---------- Edit cycle: the cycle in order, and its planned sets ----------
@@ -703,9 +742,14 @@ const Views = {
           <div id="cycle-list">${items}</div>
           <p class="muted cycle-tip">Tap a workout to change its exercises. Hold and drag to change the order.</p>`
           : '<p class="empty">Your cycle is empty. Add a workout to start one.</p>'}
-        <div class="row cycle-add">
-          <button type="button" class="btn" data-action="cycle-add-open">+ Add workout</button>
-          <button type="button" class="btn" data-action="cycle-add-rest">+ Add rest day</button>
+        <!-- A new workout is what's wanted most, so it has the wide button. Putting a workout
+             in the cycle a second time and rest days are the smaller ones under it. -->
+        <div class="cycle-add stack">
+          <button type="button" class="btn" data-action="new-workout">+ New workout</button>
+          <div class="row">
+            ${Store.data.workouts.length ? '<button type="button" class="btn" data-action="cycle-add-open">+ Repeat a workout</button>' : ''}
+            <button type="button" class="btn" data-action="cycle-add-rest">+ Add rest day</button>
+          </div>
         </div>
         ${Store.data.workouts.length ? `
           <h2>Planned sets per cycle ${setsInfoButton(setsInfoOpen)}</h2>
@@ -715,33 +759,35 @@ const Views = {
     };
   },
 
-  // ---------- New workout (the + button), or a copy of one ----------
-  // form = { name, copyFrom (workout id, or null) }. Either way it goes at the end of the cycle.
-  newWorkout(form) {
-    const source = form.copyFrom && Store.getWorkout(form.copyFrom);
+  // ---------- New workout, or a copy of one: a pop-up that only asks for the title ----------
+  // (It used to be a page of its own; a pop-up is one screen less on the way to adding exercises.)
+  // source = the workout being copied, or null for a new one. Either way it goes at the end of
+  // the cycle. It's a form so the keyboard's Go button creates it too (see the overlay's 'submit'
+  // in app.js).
+  newWorkoutDialog(source = null) {
     const count = source ? source.exercises.length : 0;
-    return {
-      title: source ? 'Copy workout' : 'New workout',
-      back: source ? `#/workout/${source.id}` : '#/',
-      html: `
-        <form id="new-workout-form" class="stack" autocomplete="off">
-          <h2>Title</h2>
-          <input id="new-workout-name" name="name" value="${esc(form.name)}" placeholder="e.g. Push, Legs, Upper (arm focus)" required>
-          <p class="muted">It goes at the end of your cycle. You can drag it to another place after.</p>
-          ${source ? `<p class="muted">Copies all ${count} exercise${count === 1 ? '' : 's'} from ${esc(source.name)}. The copy is its own workout: changing one won't change the other.</p>` : ''}
-          <button type="submit" class="btn btn-primary">${source ? 'Create copy' : 'Create workout'}</button>
-        </form>`,
-    };
+    return `
+      <form id="new-workout-form" class="card notice stack" role="dialog" aria-label="${source ? 'Copy workout' : 'New workout'}"
+        data-copy="${esc(source ? source.id : '')}" autocomplete="off">
+        <div>
+          <label for="new-workout-name">${source ? 'Title of the copy' : 'New workout title'}</label>
+          <input id="new-workout-name" name="name" value="${esc(source ? source.name : '')}" placeholder="e.g. Push, Legs, Upper (arm focus)" required>
+        </div>
+        <p class="muted">${source ? `Copies all ${count} exercise${count === 1 ? '' : 's'} from ${esc(source.name)}. The copy is its own workout: changing one won't change the other. ` : ''}It goes at the end of your cycle.</p>
+        <button type="submit" class="btn btn-primary">${source ? 'Create copy' : 'Create workout'}</button>
+        <button type="button" class="btn" data-action="dialog-cancel">Cancel</button>
+      </form>`;
   },
 
   // The add/edit exercise panel, in a card on a workout's screen or at the end of its list.
   // It has three steps: pick from library → (or create custom) → sets & reps.
-  // picker = what it shows (see app.js); canClose = the search has a way to close it
-  exercisePanel(picker, editing, canClose) {
+  // picker = what it shows (see app.js); canClose = the search has a way to close it;
+  // added = the exercises already in this workout (a Set of their ids), marked in the search
+  exercisePanel(picker, editing, canClose, added) {
     if (picker.mode === 'custom') return this.customExerciseForm(picker);
     if (picker.mode === 'details') return this.exerciseDetailsForm(picker, editing);
     if (picker.mode === 'move') return this.moveExercisePicker(editing);
-    return this.exercisePicker(picker, editing, canClose);
+    return this.exercisePicker(picker, editing, canClose, added);
   },
 
   // Move an exercise to another workout: its other workouts, in cycle order.
@@ -761,23 +807,23 @@ const Views = {
       </div>`;
   },
 
-  // "+ Add workout" on the cycle (with Edit on): one of your workouts again, or a new one.
+  // "+ Repeat a workout" on Edit cycle: puts one of your workouts in the cycle another time
+  // (Push, Pull, Legs, Push). New workouts have their own button there.
   cycleAddPicker() {
     const room = Store.cycleHasRoom();
     const workouts = [...new Set(Store.cycleWorkouts())];
     return `
-      <div class="card notice stack" role="dialog" aria-label="Add a workout to the cycle">
-        <h2>Add to your cycle</h2>
+      <div class="card notice stack" role="dialog" aria-label="Repeat a workout in the cycle">
+        <h2>Repeat a workout</h2>
         ${room ? `
-          <p class="muted move-title">One of your workouts again (the same workout, not a copy):</p>
+          <p class="muted move-title">It goes in your cycle another time, at the end. It's the same workout, not a copy.</p>
           <div class="lib-results">
             ${workouts.map(w => `
               <button type="button" class="lib-item" data-action="cycle-add-workout" data-id="${esc(w.id)}">
                 <span class="lib-name">${esc(w.name)}</span>
                 <span class="lib-meta">${w.exercises.length} exercise${w.exercises.length === 1 ? '' : 's'}</span>
               </button>`).join('')}
-          </div>
-          <button type="button" class="btn btn-primary" data-action="new-workout">+ New workout</button>`
+          </div>`
           : `<p class="muted">Your cycle has ${MAX_CYCLE_WORKOUTS} workouts, the most it can hold. Remove one to add another.</p>`}
         <button type="button" class="btn" data-action="dialog-cancel">Cancel</button>
       </div>`;
@@ -799,12 +845,12 @@ const Views = {
   },
 
   // Step 1: search the library and tap an exercise.
-  exercisePicker(picker, editing, canClose) {
+  exercisePicker(picker, editing, canClose, added) {
     return `
       <div class="card stack">
         <input type="search" id="lib-search" value="${esc(picker.query)}"
-          placeholder="Search name, muscle or equipment" autocomplete="off" aria-label="Search exercises">
-        <div id="lib-results" class="lib-results">${this.libraryResults(picker.query, 'pick-exercise', picker.group)}</div>
+          placeholder="Search exercises" autocomplete="off" aria-label="Search exercises by name, muscle or equipment">
+        <div id="lib-results" class="lib-results">${this.libraryResults(picker.query, 'pick-exercise', picker.group, { added })}</div>
         <button type="button" class="btn" data-action="new-custom">+ Create custom exercise</button>
         ${editing ? '<button type="button" class="btn" data-action="cancel-edit">Cancel</button>'
           : canClose ? '<button type="button" class="btn" data-action="close-add">Done adding</button>' : ''}
@@ -816,7 +862,13 @@ const Views = {
   // every exercise you've logged). Once you type: only the best few matches.
   // action = what tapping a result does (picking for a day, or opening its log).
   // group = the muscle group chip that's picked, if any.
-  libraryResults(query, action = 'pick-exercise', group = null) {
+  // added = the exercises already in the workout being added to (a Set of ids): they get an
+  //   "Added" tag, so the same one isn't put in twice by mistake (it still can be).
+  // similarTo = for Swap for today, the planned exercise: before you type, the list starts with
+  //   exercises for the same muscles, since a swap is nearly always one of those.
+  // (app.js passes the same options when it redraws this list: libraryOptions().)
+  libraryResults(query, action = 'pick-exercise', group = null, { added = new Set(), similarTo = null } = {}) {
+    const item = e => libItem(e, action, undefined, added.has(e.id));
     if (!query.trim()) {
       const chips = `
         <div class="browse-chips">
@@ -824,7 +876,7 @@ const Views = {
             <button type="button" class="chip-btn ${g.name === group ? 'is-picked' : ''}" data-action="browse-group"
               data-id="${g.name}" data-target="${action}">${g.name}</button>`).join('')}
         </div>`;
-      if (group) return chips + Library.inGroup(group).map(e => libItem(e, action)).join('');
+      if (group) return chips + Library.inGroup(group).map(item).join('');
       if (action === 'open-log') {
         const logged = Store.loggedExercises();
         return chips + (logged.length
@@ -832,8 +884,12 @@ const Views = {
               `Last ${shortDate(l.date)} · ${l.count} workout${l.count === 1 ? '' : 's'}`)).join('')}`
           : '<p class="empty">Exercises you log will show here.</p>');
       }
-      const recent = Store.loggedExercises().map(l => Library.get(l.refId)).filter(e => e && !e.deleted).slice(0, 6);
-      return chips + (recent.length ? `<p class="lib-head">Recent</p>${recent.map(e => libItem(e, action)).join('')}` : '');
+      const similar = similarTo ? Library.similarTo(similarTo) : [];
+      const recent = Store.loggedExercises().map(l => Library.get(l.refId))
+        .filter(e => e && !e.deleted && e.id !== similarTo && !similar.includes(e)).slice(0, 6);
+      return chips
+        + (similar.length ? `<p class="lib-head">Similar exercises</p>${similar.map(item).join('')}` : '')
+        + (recent.length ? `<p class="lib-head">Recent</p>${recent.map(item).join('')}` : '');
     }
     const { results, total } = Library.search(query);
     if (!results.length) {
@@ -842,7 +898,7 @@ const Views = {
     }
     const more = total > results.length
       ? `<p class="lib-more">Showing the best ${results.length} of ${total} — keep typing to narrow it down.</p>` : '';
-    return results.map(e => libItem(e, action)).join('') + more;
+    return results.map(item).join('') + more;
   },
 
   // Step 2: sets and reps for the picked exercise.
@@ -945,42 +1001,62 @@ const Views = {
   },
 
   // ---------- A planned workout before it's started: look at it and change it, on one screen ----------
-  // Shows what you did last time, each exercise's note and log. Each exercise has a pencil that
-  // opens its sets & reps inside its card; hold and drag a card to change the order (app.js).
-  // The pencil at the top has the title, copy and delete. Start workout is what starts it
-  // (and its timer). Dashed cards make it look different from the real thing.
+  // Each exercise is one short row (its target, and last time's sets on one line), so the whole
+  // workout fits on a screen. Tapping a row opens it up, with a down arrow to show that it does:
+  // last time's sets in full, its note, and Edit (its sets & reps, inside its card) and Log.
+  // Hold and drag a row to change the order (app.js). The pencil at the top has the title, copy
+  // and delete. Start workout is what starts it (and its timer).
   //   ui = { picker (the add/edit panel, see app.js), strip and stripRows (the planned sets strip),
-  //          changed (muscles changed by the last edit) }
+  //          changed (muscles changed by the last edit), open (a Set: the exercises opened up) }
   workoutPreview(workout, ui) {
     const { picker } = ui;
     const hasExercises = workout.exercises.length > 0;
     const editing = workout.exercises.find(e => e.id === picker.exerciseId);
     // A workout with nothing in it opens ready to add to.
     const adding = !editing && (picker.adding || !hasExercises);
+    // The exercises already here, so the search can mark them.
+    const added = new Set(workout.exercises.map(e => e.refId));
 
     const cards = workout.exercises.map((ex, i) => {
       const info = Library.forExercise(ex);
       const timed = Library.isTimed(ex.refId);
+      const bw = Library.isRepsOnly(ex.refId);
       const last = Store.lastResult(ex);
-      const isEditing = ex === editing;
+      const title = `
+        <span class="ex-num">${i + 1}</span>
+        <span class="ex-toggle-main">
+          <span class="ex-title">${esc(info.name)}</span>
+          <span class="ex-sub">Target ${targetText(ex, timed)}</span>`;
+
+      // Being edited: its sets & reps take the place of the rest of the card.
+      if (ex === editing) {
+        return `
+          <div class="card preview-ex is-editing" data-plan-ex="${ex.id}">
+            <div class="preview-head">${title}</span></div>
+            <div id="exercise-panel">${this.exercisePanel(picker, editing, false, added)}</div>
+          </div>`;
+      }
+
+      const isOpen = ui.open.has(ex.id);
       return `
-        <div class="card preview-ex ${isEditing ? 'is-editing' : ''}" data-plan-ex="${ex.id}">
-          <div class="preview-head">
-            <span class="ex-num">${i + 1}</span>
-            <span class="ex-toggle-main">
-              <span class="ex-title">${esc(info.name)}</span>
-              <span class="ex-sub">Target ${targetText(ex, timed)}</span>
+        <div class="card preview-ex ${isOpen ? 'is-open' : ''}" data-plan-ex="${ex.id}">
+          <button type="button" class="preview-head preview-toggle" data-action="toggle-plan-ex" data-id="${ex.id}" aria-expanded="${isOpen}">
+            ${title}
+              ${last ? `<span class="ex-sub preview-line">${lastSummary(last, timed, bw)}</span>` : ''}
               ${nextWeightNote(ex)}
             </span>
-            ${logButton(ex.refId)}
-            <button type="button" class="icon-btn" data-action="edit-exercise" data-id="${ex.id}"
-              aria-label="Edit ${esc(info.name)}" aria-pressed="${isEditing}">${PENCIL_SVG}</button>
-          </div>
-          ${isEditing ? `<div id="exercise-panel">${this.exercisePanel(picker, editing, false)}</div>` : `
+            ${CHEVRON}
+          </button>
+          <div class="collapse"><div class="collapse-inner"><div class="preview-more">
             ${last
-              ? `<p class="preview-last">Last time · ${formatDate(last.date)}</p>${setsList(last.sets, timed, Library.isRepsOnly(ex.refId))}`
+              ? `<p class="preview-last">Last time · ${formatDate(last.date)}</p>${setsList(last.sets, timed, bw)}`
               : '<p class="preview-last">No history yet</p>'}
-            ${noteBox(ex.refId)}`}
+            ${noteBox(ex.refId)}
+            <div class="row preview-actions">
+              <button type="button" class="btn btn-small" data-action="edit-exercise" data-id="${ex.id}">${PENCIL_SVG} Edit</button>
+              ${logButton(ex.refId)}
+            </div>
+          </div></div></div>
         </div>`;
     }).join('');
 
@@ -994,9 +1070,10 @@ const Views = {
         </div>
         <div id="plan-list">${cards}</div>
         <div class="plan-end">
-          ${adding ? `<h2>Add exercise</h2><div id="exercise-panel">${this.exercisePanel(picker, null, hasExercises)}</div>`
+          ${adding ? `<h2>Add exercise</h2><div id="exercise-panel">${this.exercisePanel(picker, null, hasExercises, added)}</div>`
             : '<button type="button" class="btn btn-add-ex" data-action="add-exercise">+ Add exercise</button>'}
-          ${hasExercises ? '<p class="muted preview-tip">Only log your working sets, not your warm-ups.</p>' : ''}
+          ${hasExercises ? `<p class="muted preview-tip">Tap an exercise to see last time, add a note or edit it. Hold and drag to change the order.</p>
+            <p class="muted preview-tip">Only log your working sets, not your warm-ups.</p>` : ''}
         </div>
         ${plannedStrip(workout, ui.strip, ui.stripRows, ui.changed)}
       `,
@@ -1065,7 +1142,7 @@ const Views = {
           <div class="swap-panel stack">
             <input type="search" id="swap-search" value="${esc(swap.query)}"
               placeholder="Swap for today: search exercises" autocomplete="off" aria-label="Search exercises to swap in">
-            <div id="swap-results" class="lib-results">${this.libraryResults(swap.query, 'swap-pick')}</div>
+            <div id="swap-results" class="lib-results">${this.libraryResults(swap.query, 'swap-pick', null, { similarTo: ex.refId })}</div>
             <button type="button" class="btn" data-action="swap-new-custom">+ Create custom exercise</button>
             <button type="button" class="btn" data-action="swap-cancel">Cancel</button>
           </div>` : `
@@ -1130,7 +1207,7 @@ const Views = {
       <div class="card stack" id="quick-add-panel">
         ${quick ? '' : '<p class="muted add-today-note">Just for today: your plan stays the same.</p>'}
         <input type="search" id="quick-search" value="${esc(quickAdd.query)}"
-          placeholder="Search name, muscle or equipment" autocomplete="off" aria-label="Search exercises to add">
+          placeholder="Search exercises" autocomplete="off" aria-label="Search exercises to add, by name, muscle or equipment">
         <div id="quick-results" class="lib-results">${this.libraryResults(quickAdd.query, 'quick-pick')}</div>
         <button type="button" class="btn" data-action="quick-new-custom">+ Create custom exercise</button>
         <button type="button" class="btn" data-action="quick-add-cancel">Cancel</button>
@@ -1916,7 +1993,7 @@ const Views = {
       html: `
         <div class="card stack">
           <input type="search" id="log-search" value="${esc(query)}"
-            placeholder="Search name, muscle or equipment" autocomplete="off" aria-label="Search exercises">
+            placeholder="Search exercises" autocomplete="off" aria-label="Search exercises by name, muscle or equipment">
           <div id="log-results" class="lib-results">${this.libraryResults(query, 'open-log')}</div>
         </div>
       `,

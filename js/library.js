@@ -202,6 +202,20 @@ const Library = {
     return this.active().filter(e => this.groupOf(e) === group).sort((a, b) => a.name.localeCompare(b.name));
   },
 
+  // Exercises that train the same muscles as this one, closest first: the more primary muscles
+  // they share the better, then the more secondary muscles (so a Dumbbell Bench Press comes before
+  // a Cable Fly for a Barbell Bench Press), then by name. For Swap for today.
+  similarTo(refId, limit = 8) {
+    const mine = this.get(refId);
+    if (!mine) return [];
+    const shared = (a, b) => (a || []).filter(id => (b || []).includes(id)).length;
+    const score = e => 10 * shared(e.primary, mine.primary) + shared(e.secondary, mine.secondary);
+    return this.active()
+      .filter(e => e.id !== refId && shared(e.primary, mine.primary) > 0)
+      .sort((a, b) => score(b) - score(a) || a.name.localeCompare(b.name))
+      .slice(0, limit);
+  },
+
   get(refId) {
     return this.all().find(e => e.id === refId);
   },
