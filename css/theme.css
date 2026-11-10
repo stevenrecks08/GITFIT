@@ -1,0 +1,90 @@
+/* theme.css — every visual value the app uses: colors, type, corner radius, spacing and sizes.
+   styles.css only ever uses these variables, never its own colors, fonts, radii or shadows.
+
+   The app runs the "Mono" theme (data-theme="mono" on <html> in index.html). To add another theme
+   later, copy the block below under [data-theme="other-name"], change the values, and switch the
+   attribute. (There's no theme picker yet.)
+
+   Mono's rules:
+   - Black background; depth comes only from three surface steps. No borders on cards, no shadows,
+     no glows, no gradients.
+   - Green means "done" and nothing else: completed days, the streak flame, Week done, finished sets,
+     checked boxes, PRs. Buttons, selection, toggles and links are white, never green.
+   - Red is only for destructive actions. Blue (info) is only for quick workouts, streak freezes and
+     rest day reminders. */
+
+:root, [data-theme="mono"] {
+  color-scheme: dark;
+
+  /* ---------- Colors ---------- */
+  --bg: #000000;              /* app background, top bar, tab bar */
+  --surface-1: #141415;       /* secondary containers (the weekly streak card) */
+  --surface-2: #1c1c1e;       /* primary cards, list rows, pop-ups */
+  --surface-3: #1f1f21;       /* inputs, inactive day cells, segmented tracks, unselected toggles */
+  --divider: #141415;         /* tab bar top line, list separators */
+  --text-primary: #ffffff;
+  --text-secondary: #8e8e93;  /* meta lines, section labels, inactive tabs */
+  --text-tertiary: #545458;   /* disabled, future days, placeholders */
+  --success: #30d158;         /* done (iOS green) */
+  --on-success: #000000;      /* text and ticks on green */
+  --danger: #ff453a;          /* destructive actions only (iOS red) */
+  --info: #0a84ff;            /* quick workouts, freezes, rest day reminders (iOS blue) */
+  --action: #ffffff;          /* primary buttons, the + button, selected states */
+  --on-action: #000000;       /* text on white */
+  --backdrop: rgba(0, 0, 0, 0.6); /* behind pop-ups */
+
+  /* The muscle map's color scale (Profile). A chart, so its colors mean growth and level, not "done".
+     bodymap.js reads these; they must stay '#rrggbb' so it can blend between them. */
+  --map-empty: #3a3a3c;       /* no data */
+  --map-decline: #ff453a;     /* Growth: getting weaker */
+  --map-flat: #ffd60a;        /* Growth: no change */
+  --map-growth: #30d158;      /* Growth: getting stronger */
+  --map-level-0: #0a84ff;     /* Level: Beginner → Elite */
+  --map-level-1: #30d158;
+  --map-level-2: #ffd60a;
+  --map-level-3: #ff9f0a;
+  --map-level-4: #bf5af2;
+
+  /* ---------- Type ---------- */
+  --font: -apple-system, BlinkMacSystemFont, system-ui, sans-serif; /* SF Pro on iPhone */
+  --fs-hero-xl: 96px;         /* the milestone celebration's number */
+  --fs-hero: 76px;            /* the celebration's number */
+  --fs-card-title: 32px;      /* "Legs" on Next Up */
+  --fs-title: 24px;           /* "GitFit" in the top bar */
+  --fs-stat: 22px;            /* big numbers: streak count, 1/4, weights */
+  --fs-item: 18px;            /* exercise names, cardio names, inputs (16px+ stops iPhone zooming) */
+  --fs-body: 16px;
+  --fs-meta: 15px;            /* meta lines and section labels */
+  --fs-small: 13px;           /* day letters, small labels */
+  --fs-tiny: 12px;            /* tab labels, chart labels, column heads */
+  --card-title-tracking: -0.8px;
+
+  /* ---------- Corner radius (different sizes on purpose) ---------- */
+  --r-swatch: 3px;            /* tiny color squares in the map legend */
+  --r-check: 6px;             /* checkboxes */
+  --r-day: 8px;               /* day cells, day toggles */
+  --r-control: 12px;          /* buttons, inputs, segmented controls, chips */
+  --r-container: 14px;        /* secondary containers, list rows */
+  --r-fab: 18px;              /* the + button */
+  --r-card: 20px;             /* primary cards, pop-ups */
+  --r-pill: 999px;            /* tags, progress bars, the toast */
+  --r-round: 50%;             /* dots, the avatar, small round buttons */
+
+  /* ---------- Spacing (a 4px scale) ---------- */
+  --pad-screen: 20px;
+  --pad-card: 22px;
+  --pad-row: 16px;            /* list rows */
+  --gap-section: 28px;        /* between sections */
+  --gap-label: 14px;          /* a section label and its content */
+  --gap-row: 8px;             /* between list rows */
+
+  /* ---------- Sizes ---------- */
+  --tap: 52px;                /* minimum height for anything you tap */
+  --btn-lg: 58px;             /* Start workout, Finish workout */
+  --fab: 64px;                /* the + button */
+  --check: 30px;              /* checkboxes */
+  --nav-icon: 28px;
+  --tabbar-h: 58px;           /* tab bar, not counting the iPhone home-indicator area */
+  --topbar-h: 52px;           /* top bar, below the iPhone status bar */
+  --focus-ring: 2px;
+}

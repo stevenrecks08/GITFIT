@@ -17,7 +17,8 @@ Data you enter on your computer stays in *that* browser. It won't appear on your
 ```
 index.html        The page shell: top bar + an empty <main> that screens are drawn into
 manifest.json     Lets the app be "installed" to a phone home screen
-css/styles.css    All styling. Colors are at the top under :root
+css/theme.css     The theme: every color, font size, corner radius and spacing as variables
+css/styles.css    All styling, using only the variables from theme.css
 js/library.js     Built-in exercise library and muscle list — add exercises here
 js/storage.js     All saving/loading (localStorage), plus export/import
 js/units.js       Converts weights, heights and cardio numbers between saved units (lbs, inches, miles, mph, feet) and shown units

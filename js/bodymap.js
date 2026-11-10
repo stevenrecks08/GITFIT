@@ -61,7 +61,16 @@ const BACK_MUSCLES = [
 const FRONT_LINES = 'M100,131 L114,130 M100,145 L114,144 M100,159 L115,158';
 const BACK_LINES = '';
 
-const MAP_EMPTY = '#3a404d'; // muscles with no data
+// The map's colors come from the theme (the --map-* variables in css/theme.css), so this file has
+// none of its own. They're read when needed, since blending needs the actual '#rrggbb' values.
+function themeColor(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+// Muscles with no data.
+function mapEmpty() {
+  return themeColor('--map-empty');
+}
 
 // Blends two '#rrggbb' colors: t = 0 gives a, t = 1 gives b.
 function mixColor(a, b, t) {
@@ -75,26 +84,26 @@ function mixColor(a, b, t) {
 
 const GROWTH_SCALE = 10; // ±10% in 6 weeks is full red / full green
 
-// One color per strength level, Beginner → Elite (LEVELS in standards.js).
-const LEVEL_COLORS = ['#60a5fa', '#4ade80', '#facc15', '#fb923c', '#e879f9'];
-
 const MapColors = {
-  // A color per level. Gray = no logged exercise with a standard.
+  // A color per strength level, Beginner → Elite (LEVELS in standards.js): --map-level-0 … 4.
+  // Gray = no logged exercise with a standard.
   level(value) {
-    return value ? LEVEL_COLORS[value.level] : MAP_EMPTY;
+    return value ? themeColor(`--map-level-${value.level}`) : mapEmpty();
   },
   // Red (declining) → yellow (flat) → green (strong growth). Gray = not enough data.
   growth(pct) {
-    if (pct == null) return MAP_EMPTY;
+    if (pct == null) return mapEmpty();
     const t = Math.max(-1, Math.min(1, pct / GROWTH_SCALE));
-    return t < 0 ? mixColor('#facc15', '#f87171', -t) : mixColor('#facc15', '#4ade80', t);
+    const flat = themeColor('--map-flat');
+    return t < 0 ? mixColor(flat, themeColor('--map-decline'), -t) : mixColor(flat, themeColor('--map-growth'), t);
   },
 };
 
 // One figure. colors = { muscleId: color }, selected = the tapped muscle id (or null).
 function bodyFigure(label, muscles, lines, colors, selected) {
+  const empty = mapEmpty();
   const half = muscles.map(([id, d]) => `
-    <path class="muscle ${id === selected ? 'is-selected' : ''}" d="${d}" fill="${colors[id] || MAP_EMPTY}"
+    <path class="muscle ${id === selected ? 'is-selected' : ''}" d="${d}" fill="${colors[id] || empty}"
       data-action="muscle" data-id="${id}"><title>${MUSCLES[id]}</title></path>`).join('');
   const mirrored = content => `${content}<g transform="translate(200 0) scale(-1 1)">${content}</g>`;
   return `

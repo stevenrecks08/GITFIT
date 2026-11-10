@@ -1882,6 +1882,7 @@ appEl.addEventListener('input', event => {
   }
   Store.updateDraftSet(input.dataset.ex, Number(input.dataset.set), field, value);
   if (field === 'weight' && value != null) fillWeightDown(input.dataset.ex, Number(input.dataset.set), value);
+  if (field === 'reps') refreshSetNumber(input.dataset.ex, Number(input.dataset.set), value !== '');
   refreshWorkoutProgress(input.dataset.ex);
 });
 
@@ -1894,6 +1895,13 @@ function fillWeightDown(exerciseId, setIndex, lbs) {
     const box = document.querySelector(`[data-ex="${exerciseId}"][data-set="${i}"][data-field="weight"]`);
     if (box) box.value = Units.showWeight(lbs);
   });
+}
+
+// A set's number turns into a green ✓ once its reps are typed, and back if they're cleared.
+// Swapped in place (setNumber() in views.js), so the keyboard stays open.
+function refreshSetNumber(exerciseId, index, done) {
+  const el = document.querySelector(`[data-set-num="${exerciseId}|${index}"]`);
+  if (el) el.outerHTML = setNumber(exerciseId, index, done);
 }
 
 // As sets are typed in: the Next button and the sets counter, without a redraw (which would

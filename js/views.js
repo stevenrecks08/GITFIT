@@ -63,6 +63,13 @@ function bwBox(bw, box) {
   return bw ? `<div class="bw-box"><span>BW +</span>${box}</div>` : box;
 }
 
+// A set's number in the workout's set grid, or a green ✓ once its reps are typed (done).
+// data-set-num lets app.js switch it as you type, without redrawing the screen.
+function setNumber(exerciseId, index, done) {
+  return `<div class="set-num ${done ? 'is-done' : ''}" data-set-num="${esc(exerciseId)}|${index}"
+    aria-label="Set ${index + 1}${done ? ', logged' : ''}">${done ? '✓' : index + 1}</div>`;
+}
+
 // The weight box on a timed exercise (plank): still there, but clearly not for typing in.
 const LOCKED_WEIGHT = `<input type="text" class="is-locked" value="—" disabled aria-label="No weight for this exercise">`;
 
@@ -243,7 +250,9 @@ function fromDayKey(key) {
 // tight = the scale hugs the numbers, so small changes show (body weight).
 // format = how a number on the side is written (run times are minutes and seconds).
 // dayAction = what tapping a dot runs (with its dayKey).
-function maxChart(points, emptyNote, singles = [], label = 'Estimated max', selected = null, tight = false, format = Math.round, dayAction = 'log-day') {
+// better = which way is a new best: 'higher' (lifts), 'lower' (run times) or null (body weight, no
+// bests). A dot that beat every dot before it is green (the theme's "done" color); the rest are white.
+function maxChart(points, emptyNote, singles = [], label = 'Estimated max', selected = null, tight = false, format = Math.round, dayAction = 'log-day', better = 'higher') {
   const W = 320, H = 170, L = 40, R = 10, T = 10, B = 24; // size and margins (SVG units)
 
   if (!points.length) {
@@ -275,7 +284,10 @@ function maxChart(points, emptyNote, singles = [], label = 'Estimated max', sele
     <line class="chart-grid" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/>
     <text class="chart-label" x="${L - 6}" y="${y(v) + 4}" text-anchor="end">${format(v)}</text>`).join('');
   const line = points.map((p, i) => `${i ? 'L' : 'M'}${x(p.time).toFixed(1)},${y(p.value).toFixed(1)}`).join(' ');
-  const dots = points.map(p => `<circle class="chart-dot" cx="${x(p.time).toFixed(1)}" cy="${y(p.value).toFixed(1)}" r="${p.dayKey && p.dayKey === selected ? 6 : 3.5}"/>`).join('');
+  // New bests: each point better than all before it (the first point has nothing to beat).
+  const isBest = points.map((p, i) => better != null && i > 0 && points.slice(0, i).every(q =>
+    (better === 'lower' ? p.value < q.value : p.value > q.value)));
+  const dots = points.map((p, i) => `<circle class="chart-dot ${isBest[i] ? 'is-pr' : ''}" cx="${x(p.time).toFixed(1)}" cy="${y(p.value).toFixed(1)}" r="${p.dayKey && p.dayKey === selected ? 6 : 3.5}"/>`).join('');
   // A bigger invisible circle over each dot, so it's easy to tap.
   const hits = points.filter(p => p.dayKey).map(p => `<circle class="chart-hit" cx="${x(p.time).toFixed(1)}" cy="${y(p.value).toFixed(1)}" r="14" data-action="${dayAction}" data-id="${p.dayKey}"/>`).join('');
   const singleLine = singles.map((p, i) => `${i ? 'L' : 'M'}${x(p.time).toFixed(1)},${y(p.value).toFixed(1)}`).join(' ');
@@ -285,6 +297,7 @@ function maxChart(points, emptyNote, singles = [], label = 'Estimated max', sele
     <p class="chart-key">
       <span><i class="key-estimate"></i>${label}</span>
       ${singles.length ? '<span><i class="key-single"></i>Actual 1-rep</span>' : ''}
+      ${isBest.some(Boolean) ? '<span><i class="key-pr"></i>New best</span>' : ''}
     </p>`;
   const xLabels = t1 === t0
     ? `<text class="chart-label" x="${(L + W - R) / 2}" y="${H - 6}" text-anchor="middle">Today</text>`
@@ -1019,8 +1032,9 @@ const Views = {
       if (isOpen) {
         const setRows = draft.entries[ex.id].map((set, i) => {
           const lastReps = last?.sets[i]?.reps;
+          // The set's number becomes a green ✓ once its reps are typed (app.js updates it as you type).
           return `
-            <div class="set-num">${i + 1}</div>
+            ${setNumber(ex.id, i, set.reps !== '' && set.reps != null)}
             ${timed ? LOCKED_WEIGHT : bwBox(bw, `<input type="text" inputmode="decimal" value="${Units.showWeight(set.weight)}" placeholder="${bw ? '' : unit}"
               data-ex="${ex.id}" data-set="${i}" data-field="weight" aria-label="Set ${i + 1} ${bw ? 'added ' : ''}weight in ${unit}">`)}
             <input type="text" inputmode="numeric" value="${esc(set.reps)}" placeholder="${lastReps ?? ''}"
@@ -1282,7 +1296,7 @@ const Views = {
         </div>
         <p class="log-max ${latest ? '' : 'is-blank'}">${latest ? clock(latest.seconds) : '—'}</p>
         <p class="log-sub">${sub}</p>
-        ${maxChart(points, `Log a ${picked.label === '5K' ? '5K' : '1 mile run'} to start the graph`, [], 'Time (lower is faster)', state.day, true, clock, 'cardio-dot')}
+        ${maxChart(points, `Log a ${picked.label === '5K' ? '5K' : '1 mile run'} to start the graph`, [], 'Time (lower is faster)', state.day, true, clock, 'cardio-dot', 'lower')}
       </div>`;
   },
 
@@ -1404,7 +1418,7 @@ const Views = {
       <div class="card">
         <p class="log-max ${latest ? '' : 'is-blank'}">${latest ? `${Units.showWeight(latest.lbs)} <span>${unit}</span>` : '—'}</p>
         <p class="log-sub">${changeText || (latest ? `Logged ${shortDate(fromDayKey(latest.day))}` : '&nbsp;')}</p>
-        ${maxChart(points, 'Log your weight to start the graph', [], 'Body weight', null, true)}
+        ${maxChart(points, 'Log your weight to start the graph', [], 'Body weight', null, true, Math.round, 'log-day', null)}
         <form id="bw-form" class="bw-form">
           <input name="weight" type="text" inputmode="decimal" placeholder="Today's weight (${unit})" autocomplete="off" aria-label="Today's body weight in ${unit}">
           <button class="btn btn-primary btn-small">Log</button>
@@ -1541,7 +1555,7 @@ const Views = {
       <div class="wk is-${w.status} ${w.isThisWeek ? 'is-this-week' : ''}"
         aria-label="Week of ${shortDate(fromDayKey(w.key))}: ${names[w.status]}">
         <span class="wk-box" aria-hidden="true">${icons[w.status]}</span>
-        <span class="wk-date" aria-hidden="true">${w.isThisWeek ? 'Now' : shortDate(fromDayKey(w.key))}</span>
+        <span class="wk-date" aria-hidden="true">${w.isThisWeek ? 'Now' : fromDayKey(w.key).toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' })}</span>
       </div>`).join('');
 
     return `
@@ -1595,7 +1609,6 @@ const Views = {
       <div class="celebrate ${milestone ? 'is-milestone' : ''}" data-action="dismiss-celebration" role="dialog"
         aria-label="${streak}-week streak">
         <div class="celebrate-art">
-          <span class="celebrate-glow"></span>
           ${sparks}
           <span class="celebrate-flame">${FLAME_SVG}</span>
         </div>
@@ -1806,14 +1819,14 @@ const Views = {
         : `Strength level vs. published standards (${STANDARDS_SOURCE})`;
       legend = `
         <div class="legend-levels">${LEVELS.map((label, i) =>
-          `<span><i style="background:${LEVEL_COLORS[i]}"></i>${label}</span>`).join('')}</div>
-        <p class="legend-empty"><i style="background:${MAP_EMPTY}"></i>No logged exercise with a standard</p>`;
+          `<span><i style="background:var(--map-level-${i})"></i>${label}</span>`).join('')}</div>
+        <p class="legend-empty"><i></i>No logged exercise with a standard</p>`;
     } else {
       caption = `Change in estimated max, last ${Stats.GROWTH_WEEKS} weeks`;
       legend = `
         <div class="legend-bar" style="background: linear-gradient(90deg, ${MapColors.growth(-GROWTH_SCALE)}, ${MapColors.growth(0)}, ${MapColors.growth(GROWTH_SCALE)})"></div>
         <div class="legend-labels"><span>−${GROWTH_SCALE}%</span><span>Flat</span><span>+${GROWTH_SCALE}%</span></div>
-        <p class="legend-empty"><i style="background:${MAP_EMPTY}"></i>Not enough data yet (needs ${Stats.MIN_WEEKS} weeks of a primary exercise)</p>`;
+        <p class="legend-empty"><i></i>Not enough data yet (needs ${Stats.MIN_WEEKS} weeks of a primary exercise)</p>`;
     }
 
     return `
@@ -2038,7 +2051,7 @@ const Views = {
         <form id="settings-form">
           ${this.settingsFields()}
         </form>
-        <p class="muted" style="font-size:14px">Changes save automatically and are included in backups.</p>
+        <p class="muted settings-note">Changes save automatically and are included in backups.</p>
 
         <h2>Custom exercises</h2>
         ${customs.length ? `<div class="card custom-list">${customs.map(e => `
@@ -2046,14 +2059,14 @@ const Views = {
             <span class="custom-info"><strong>${esc(e.name)}</strong><span>${esc(e.equipment)} · ${esc(Library.primaryLabel(e))}</span></span>
             <button type="button" class="btn btn-small btn-danger" data-action="delete-custom" data-id="${esc(e.id)}">Delete</button>
           </div>`).join('')}</div>`
-          : '<p class="muted" style="font-size:14px">Exercises you create are saved here and can be added to any workout.</p>'}
+          : '<p class="muted settings-note">Exercises you create are saved here and can be added to any workout.</p>'}
 
         <h2>Backup</h2>
         <div class="row">
           <button class="btn" data-action="export">Export</button>
           <button class="btn" data-action="import">Import</button>
         </div>
-        <p class="muted" style="font-size:14px">
+        <p class="muted settings-note">
           Your data lives only on this device. Export now and then to keep a copy safe.
           ${lastBackupAt ? `Last backup: ${shortDate(lastBackupAt)}.` : 'No backup yet.'}
         </p>
