@@ -493,6 +493,8 @@ function render() {
   document.title = screen.title;
   backBtn.hidden = !screen.back;
   backBtn.dataset.href = screen.back || '';
+  // "‹ Back" has its own row above the title, so the top bar is taller (--header-h in the CSS)
+  document.body.classList.toggle('has-back', Boolean(screen.back));
   gearBtn.hidden = !screen.gear;
   historyLink.hidden = !screen.history;
   timerEl.hidden = !(screen.timer && Store.data.draft);
@@ -558,8 +560,10 @@ function countUp(el, to) {
 }
 
 // A short message at the bottom. With button = { label, action }, it also shows a
-// button (e.g. Undo) that runs that action; it stays up for `ms`.
-function toast(message, button = null, ms = 2200) {
+// button (e.g. Undo) that runs that action; it stays up for `ms` (2.5 seconds unless a longer
+// time is given, as "Workout saved" does so there's time to tap Undo).
+const TOAST_MS = 2500;
+function toast(message, button = null, ms = TOAST_MS) {
   lastFinish = null; // a new message replaces any Undo
   toastEl.textContent = message;
   if (button) {
@@ -756,7 +760,7 @@ const actions = {
     (next ? document.getElementById(`ex-${next.id}`) : document.querySelector('.finish-bar')).scrollIntoView({ block: 'nearest' });
     if (ready) {
       const ex = list.find(e => e.id === id);
-      toast(`Hit ${ex.repMax} every set. Try ${heavierText(ready)} next time.`, null, 4000);
+      toast(`Hit ${ex.repMax} every set. Try ${heavierText(ready)} next time.`);
     }
   },
 

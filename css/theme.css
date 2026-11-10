@@ -8,10 +8,12 @@
    Mono's rules:
    - Black background; depth comes only from three surface steps. No borders on cards, no shadows,
      no glows, no gradients.
-   - Green means "done" and nothing else: completed days, the streak flame, Week done, finished sets,
-     checked boxes, PRs. Buttons, selection, toggles and links are white, never green.
-   - Red is only for destructive actions. Blue (info) is only for quick workouts, streak freezes and
-     rest day reminders. */
+   - Green TEXT, ICONS and OUTLINES are accents: links, the active tab, small icons, chart lines,
+     the "Next" badge (on --accent-tint), the streak flame.
+   - Solid green FILLS mean "done": completed day cells, completed sets, checked boxes, completed
+     weeks on Profile. The one exception is the + button.
+   - Primary buttons, segmented controls and selected toggles are white with black text.
+   - Red is only for destructive actions. Blue (info) is only for quick workouts and streak freezes. */
 
 :root, [data-theme="mono"] {
   color-scheme: dark;
@@ -26,10 +28,11 @@
   --text-primary: #ffffff;
   --text-secondary: #8e8e93;  /* meta lines, section labels, inactive tabs */
   --text-tertiary: #545458;   /* disabled, future days, placeholders */
-  --success: #30d158;         /* done (iOS green) */
+  --success: #30d158;         /* the accent (text, icons, outlines) and "done" (solid fills) — iOS green */
   --on-success: #000000;      /* text and ticks on green */
+  --accent-tint: rgba(48, 209, 88, 0.15); /* a soft green background behind green text ("Next") */
   --danger: #ff453a;          /* destructive actions only (iOS red) */
-  --info: #0a84ff;            /* quick workouts, freezes, rest day reminders (iOS blue) */
+  --info: #0a84ff;            /* quick workouts and streak freezes (iOS blue) */
   --action: #ffffff;          /* primary buttons, the + button, selected states */
   --on-action: #000000;       /* text on white */
   --backdrop: rgba(0, 0, 0, 0.6); /* behind pop-ups */
@@ -65,6 +68,7 @@
   /* ---------- Corner radius (different sizes on purpose) ---------- */
   --r-swatch: 3px;            /* tiny color squares in the map legend */
   --r-check: 6px;             /* checkboxes */
+  --r-badge: 6px;             /* small badges ("Next") */
   --r-day: 8px;               /* day cells, day toggles */
   --r-control: 12px;          /* buttons, inputs, segmented controls, chips */
   --r-container: 14px;        /* secondary containers, list rows */
@@ -88,6 +92,9 @@
   --check: 30px;              /* checkboxes */
   --nav-icon: 28px;
   --tabbar-h: 58px;           /* tab bar, not counting the iPhone home-indicator area */
-  --topbar-h: 52px;           /* top bar, below the iPhone status bar */
+  --topbar-h: 52px;           /* the top bar's title row, below the iPhone status bar */
+  --back-row-h: 36px;         /* "‹ Back", on its own row above the title on deeper screens */
+  --header-h: var(--topbar-h); /* the whole top bar (styles.css adds the Back row when it shows) */
+  --toast-gap: 16px;          /* a toast's distance above the tab bar (or the screen's bottom) */
   --focus-ring: 2px;
 }

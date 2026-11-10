@@ -287,7 +287,10 @@ function maxChart(points, emptyNote, singles = [], label = 'Estimated max', sele
   // New bests: each point better than all before it (the first point has nothing to beat).
   const isBest = points.map((p, i) => better != null && i > 0 && points.slice(0, i).every(q =>
     (better === 'lower' ? p.value < q.value : p.value > q.value)));
-  const dots = points.map((p, i) => `<circle class="chart-dot ${isBest[i] ? 'is-pr' : ''}" cx="${x(p.time).toFixed(1)}" cy="${y(p.value).toFixed(1)}" r="${p.dayKey && p.dayKey === selected ? 6 : 3.5}"/>`).join('');
+  // Sizes (radius): 3 for a point (6px across), 4 for a new best (8px, plus a white ring from CSS),
+  // 5 for the tapped day's point.
+  const radius = (p, i) => (p.dayKey && p.dayKey === selected ? 5 : isBest[i] ? 4 : 3);
+  const dots = points.map((p, i) => `<circle class="chart-dot ${isBest[i] ? 'is-pr' : ''}" cx="${x(p.time).toFixed(1)}" cy="${y(p.value).toFixed(1)}" r="${radius(p, i)}"/>`).join('');
   // A bigger invisible circle over each dot, so it's easy to tap.
   const hits = points.filter(p => p.dayKey).map(p => `<circle class="chart-hit" cx="${x(p.time).toFixed(1)}" cy="${y(p.value).toFixed(1)}" r="14" data-action="${dayAction}" data-id="${p.dayKey}"/>`).join('');
   const singleLine = singles.map((p, i) => `${i ? 'L' : 'M'}${x(p.time).toFixed(1)},${y(p.value).toFixed(1)}`).join(' ');
@@ -682,11 +685,13 @@ const Views = {
           <span class="cycle-num">${i + 1}</span>
           <div class="workout-body">
             <button class="workout-open" data-action="open-slot" data-id="${esc(item.id)}">
-              <span class="workout-name">${esc(w.name)}</span>
+              <span class="workout-title-line">
+                <span class="workout-name">${esc(w.name)}</span>
+                ${isNext ? '<span class="tag tag-today">Next</span>' : ''}
+              </span>
               <span class="day-meta">${workoutMeta(w)}</span>
             </button>
           </div>
-          ${isNext ? '<span class="tag tag-today">Next</span>' : ''}
           ${remove(item)}
         </div>`;
     }).join('');
@@ -1562,7 +1567,6 @@ const Views = {
       <div class="card streak-card">
         <div class="streak-top">
           <span class="streak-flame ${started && totals.current > 0 ? 'is-lit' : ''}">${FLAME_SVG}</span>
-          <span class="streak-count">${started ? totals.current : 0}</span>
           <span class="streak-words">
             <strong>${headline}</strong>
             <span class="muted">${sub}</span>
@@ -1989,15 +1993,16 @@ const Views = {
         ${bwSwitch}
         <p class="log-label">${scoreLabel}</p>
         <p class="log-max ${top ? '' : 'is-blank'}">${top ? `${scoreOf(top)} <span>${scoreUnit(scoreOf(top))}</span>` : '—'}</p>
+        ${progressLine(points)}
         <p class="log-sub">${top ? `On ${shortDate(top.date)}` : '&nbsp;'}</p>
         ${rangePicker}
-        ${progressLine(points)}
         ${maxChart(points, emptyNote, [], scoreLabel, state.day)}
       </div>` : `
       <div class="card">
         ${bwSwitch}
         <p class="log-label">Current estimated max</p>
         <p class="log-max ${latest ? '' : 'is-blank'}">${latest ? `${Units.showWeight(latest.best.max)} <span>${unit}</span>` : '—'}</p>
+        ${progressLine(points)}
         <p class="log-sub">${latest ? `Best set on ${shortDate(latest.date)}: ${formatSet(latest.best.set, false, bw)}` : '&nbsp;'}</p>
         <!-- Best ever and actual 1-rep max: one small line each, only when there's something to
              say, so most exercises just show the big number (the user didn't want it cluttered). -->
@@ -2012,7 +2017,6 @@ const Views = {
             <span class="log-actual-value">${Units.showWeight(single.weight)} ${unit}</span><span class="log-actual-date">· ${shortDate(single.date)}</span>
           </p>` : ''}
         ${rangePicker}
-        ${progressLine(points)}
         ${maxChart(points, emptyNote, singlePoints, 'Estimated max', state.day)}
         <p class="log-formula">Estimated with the Epley formula: weight × (1 + reps ÷ 30)</p>
       </div>`;
