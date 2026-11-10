@@ -1512,7 +1512,8 @@ const Views = {
   },
 
   // ---------- Weekly streak (on Profile) ----------
-  // The flame is gray until this week is hit, then green.
+  // The flame is green while the streak is alive (above 0), like the This week card on the
+  // Workouts tab, and gray only at 0.
   streakCard() {
     const { started, start, totals, week, recent } = Streak.summary();
     const fill = Math.min(100, week.workouts / week.goal * 100);
@@ -1546,7 +1547,7 @@ const Views = {
     return `
       <div class="card streak-card">
         <div class="streak-top">
-          <span class="streak-flame ${week.hit ? 'is-lit' : ''}">${FLAME_SVG}</span>
+          <span class="streak-flame ${started && totals.current > 0 ? 'is-lit' : ''}">${FLAME_SVG}</span>
           <span class="streak-count">${started ? totals.current : 0}</span>
           <span class="streak-words">
             <strong>${headline}</strong>

@@ -13,9 +13,9 @@
   --quick: #60a5fa;       /* quick workouts (one-offs, not in the plan) */
   --partial: #f2b84b;     /* a passed day's workout with some sets missing (soft amber) */
   --missed: #e88686;      /* a passed day's workout with nothing done (muted red) */
-  --flame: #4ade80;       /* streak flame once the week is hit */
+  --flame: #4ade80;       /* streak flame while the streak is alive */
   --flame-core: #d9fbe6;
-  --flame-off: #3f4654;   /* streak flame before the week is hit */
+  --flame-off: #3f4654;   /* streak flame at a streak of 0 */
   --flame-off-core: #5f6778;
   --freeze: #60a5fa;      /* streak freezes */
   --gold: #facc15;        /* milestone celebration */
