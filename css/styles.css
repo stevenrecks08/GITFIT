@@ -16,6 +16,17 @@ html, body {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Every page is at least as tall as the whole screen. On the iPhone home-screen app, a page shorter
+   than the screen (like the Workouts tab) made the fixed tab bar sit about half an inch up, with an
+   empty strip under it where the home-indicator area is. (lvh = the full screen height; vh is the
+   fallback for older browsers.) flow-root keeps the top bar's margin inside the body, so a short
+   page is exactly one screen tall and doesn't scroll. */
+body {
+  min-height: 100vh;
+  min-height: 100lvh;
+  display: flow-root;
+}
+
 /* ---------- Top bar ---------- */
 /* The status bar area: a solid fill (no blur), exactly as tall as the safe area.
    The top bar starts below it, so nothing ever sits under the status bar. */
