@@ -649,7 +649,7 @@ const Views = {
             <span class="cycle-row-main">
               <span class="workout-title-line">
                 <span class="workout-name">${esc(w.name)}</span>
-                ${item === next.item ? '<span class="tag tag-today">Next</span>' : ''}
+                ${!anchor && item === next.item ? '<span class="tag tag-today">Next</span>' : ''}
               </span>
               <span class="day-meta">${workoutMeta(w)}</span>
             </span>
