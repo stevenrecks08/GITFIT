@@ -537,7 +537,11 @@ const Views = {
     // This week: the streak, workouts so far against this week's goal, and Mon → Sun with a short
     // label on each day a workout was finished (two in a day: "P/L"). Today is outlined and days to
     // come are dimmed. A day with a workout opens Past workouts on that day.
+    // The flame is green while the streak is alive (even before this week is hit, so mid-week
+    // doesn't look like a lost streak), gray only at 0. Once this week is hit, "Week done ✓"
+    // takes the place of "2/4 workouts".
     const { started, totals, week } = Streak.summary();
+    const streak = started ? totals.current : 0;
     const labels = workoutLabels();
     const cells = Streak.weekDays().map(d => {
       const label = d.sessions.map(s => sessionLabel(s, labels)).join('/');
@@ -556,9 +560,10 @@ const Views = {
     const weekCard = `
       <div class="card week-card">
         <div class="week-card-top">
-          <span class="streak-flame ${week.hit ? 'is-lit' : ''}">${FLAME_SVG}</span>
-          <span class="week-card-streak"><strong>${started ? totals.current : 0}</strong> week streak</span>
-          <span class="week-card-count"><strong>${week.workouts}/${week.goal}</strong> workouts</span>
+          <span class="streak-flame ${streak > 0 ? 'is-lit' : ''}">${FLAME_SVG}</span>
+          <span class="week-card-streak"><strong>${streak}</strong> week streak</span>
+          ${week.hit ? '<span class="week-card-done">Week done ✓</span>'
+            : `<span class="week-card-count"><strong>${week.workouts}/${week.goal}</strong> workouts</span>`}
         </div>
         <div class="week-days">${cells}</div>
       </div>`;
@@ -583,7 +588,8 @@ const Views = {
       ${draftWorkout ? '' : '<button type="button" class="text-btn other-workout" data-action="other-open">Do a different workout</button>'}` : `
       <h2>Next up</h2>
       <div class="card next-up is-empty">
-        <p class="week-hint">Tap + to create your first workout. Your workouts make a cycle you go through in order, as many days a week as you like.</p>
+        <p class="week-hint">Your workouts make a cycle you go through in order, as many days a week as you like.</p>
+        <button type="button" class="btn btn-primary" data-action="new-workout">Create your first workout</button>
       </div>`;
 
     // Today's cardio: planned on today's weekday, and anything logged today.
@@ -599,18 +605,16 @@ const Views = {
         ${nextUp}
         ${cardio ? `<h2>Today's cardio</h2>${cardio}` : ''}
 
+        <!-- (New workouts are made on Edit cycle, with + Add workout.) -->
         <div class="fab-menu" id="fab-menu" aria-hidden="true">
-          <button type="button" class="fab-option" data-action="new-workout">
-            <strong>New workout</strong><span>Add a workout to your cycle</span>
-          </button>
           <button type="button" class="fab-option is-quick" data-action="quick-start">
             <strong>Quick workout</strong><span>A one-off, logged but not added to your cycle</span>
           </button>
           <button type="button" class="fab-option" data-action="add-cardio">
-            <strong>Add cardio</strong><span>Log a walk, run, ride or hike, on any past date</span>
+            <strong>Log cardio</strong><span>A walk, run, ride or hike, on any past date</span>
           </button>
         </div>
-        <button type="button" class="fab" data-action="fab-menu" aria-label="New workout, quick workout or cardio" aria-expanded="false">
+        <button type="button" class="fab" data-action="fab-menu" aria-label="Quick workout or log cardio" aria-expanded="false">
           <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.6"
             stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
         </button>
