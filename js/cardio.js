@@ -102,9 +102,7 @@ const Cardio = {
 
   // The app's day, which changes at 3 am like the streak's. It's what a new entry is dated.
   today(now = Date.now()) {
-    const d = new Date(now);
-    d.setHours(d.getHours() - WEEK_START_HOUR);
-    return dayKey(d);
+    return appDay(now);
   },
 
   // Weekday plans on a day ('YYYY-MM-DD'). "After every lift" plans aren't on a weekday.

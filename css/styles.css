@@ -258,7 +258,38 @@ button, .btn {
 /* ---------- The Workouts tab: Next Up, today's cardio, the cycle ----------
    Three text sizes only: 18px (workout titles), 15px (buttons), 13px (everything secondary). */
 .week-hint { margin: 0; font-size: 13px; color: var(--muted); line-height: 1.4; }
-.banner + .next-label { margin-top: 24px; }
+
+/* This week: flame, streak and workouts so far on top; Mon → Sun cells under it */
+.banner + .week-card { margin-top: 16px; }
+.week-card-top { display: flex; align-items: center; gap: 8px; }
+.week-card .streak-flame { width: 30px; height: 30px; }
+.week-card-streak { flex: 1; font-size: 15px; color: var(--muted); }
+.week-card-count { font-size: 15px; color: var(--muted); }
+.week-card-top strong { color: var(--text); font-size: 18px; font-variant-numeric: tabular-nums; }
+.week-days { display: flex; gap: 6px; margin-top: 12px; }
+.wd { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.wd-name { font-size: 12px; font-weight: 600; color: var(--muted); }
+.wd-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 44px;
+  aspect-ratio: 1;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.wd-box.has-workout { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-size: 14px; font-weight: 800; }
+.wd-box.is-today { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--text); }
+.wd-box.is-future { opacity: 0.4; }
 
 /* Next Up: the next workout in the cycle, with a green edge and Start under it */
 .next-up {
@@ -274,9 +305,12 @@ button, .btn {
 .next-rest { display: block; margin-top: 4px; font-size: 13px; font-weight: 600; color: var(--rest); }
 
 /* The cycle: numbered workout cards and small rest day rows; Edit / Done on the right of its heading */
-.cycle-head { display: flex; align-items: center; justify-content: space-between; margin: 18px 0 0; }
-.cycle-head h2 { margin: 0; }
-.cycle-head .text-btn { width: auto; min-height: 44px; padding: 0 4px; }
+/* A heading with a small link on its right ("Next up · Edit cycle") */
+.section-head { display: flex; align-items: center; justify-content: space-between; margin: 18px 0 0; }
+.section-head h2 { margin: 0; }
+.section-head .text-btn { display: flex; align-items: center; width: auto; min-height: 44px; padding: 0 4px; color: var(--accent); text-decoration: none; }
+/* "Do a different workout" under Next Up */
+.text-btn.other-workout { margin-top: 2px; color: var(--accent); text-decoration: none; }
 .cycle-num { flex: 0 0 auto; min-width: 16px; font-size: 13px; font-weight: 600; color: var(--muted); text-align: center; }
 .cycle-item + .cycle-item { margin-top: 8px; }
 .cycle-item.is-next { box-shadow: inset 0 0 0 1px var(--accent); }

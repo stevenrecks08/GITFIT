@@ -481,14 +481,51 @@ function formatHoursMinutes(ms) {
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 }
 
+// Short labels for the week strip, from each workout's name: its first letter, or more letters if
+// a workout earlier in the cycle already has those (Push → P, Pull → Pu, Legs → L).
+// Returns { [workoutId]: label }.
+function workoutLabels() {
+  const labels = {};
+  const used = new Set();
+  for (const w of new Set(Store.cycleWorkouts())) {
+    const name = w.name.trim() || 'W';
+    let n = 1;
+    while (n < name.length && used.has(name.slice(0, n).toLowerCase())) n++;
+    let label = name.slice(0, n);
+    for (let k = 2; used.has(label.toLowerCase()); k++) label = name.slice(0, n) + k; // (the same name twice)
+    used.add(label.toLowerCase());
+    labels[w.id] = label;
+  }
+  return labels;
+}
+
+// A finished workout's label: its workout's, or (a workout no longer in the cycle) its first letter.
+function sessionLabel(session, labels) {
+  return labels[session.workoutId] || (session.workoutName || 'W').trim().slice(0, 1);
+}
+
+// "last done today", "last done yesterday", "last done 3 days ago" or "never done", by the app's
+// day (which changes at 3 am).
+function lastDoneText(workoutId) {
+  const last = Store.lastSessionFor(workoutId);
+  if (!last) return 'never done';
+  const days = Math.round((fromDayKey(appDay(Date.now())) - fromDayKey(appDay(last.date))) / DAY_MS);
+  return days <= 0 ? 'last done today' : days === 1 ? 'last done yesterday' : `last done ${days} days ago`;
+}
+
+// "5 exercises · last done 3 days ago"
+function workoutMeta(w) {
+  const count = w.exercises.length;
+  return `${count} exercise${count === 1 ? '' : 's'} · ${lastDoneText(w.id)}`;
+}
+
 const Views = {
 
-  // ---------- Home: Next Up, today's cardio, the cycle and its planned sets ----------
-  // openSets = which planned-sets rows are expanded (a Set of muscle ids); setsInfoOpen = its "i" is open
-  // editing = the cycle's Edit is on (remove buttons and the add buttons show)
-  // Next Up is the workout after the one you did last (Store.nextUp()). Tap any workout in the cycle
-  // to do it out of order; hold and drag one to change the order (see the drag code in app.js).
-  home(openSets, setsInfoOpen, editing) {
+  // ---------- Home: this week, Next Up and today's cardio ----------
+  // Next Up is the workout after the one you did last (Store.nextUp()). "Do a different workout"
+  // opens a sheet with every workout in the cycle (otherWorkoutSheet()). The cycle itself and its
+  // planned sets are on the Edit cycle screen (cycleEdit()).
+  home() {
     const draftWorkout = Store.draftWorkout();
 
     const resume = draftWorkout ? `
@@ -497,27 +534,54 @@ const Views = {
         <button class="btn btn-primary" data-action="${draftWorkout.quick ? 'resume-quick' : 'open-workout'}" data-id="${draftWorkout.id}">Resume</button>
       </div>` : '';
 
-    // "6 exercises · last done Mon, Nov 3"
-    const meta = w => {
-      const last = Store.lastSessionFor(w.id);
-      const count = w.exercises.length;
-      return `${count} exercise${count === 1 ? '' : 's'} · ${last ? `last done ${formatDate(last.date)}` : 'not done yet'}`;
-    };
+    // This week: the streak, workouts so far against this week's goal, and Mon → Sun with a short
+    // label on each day a workout was finished (two in a day: "P/L"). Today is outlined and days to
+    // come are dimmed. A day with a workout opens Past workouts on that day.
+    const { started, totals, week } = Streak.summary();
+    const labels = workoutLabels();
+    const cells = Streak.weekDays().map(d => {
+      const label = d.sessions.map(s => sessionLabel(s, labels)).join('/');
+      const classes = ['wd-box', label ? 'has-workout' : '', d.today ? 'is-today' : '', d.future ? 'is-future' : ''].join(' ');
+      const dayName = d.date.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
+      const box = label
+        ? `<button type="button" class="${classes}" data-action="week-day" data-id="${d.day}"
+            aria-label="${esc(dayName)}: ${esc(d.sessions.map(s => s.workoutName).join(', '))}">${esc(label)}</button>`
+        : `<span class="${classes}" aria-label="${esc(dayName)}">${d.date.getDate()}</span>`;
+      return `
+        <div class="wd">
+          <span class="wd-name" aria-hidden="true">${d.date.toLocaleDateString(undefined, { weekday: 'narrow' })}</span>
+          ${box}
+        </div>`;
+    }).join('');
+    const weekCard = `
+      <div class="card week-card">
+        <div class="week-card-top">
+          <span class="streak-flame ${week.hit ? 'is-lit' : ''}">${FLAME_SVG}</span>
+          <span class="week-card-streak"><strong>${started ? totals.current : 0}</strong> week streak</span>
+          <span class="week-card-count"><strong>${week.workouts}/${week.goal}</strong> workouts</span>
+        </div>
+        <div class="week-days">${cells}</div>
+      </div>`;
 
-    // Next Up: the next workout in the cycle, with Start (unless a workout is already in progress:
-    // the banner above resumes that one).
+    // Next Up: the next workout in the cycle, with Start and "Do a different workout" (unless a
+    // workout is already in progress: the banner above resumes that one).
     const next = Store.nextUp();
     const nextUp = next ? `
-      <h2 class="next-label">Next up</h2>
+      <div class="section-head">
+        <h2>Next up</h2>
+        <a class="text-btn" href="#/cycle">Edit cycle</a>
+      </div>
       <div class="card next-up">
         <button class="workout-open" data-action="open-slot" data-id="${esc(next.item.id)}">
           <span class="workout-name">${esc(next.workout.name)}</span>
-          <span class="day-meta">${meta(next.workout)}</span>
+          <span class="day-meta">${workoutMeta(next.workout)}</span>
           ${next.restBefore ? '<span class="next-rest">Rest day planned before this one</span>' : ''}
         </button>
         ${draftWorkout ? '' : `<button type="button" class="btn btn-primary" data-action="start-workout"
           data-id="${esc(next.workout.id)}" data-slot="${esc(next.item.id)}" ${next.workout.exercises.length ? '' : 'disabled'}>Start workout</button>`}
-      </div>` : `
+      </div>
+      ${draftWorkout ? '' : '<button type="button" class="text-btn other-workout" data-action="other-open">Do a different workout</button>'}` : `
+      <h2>Next up</h2>
       <div class="card next-up is-empty">
         <p class="week-hint">Tap + to create your first workout. Your workouts make a cycle you go through in order, as many days a week as you like.</p>
       </div>`;
@@ -525,10 +589,66 @@ const Views = {
     // Today's cardio: planned on today's weekday, and anything logged today.
     const cardio = cardioRows(Cardio.rowsFor());
 
-    // The cycle, in order. The next one is marked; rest days are small reminders.
-    const remove = item => (editing ? `
+    return {
+      title: 'GitFit',
+      back: null,
+      history: true,
+      html: `
+        ${resume}
+        ${weekCard}
+        ${nextUp}
+        ${cardio ? `<h2>Today's cardio</h2>${cardio}` : ''}
+
+        <div class="fab-menu" id="fab-menu" aria-hidden="true">
+          <button type="button" class="fab-option" data-action="new-workout">
+            <strong>New workout</strong><span>Add a workout to your cycle</span>
+          </button>
+          <button type="button" class="fab-option is-quick" data-action="quick-start">
+            <strong>Quick workout</strong><span>A one-off, logged but not added to your cycle</span>
+          </button>
+          <button type="button" class="fab-option" data-action="add-cardio">
+            <strong>Add cardio</strong><span>Log a walk, run, ride or hike, on any past date</span>
+          </button>
+        </div>
+        <button type="button" class="fab" data-action="fab-menu" aria-label="New workout, quick workout or cardio" aria-expanded="false">
+          <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.6"
+            stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+      `,
+    };
+  },
+
+  // "Do a different workout" under Next Up: every workout in the cycle (each once, in cycle order)
+  // with when it was last done. Tapping one starts it (see 'start-workout' in app.js); Next Up then
+  // carries on from it.
+  otherWorkoutSheet() {
+    const next = Store.nextUp();
+    return `
+      <div class="card notice stack" role="dialog" aria-label="Do a different workout">
+        <h2>Do a different workout</h2>
+        <div class="lib-results">
+          ${[...new Set(Store.cycleWorkouts())].map(w => `
+            <button type="button" class="lib-item" data-action="start-workout" data-id="${esc(w.id)}"
+              ${w.exercises.length ? '' : 'disabled'}>
+              <span class="lib-name">${esc(w.name)}${next?.workout === w ? ' <span class="tag tag-today">Next</span>' : ''}</span>
+              <span class="lib-meta">${w.exercises.length ? workoutMeta(w) : 'No exercises yet'}</span>
+            </button>`).join('')}
+        </div>
+        <a class="btn" href="#/cycle" data-action="dialog-cancel">Edit cycle</a>
+        <button type="button" class="btn" data-action="dialog-cancel">Cancel</button>
+      </div>`;
+  },
+
+  // ---------- Edit cycle: the cycle in order, and its planned sets ----------
+  // Tap a workout to open its screen (to change its exercises); hold and drag a place to change the
+  // order (see the drag code in app.js); ✕ takes a place out. The next one is marked; rest days are
+  // small reminders.
+  //   openSets = which planned-sets rows are expanded (a Set of muscle ids); setsInfoOpen = its "i" is open
+  cycleEdit(openSets, setsInfoOpen) {
+    const next = Store.nextUp();
+    const remove = item => `
       <button type="button" class="icon-btn cycle-remove" data-action="cycle-remove" data-id="${esc(item.id)}"
-        aria-label="Remove from cycle">✕</button>` : '');
+        aria-label="Remove from cycle">✕</button>`;
     const items = Store.data.cycle.map((item, i) => {
       if (item.kind === 'rest') {
         return `
@@ -546,55 +666,29 @@ const Views = {
           <div class="workout-body">
             <button class="workout-open" data-action="open-slot" data-id="${esc(item.id)}">
               <span class="workout-name">${esc(w.name)}</span>
-              <span class="day-meta">${meta(w)}</span>
+              <span class="day-meta">${workoutMeta(w)}</span>
             </button>
           </div>
           ${isNext ? '<span class="tag tag-today">Next</span>' : ''}
           ${remove(item)}
         </div>`;
     }).join('');
-    const cycle = Store.data.cycle.length ? `
-      <div class="cycle-head">
-        <h2>Your cycle</h2>
-        <button type="button" class="text-btn" data-action="cycle-edit">${editing ? 'Done' : 'Edit'}</button>
-      </div>
-      <div id="cycle-list">${items}</div>
-      ${editing ? `
+    return {
+      title: 'Edit cycle',
+      back: '#/',
+      html: `
+        ${items ? `
+          <div id="cycle-list">${items}</div>
+          <p class="muted cycle-tip">Tap a workout to change its exercises. Hold and drag to change the order.</p>`
+          : '<p class="empty">Your cycle is empty. Add a workout to start one.</p>'}
         <div class="row cycle-add">
           <button type="button" class="btn" data-action="cycle-add-open">+ Add workout</button>
           <button type="button" class="btn" data-action="cycle-add-rest">+ Add rest day</button>
-        </div>` : '<p class="muted cycle-tip">Tap a workout to do it out of order. Hold and drag to change the order.</p>'}` : '';
-
-    return {
-      title: 'GitFit',
-      back: null,
-      history: true,
-      html: `
-        ${resume}
-        ${nextUp}
-        ${cardio ? `<h2>Today's cardio</h2>${cardio}` : ''}
-        ${cycle}
-
+        </div>
         ${Store.data.workouts.length ? `
           <h2>Planned sets per cycle ${setsInfoButton(setsInfoOpen)}</h2>
           ${setsInfoBox(setsInfoOpen)}
           ${plannedSetsTable(Stats.cyclePlannedSets(), openSets)}` : ''}
-
-        <div class="fab-menu" id="fab-menu" aria-hidden="true">
-          <button type="button" class="fab-option" data-action="new-workout">
-            <strong>New workout</strong><span>Add a workout to your cycle</span>
-          </button>
-          <button type="button" class="fab-option is-quick" data-action="quick-start">
-            <strong>Quick workout</strong><span>A one-off, logged but not added to your cycle</span>
-          </button>
-          <button type="button" class="fab-option" data-action="add-cardio">
-            <strong>Add cardio</strong><span>Log a walk, run, ride or hike, on any past date</span>
-          </button>
-        </div>
-        <button type="button" class="fab" data-action="fab-menu" aria-label="New workout, quick workout or cardio" aria-expanded="false">
-          <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.6"
-            stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-        </button>
       `,
     };
   },
@@ -1555,18 +1649,18 @@ const Views = {
         </div>`;
     }).join('');
 
-    // The calendar: each day with a finished workout can be tapped. Days go by the date it was
-    // finished on the calendar (not the streak's 3 am day), like the exercise log's calendar.
+    // The calendar: each day with a finished workout can be tapped. Days change at 3 am (appDay()),
+    // like the week strip on the Workouts tab, so a 1 am workout is on the day before.
     const sessions = Store.data.sessions;
-    const logged = new Set(sessions.map(s => dayKey(s.date)));
+    const logged = new Set(sessions.map(s => appDay(s.date)));
     const thisMonth = dayKey(new Date()).slice(0, 7);
-    const firstMonth = sessions.length ? dayKey(sessions[0].date).slice(0, 7) : thisMonth;
+    const firstMonth = sessions.length ? appDay(sessions[0].date).slice(0, 7) : thisMonth;
     const day = logged.has(state.day) ? state.day : null;
     const dayCard = day ? `
       <div class="card log-day">
         <p class="log-day-date">${fromDayKey(day).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</p>
         <div class="stack log-day-links">
-          ${sessions.filter(s => dayKey(s.date) === day).map(s => `
+          ${sessions.filter(s => appDay(s.date) === day).map(s => `
             <button type="button" class="btn btn-small" data-action="open-session" data-id="${esc(s.id)}">${esc(s.workoutName || 'Workout')}${s.quick ? ' · Quick' : ''} · ${plural(setCount(s), 'set')}</button>`).join('')}
         </div>
       </div>` : '';

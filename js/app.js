@@ -1,7 +1,8 @@
 // app.js — starts the app, picks which screen to show, and handles taps/typing.
 //
 // Screens are chosen by the part of the URL after "#":
-//   #/                 → home (Next Up and the cycle) [Workouts tab]
+//   #/                 → home (this week, Next Up, today's cardio) [Workouts tab]
+//   #/cycle            → Edit cycle: the cycle in order and its planned sets [Workouts tab]
 //   #/new              → new workout (the + button) [Workouts tab]
 //   #/new/<id>         → copy of a workout          [Workouts tab]
 //   #/workout/<id>     → a workout: look at it and change it until it's started, then the real thing [Workouts tab]
@@ -102,6 +103,9 @@ let autoOpenExercise = true;
 //   [{ hash, openExerciseId, logState, scrollY }]  (a Log can open a workout, which can open a Log, …)
 let returnStack = [];
 
+// The screens whose Back can return to where they were opened from (with goAndReturn()).
+const RETURN_VIEWS = ['past', 'exercise-log', 'workout'];
+
 // Remembers this screen, then goes to another one that Back should return from.
 function goAndReturn(hash) {
   returnStack.push({ hash: location.hash || '#/', openExerciseId, logState, scrollY: window.scrollY });
@@ -112,16 +116,13 @@ function goAndReturn(hash) {
 // stays on the Workouts tab until Close, or until the app is fully closed.
 let summary = null;
 
-// The cycle's planned sets card on the Workouts tab: which muscles are expanded. Kept while the
+// The cycle's planned sets card on Edit cycle: which muscles are expanded. Kept while the
 // app is open, so going into a workout and back leaves them as they were.
 const openSets = new Set();
 let setsInfoOpen = false; // whether its "i" is open
 
 // "Actual sets, last 7 days" on Profile: which muscles are expanded.
 const openActual = new Set();
-
-// The cycle on the Workouts tab: whether its Edit is on (remove buttons and the add buttons).
-let cycleEditing = false;
 
 // Past workouts: the calendar's month (null = this month) and the day tapped (or null).
 let historyState = { month: null, day: null };
@@ -399,6 +400,7 @@ function currentRoute() {
     return { view: 'workout', workoutId: parts[1], slotId: parts[2] || null, tab: 'workouts' };
   }
   if (parts[0] === 'quick') return { view: 'quick', tab: 'workouts' };
+  if (parts[0] === 'cycle') return { view: 'cycle', tab: 'workouts' };
   if (parts[0] === 'new') {
     // #/new/<id> = a copy of that workout
     return { view: 'new', copyFrom: parts[1] || null, tab: 'workouts' };
@@ -432,7 +434,9 @@ function render() {
   if (setup) {
     screen = Views.setup();
   } else if (route.view === 'home') {
-    screen = summary ? Views.summary(summary) : Views.home(openSets, setsInfoOpen, cycleEditing);
+    screen = summary ? Views.summary(summary) : Views.home();
+  } else if (route.view === 'cycle') {
+    screen = Views.cycleEdit(openSets, setsInfoOpen);
   } else if (route.view === 'history') {
     screen = Views.history(historyState);
   } else if (route.view === 'past') {
@@ -479,8 +483,9 @@ function render() {
     }
   }
 
-  // Opened from another screen: Back returns there.
-  if (['past', 'exercise-log'].includes(route.view) && returnStack.length) {
+  // Opened from another screen (a log or past workout from anywhere, a workout from Edit cycle):
+  // Back returns there.
+  if (RETURN_VIEWS.includes(route.view) && returnStack.length) {
     screen.back = returnStack[returnStack.length - 1].hash;
   }
 
@@ -639,7 +644,8 @@ const actions = {
       strip.open = false;
       return render();
     }
-    withFormSaved(() => go(`#/workout/${id}`));
+    // (From Edit cycle's planned sets, Back returns to Edit cycle.)
+    withFormSaved(() => (currentRoute().view === 'cycle' ? goAndReturn : go)(`#/workout/${id}`));
   },
 
   // Start workout (on a workout's screen, or on Next Up): starts it and its timer straight away,
@@ -675,17 +681,28 @@ const actions = {
     window.scrollTo(0, 0);
   },
 
-  // Tapped a workout in the cycle (or Next Up): opens it as that place in the cycle.
+  // Tapped a workout on Edit cycle (or Next Up's name): opens it as that place in the cycle.
+  // From Edit cycle, Back returns there.
   'open-slot'(itemId) {
     if (dragJustEnded()) return;
     const item = Store.getCycleItem(itemId);
-    if (item) go(`#/workout/${item.workoutId}/${item.id}`);
+    if (!item) return;
+    const hash = `#/workout/${item.workoutId}/${item.id}`;
+    if (currentRoute().view === 'cycle') goAndReturn(hash);
+    else go(hash);
   },
 
-  // Edit / Done on the cycle.
-  'cycle-edit'() {
-    cycleEditing = !cycleEditing;
-    render();
+  // "Do a different workout" under Next Up: a sheet with every workout in the cycle.
+  'other-open'() {
+    overlayEl.innerHTML = Views.otherWorkoutSheet();
+    overlayEl.className = 'overlay is-notice';
+    overlayEl.hidden = false;
+  },
+
+  // A day with a workout on the week strip: Past workouts, with that day open on its calendar.
+  'week-day'(day) {
+    historyState = { month: day.slice(0, 7), day };
+    go('#/history');
   },
 
   // ✕ on a place in the cycle (with Edit on). A workout that's nowhere else in the cycle would be
@@ -2136,11 +2153,10 @@ window.addEventListener('hashchange', () => {
   const top = returnStack[returnStack.length - 1];
   const back = top && top.hash === (location.hash || '#/') ? returnStack.pop() : null;
   const { view } = currentRoute();
-  if (!back && !['past', 'exercise-log'].includes(view)) returnStack = [];
+  if (!back && !RETURN_VIEWS.includes(view)) returnStack = [];
   if (view !== 'cardio') cardioState = { month: null, day: null };
   // (Past workouts keeps its calendar while one of its workouts is open.)
   if (!['history', 'past'].includes(view)) historyState = { month: null, day: null };
-  if (view !== 'home') cycleEditing = false;
 
   if (!['profile', 'exercise-log'].includes(view)) map.muscle = null;
   picker = newPicker();

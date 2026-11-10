@@ -58,6 +58,14 @@ function addWeeks(key, n) {
   return dayKey(new Date(y, m - 1, d + 7 * n));
 }
 
+// The app's day a time falls on, as 'YYYY-MM-DD': it changes at 3 am, like the week, so a workout
+// finished at 1 am belongs to the day before. (The week strip and Past workouts' calendar use this.)
+function appDay(time) {
+  const d = new Date(time);
+  d.setHours(d.getHours() - WEEK_START_HOUR);
+  return dayKey(d);
+}
+
 // Was this week judged by the current rules (finished workouts)? Older weeks are never re-judged.
 function judgedByWorkouts(week) {
   return week.workouts != null;
@@ -196,6 +204,21 @@ const Streak = {
     this.update(now, { quiet: true, goals });
     if (wasHit) this.celebrate = null;
     Store.save();
+  },
+
+  // This week, Monday → Sunday, for the strip on the Workouts tab: the workouts that count toward
+  // the streak, on the day they were finished (quick workouts don't count, so they aren't shown).
+  //   [{ day: 'YYYY-MM-DD', date (Date), sessions: [finished workouts that day], today, future }]
+  weekDays(now = Date.now()) {
+    const start = weekStartOf(now);
+    const today = appDay(now);
+    return Array.from({ length: 7 }, (_, i) => {
+      const date = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+      const day = dayKey(date);
+      const sessions = Store.data.sessions.filter(s => !s.quick && appDay(s.date) === day
+        && s.exercises.some(e => e.sets.length));
+      return { day, date, sessions, today: day === today, future: day > today };
+    });
   },
 
   // Everything the Profile shows:
