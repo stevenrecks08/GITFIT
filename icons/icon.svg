@@ -1,0 +1,12 @@
+<!-- GitFit's home-screen icon: four green dots joined by a line, climbing like a progress graph.
+     The source for the PNG icons in this folder. It's a plain square: the iPhone rounds the corners itself.
+     Colors repeat the theme's --bg (black) and --success (green), since an icon can't read CSS variables. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+  <rect width="120" height="120" fill="#000000"/>
+  <polyline points="24,86 48,62 72,72 96,34" fill="none" stroke="#30d158" stroke-width="6.5"
+            stroke-linejoin="round" stroke-linecap="round"/>
+  <circle cx="24" cy="86" r="9" fill="#30d158"/>
+  <circle cx="48" cy="62" r="9" fill="#30d158"/>
+  <circle cx="72" cy="72" r="9" fill="#30d158"/>
+  <circle cx="96" cy="34" r="9" fill="#30d158"/>
+</svg>
