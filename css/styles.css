@@ -556,10 +556,11 @@ body.is-dragging { -webkit-user-select: none; user-select: none; }
 }
 .fab-menu.is-open + .fab-backdrop { opacity: 1; pointer-events: auto; }
 
-/* The + button's menu: its options pop up just above the tab bar */
+/* The + button's menu: its options pop up just above the tab bar, centered over the + (which is
+   in the middle of the bar), growing up out of it */
 .fab-menu {
   position: fixed;
-  right: var(--pad-screen);
+  left: 50%;
   bottom: calc(var(--tabbar-h) + var(--fab-lift) + 12px + env(safe-area-inset-bottom));
   z-index: 15;
   width: min(290px, calc(100vw - 2 * var(--pad-screen)));
@@ -567,12 +568,12 @@ body.is-dragging { -webkit-user-select: none; user-select: none; }
   border-radius: var(--r-card);
   background: var(--surface-2);
   opacity: 0;
-  transform: translateY(8px) scale(0.97);
-  transform-origin: bottom right;
+  transform: translate(-50%, 8px) scale(0.97);
+  transform-origin: bottom center;
   pointer-events: none;
   transition: opacity 0.15s, transform 0.15s;
 }
-.fab-menu.is-open { opacity: 1; transform: none; pointer-events: auto; }
+.fab-menu.is-open { opacity: 1; transform: translateX(-50%); pointer-events: auto; }
 /* Each option is its own lighter box with a gap between, so the five are easy to tell apart
    (the user asked for more separation, and for the blue strip on Quick workout to go). */
 .fab-option {
