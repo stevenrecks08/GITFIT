@@ -573,34 +573,24 @@ body.is-dragging { -webkit-user-select: none; user-select: none; }
   transition: opacity 0.15s, transform 0.15s;
 }
 .fab-menu.is-open { opacity: 1; transform: none; pointer-events: auto; }
+/* Each option is its own lighter box with a gap between, so the five are easy to tell apart
+   (the user asked for more separation, and for the blue strip on Quick workout to go). */
 .fab-option {
   display: block;
   width: 100%;
   min-height: var(--tap);
-  padding: 12px 12px 12px 16px;
+  padding: 12px 14px;
   border: none;
-  border-radius: var(--r-control);
-  background: none;
+  border-radius: var(--r-container);
+  background: var(--surface-field);
   color: var(--text-primary);
   text-align: left;
   font: inherit;
-  position: relative;
 }
-/* A quick workout's option has a small blue strip, like its tag elsewhere */
-.fab-option.is-quick::before {
-  content: '';
-  position: absolute;
-  left: 4px;
-  top: 12px;
-  bottom: 12px;
-  width: 3px;
-  border-radius: var(--r-pill);
-  background: var(--info);
-}
-.fab-option:active { background: var(--surface-3); }
+.fab-option:active { opacity: 0.6; }
 .fab-option strong { display: block; font-size: var(--fs-body); }
 .fab-option span { display: block; font-size: var(--fs-small); color: var(--text-secondary); margin-top: 4px; }
-.fab-option + .fab-option { margin-top: 4px; }
+.fab-option + .fab-option { margin-top: 6px; }
 @media (prefers-reduced-motion: reduce) {
   .fab-menu, .fab-backdrop, .fab svg { transition: none; }
 }

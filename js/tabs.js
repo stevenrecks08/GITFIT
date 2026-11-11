@@ -24,10 +24,9 @@ const TABS = [
 const ADD_AFTER_TAB = 'cardio';
 
 // What the + button's menu offers, top to bottom: the two things you do now, the two you set up
-// for later, then a new split. Each one's action is in app.js. (quick: the small blue strip a
-// quick workout has everywhere.)
+// for later, then a new split. Each one's action is in app.js.
 const ADD_OPTIONS = [
-  { action: 'quick-start', label: 'Quick workout', hint: 'A one-off, not added to your cycle', quick: true },
+  { action: 'quick-start', label: 'Quick workout', hint: 'A one-off, not added to your cycle' },
   { action: 'add-cardio', label: 'Quick cardio', hint: 'Log a walk, run, ride or hike' },
   { action: 'add-planned-workout', label: 'Planned workout', hint: 'A new workout in your cycle' },
   { action: 'cardio-plan-new', label: 'Planned cardio', hint: 'On days you pick, or after every lift' },
@@ -53,7 +52,7 @@ function addMenuHtml() {
   return `
     <div class="fab-menu" id="fab-menu" aria-hidden="true">
       ${ADD_OPTIONS.map(option => `
-        <button type="button" class="fab-option ${option.quick ? 'is-quick' : ''}" data-action="${option.action}">
+        <button type="button" class="fab-option" data-action="${option.action}">
           <strong>${option.label}</strong><span>${option.hint}</span>
         </button>`).join('')}
     </div>
