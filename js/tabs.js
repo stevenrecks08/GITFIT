@@ -10,6 +10,8 @@ const TAB_ICONS = {
   workouts: `<path d="M6.5 6.5v11M17.5 6.5v11M3.5 9v6M20.5 9v6M6.5 12h11"/>`,
   // Heart
   cardio: `<path d="M12 20.5s-8.5-5.2-8.5-11.2A4.8 4.8 0 0 1 12 6.4a4.8 4.8 0 0 1 8.5 2.9c0 6-8.5 11.2-8.5 11.2z"/>`,
+  // Book (the exercise Log)
+  log: `<path d="M5 20V5.5A2.5 2.5 0 0 1 7.5 3H19v15H7.5A2.5 2.5 0 0 0 5 20.5 2.5 2.5 0 0 0 7.5 21H19"/><path d="M9 7.5h6"/>`,
   // Person
   profile:`<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/>`,
 };
@@ -17,10 +19,12 @@ const TAB_ICONS = {
 const TABS = [
   { id: 'workouts', label: 'Workouts', href: '#/' },
   { id: 'cardio', label: 'Cardio', href: '#/cardio' },
+  { id: 'log', label: 'Log', href: '#/log' },
   { id: 'profile', label: 'Profile', href: '#/profile' },
 ];
 
-// The + button goes in the bar right after this tab: between Cardio and Profile (the user's choice).
+// The + button goes in the bar right after this tab: between Cardio and Log, so it sits in the
+// middle of the five (the user's choice).
 const ADD_AFTER_TAB = 'cardio';
 
 // What the + button's menu offers, top to bottom: the two things you do now, the two you set up

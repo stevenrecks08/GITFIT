@@ -11,8 +11,8 @@
 //   #/profile          → profile                  [Profile tab]
 //   #/settings         → settings (gear on Profile) [Profile tab]
 //   (Profile also shows the muscle map; see bodymap.js and stats.js)
-//   #/log              → search exercises to see their log [Profile tab]
-//   #/log/<exercise>   → one exercise's log         [Profile tab]
+//   #/log              → search exercises to see their log [Log tab]
+//   #/log/<exercise>   → one exercise's log         [Log tab]
 //   #/body-weight      → every body weight logged, to edit or delete [Profile tab]
 //   #/cardio           → this week's cardio, planned cardio, calendar and every entry [Cardio tab]
 // Using the URL means the browser/phone Back gesture works for free.
@@ -467,8 +467,8 @@ function currentRoute() {
   if (parts[0] === 'cardio') return { view: 'cardio', tab: 'cardio' };
   if (parts[0] === 'log') {
     return parts[1]
-      ? { view: 'exercise-log', refId: decodeURIComponent(parts[1]), tab: 'profile' }
-      : { view: 'log', tab: 'profile' };
+      ? { view: 'exercise-log', refId: decodeURIComponent(parts[1]), tab: 'log' }
+      : { view: 'log', tab: 'log' };
   }
   return { view: 'home', tab: 'workouts' };
 }

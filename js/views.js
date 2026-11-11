@@ -1381,7 +1381,6 @@ const Views = {
         </div>
         ${this.backupReminder()}
         ${this.streakCard()}
-        <a class="btn" href="#/log">Log</a>
         ${this.bodyWeightCard()}
         ${this.muscleMap(map)}
         <h2>Actual sets, last 7 days</h2>
@@ -2101,7 +2100,7 @@ const Views = {
   logSearch(query) {
     return {
       title: 'Log',
-      back: '#/profile',
+      back: null, // the Log is a tab's main screen (the book in the tab bar)
       html: `
         <div class="card stack">
           <input type="search" id="log-search" value="${esc(query)}"
