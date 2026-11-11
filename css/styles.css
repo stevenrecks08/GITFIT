@@ -511,8 +511,8 @@ body.is-dragging { -webkit-user-select: none; user-select: none; }
 
 /* The + button: a green rounded square with a black plus, in the tab bar between Cardio and
    Profile (the one solid green fill that isn't "done"). It isn't a tab, so it must not look like
-   one: no label, a solid fill, and it sits a little above the bar's edge. .tab-add is its place
-   in the bar, the same width as a tab. */
+   one: no label and a solid fill. It sits level with the tabs, centered in the bar, at about the
+   height of a tab's icon and label. .tab-add is its place in the bar, the same width as a tab. */
 .tab-add {
   flex: 1;
   max-width: 160px;
