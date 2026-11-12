@@ -450,8 +450,10 @@ function askFirst(options, then) {
 }
 let afterYes = null;
 
-function currentRoute() {
-  const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
+// Which screen a hash means (the current one unless another is given, as the edge swipe does to
+// draw the screen it's pulling in).
+function currentRoute(hash = location.hash) {
+  const parts = hash.replace(/^#\/?/, '').split('/').filter(Boolean);
   if (parts[0] === 'workout' && parts[1]) {
     // slotId = the place in the cycle it was opened from, if any
     return { view: 'workout', workoutId: parts[1], slotId: parts[2] || null, tab: 'workouts' };
@@ -495,6 +497,43 @@ function render() {
   const route = currentRoute();
   const setup = !Store.data.settings.setupDone;
   if (summary && !Store.getSession(summary.sessionId)) summary = null; // that workout was deleted
+  const screen = buildScreen(route, setup);
+  if (!screen) return; // it went somewhere else instead
+
+  // Opened from another screen (a log or past workout from anywhere, a workout from Edit cycle):
+  // Back returns there.
+  if (RETURN_VIEWS.includes(route.view) && returnStack.length) {
+    screen.back = returnStack[returnStack.length - 1].hash;
+  }
+
+  titleEl.textContent = screen.title;
+  document.title = screen.title;
+  backBtn.hidden = !screen.back;
+  backBtn.dataset.href = screen.back || '';
+  // "‹ Back" has its own row above the title, so the top bar is taller (--header-h in the CSS)
+  document.body.classList.toggle('has-back', Boolean(screen.back));
+  gearBtn.hidden = !screen.gear;
+  historyLink.hidden = !screen.history;
+  timerEl.hidden = !(screen.timer && Store.data.draft);
+  document.body.classList.toggle('in-workout', Boolean(screen.timer && Store.data.draft));
+  // The tab bar only shows on each tab's main screen; deeper screens use Back.
+  const here = '#/' + location.hash.replace(/^#\/?/, '');
+  const showTabs = !setup && TABS.some(tab => tab.href === here);
+  tabBarEl.hidden = !showTabs;
+  document.body.classList.toggle('no-tabbar', !showTabs);
+  tabBarEl.innerHTML = tabBarHtml(route.tab);
+  appEl.classList.remove('is-searching');
+  appEl.innerHTML = screen.html;
+  updateTimers();
+  showOverlay();
+}
+
+// The screen ({ title, back, html, … }) for a route. Returns null if it sent you somewhere else
+// instead (e.g. a workout that's been deleted). peek = only drawing it beside the current screen
+// during an edge swipe: then it never goes anywhere or keeps anything.
+function buildScreen(route, setup = false, peek = false) {
+  // (While peeking, a screen that would send you elsewhere just isn't drawn.)
+  const go = peek ? () => null : window.go;
   let screen;
 
   if (setup) {
@@ -508,8 +547,9 @@ function render() {
   } else if (route.view === 'past') {
     const session = Store.getSession(route.sessionId);
     if (!session) return go('#/history');
-    if (!pastEdit || pastEdit.sessionId !== session.id) pastEdit = startPastEdit(session);
-    screen = Views.pastWorkout(session, pastEdit);
+    let edit = pastEdit && pastEdit.sessionId === session.id ? pastEdit : startPastEdit(session);
+    if (!peek) pastEdit = edit;
+    screen = Views.pastWorkout(session, edit);
   } else if (route.view === 'profile') {
     screen = Views.profile(map, openActual);
   } else if (route.view === 'settings') {
@@ -543,32 +583,7 @@ function render() {
     }
   }
 
-  // Opened from another screen (a log or past workout from anywhere, a workout from Edit cycle):
-  // Back returns there.
-  if (RETURN_VIEWS.includes(route.view) && returnStack.length) {
-    screen.back = returnStack[returnStack.length - 1].hash;
-  }
-
-  titleEl.textContent = screen.title;
-  document.title = screen.title;
-  backBtn.hidden = !screen.back;
-  backBtn.dataset.href = screen.back || '';
-  // "‹ Back" has its own row above the title, so the top bar is taller (--header-h in the CSS)
-  document.body.classList.toggle('has-back', Boolean(screen.back));
-  gearBtn.hidden = !screen.gear;
-  historyLink.hidden = !screen.history;
-  timerEl.hidden = !(screen.timer && Store.data.draft);
-  document.body.classList.toggle('in-workout', Boolean(screen.timer && Store.data.draft));
-  // The tab bar only shows on each tab's main screen; deeper screens use Back.
-  const here = '#/' + location.hash.replace(/^#\/?/, '');
-  const showTabs = !setup && TABS.some(tab => tab.href === here);
-  tabBarEl.hidden = !showTabs;
-  document.body.classList.toggle('no-tabbar', !showTabs);
-  tabBarEl.innerHTML = tabBarHtml(route.tab);
-  appEl.classList.remove('is-searching');
-  appEl.innerHTML = screen.html;
-  updateTimers();
-  showOverlay();
+  return screen;
 }
 
 // The app always opens at the top of the page: the browser's own "keep the old scroll
@@ -871,8 +886,9 @@ const actions = {
     const ready = Store.readyForMoreWeight(id);
     openExerciseId = next ? next.id : null;
     swap = { exerciseId: null, query: '' };
-    render();
-    (next ? document.getElementById(`ex-${next.id}`) : document.querySelector('.finish-bar')).scrollIntoView({ block: 'nearest' });
+    renderSliding(id);
+    setTimeout(() => (next ? document.getElementById(`ex-${next.id}`) : document.querySelector('.finish-bar'))
+      ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 260);
     if (ready) {
       const ex = list.find(e => e.id === id);
       toast(`Hit ${ex.repMax} every set. Try ${heavierText(ready)} next time.`);
@@ -1338,11 +1354,12 @@ const actions = {
   // Opens this exercise (closing any other), or closes it if it's already open.
   'toggle-exercise'(id) {
     if (dragJustEnded()) return;
+    const was = openExerciseId;
     openExerciseId = openExerciseId === id ? null : id;
     swap = { exerciseId: null, query: '' };
-    render();
-    // Closing one above can shift this row off screen, so bring it back into view.
-    document.getElementById(`ex-${id}`).scrollIntoView({ block: 'nearest' });
+    renderSliding(was);
+    // Closing one above can shift this row off screen, so bring it back into view once it's slid.
+    setTimeout(() => document.getElementById(`ex-${id}`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 260);
   },
 
   // An exercise's row on a workout's screen (before it's started): opens it up to show last time's
@@ -2109,12 +2126,83 @@ window.addEventListener('touchmove', event => {
 //     Workouts has nothing before it and Profile nothing after, so it doesn't loop around.
 //   On any deeper screen (a workout, Settings, a log, …): from the left edge, left → right is Back
 //     (exactly like tapping "‹ Back", so unsaved changes still ask first). Right → left does nothing.
-// The page follows the thumb, and past EDGE_GO_AT of the screen's width letting go goes there;
-// short of that it slides back.
+// The page follows the thumb with the screen it's going to right beside it, pulled in from the
+// side (drawn into #peek by buildScreen(), the same code that draws real screens). Past EDGE_GO_AT
+// of the screen's width, letting go slides the rest of the way and goes there; short of that both
+// slide back. Only transform moves (smooth on iPhone).
 const EDGE_PX_ZONE = 24;   // how close to the edge the swipe has to start
 const EDGE_GO_AT = 0.25;
+const EDGE_SLIDE_MS = 220;
 // { startX, startY, dir (1: left → right, -1: right → left), active, dx }
 let edgeSwipe = null;
+const topbarEl = document.querySelector('.topbar');
+const peekEl = document.createElement('div');
+peekEl.id = 'peek';
+peekEl.className = 'peek';
+peekEl.hidden = true;
+peekEl.setAttribute('aria-hidden', 'true');
+document.body.append(peekEl);
+
+// Draws the screen a swipe is pulling in: its top bar (Back, title, the gear or Past workouts) and
+// its page, as it will look once there (Back restores a screen as it was left, scrolled the same).
+function fillPeek(dir) {
+  const target = edgeTarget(dir);
+  const hash = target === 'back' ? backBtn.dataset.href : target;
+  const restoring = returnStack.at(-1)?.hash === hash ? returnStack.at(-1) : null;
+  // The screen is drawn with the state it will have, then everything is put back as it was.
+  const saved = { openExerciseId, openPlanEx, logState, picker, swap, quickAdd, autoOpenExercise, plannedChanged };
+  const stripOpen = strip.open;
+  openExerciseId = restoring ? restoring.openExerciseId : null;
+  openPlanEx = restoring ? restoring.openPlanEx : new Set();
+  logState = restoring ? restoring.logState : { month: null, day: null, range: 'all' };
+  picker = newPicker();
+  swap = { exerciseId: null, query: '' };
+  quickAdd = { open: false, query: '' };
+  autoOpenExercise = !restoring;
+  strip.open = false;
+  plannedChanged = new Set();
+  const route = currentRoute(hash);
+  let screen = null;
+  try {
+    screen = buildScreen(route, false, true);
+  } finally {
+    ({ openExerciseId, openPlanEx, logState, picker, swap, quickAdd, autoOpenExercise, plannedChanged } = saved);
+    strip.open = stripOpen;
+  }
+  if (!screen) return false;
+  // Its Back: the screen that opened it (one further down the list once this Back is taken).
+  const stack = restoring ? returnStack.slice(0, -1) : returnStack;
+  const back = RETURN_VIEWS.includes(route.view) && stack.length ? stack.at(-1).hash : screen.back;
+  const copy = el => { const c = el.cloneNode(true); c.removeAttribute('id'); c.hidden = false; return c.outerHTML; };
+  peekEl.classList.toggle('has-back', Boolean(back));
+  peekEl.innerHTML = `
+    <header class="topbar">
+      ${back ? '<span class="back-btn">‹ Back</span>' : ''}
+      <h1>${esc(screen.title)}</h1>
+      ${screen.history ? copy(historyLink) : ''}
+      ${screen.gear ? copy(gearBtn) : ''}
+    </header>
+    <div class="peek-page"><main>${screen.html}</main></div>`;
+  peekEl.hidden = false;
+  peekEl.querySelector('.peek-page').scrollTop = restoring ? restoring.scrollY : 0;
+  return true;
+}
+
+// Puts the current screen dx across, with the one coming in right beside it.
+function placeEdge(dx, dir, animate) {
+  const t = animate ? `transform ${EDGE_SLIDE_MS}ms ease-out` : 'none';
+  [appEl, topbarEl, peekEl].forEach(el => { el.style.transition = t; });
+  appEl.style.transform = topbarEl.style.transform = dx ? `translateX(${dx}px)` : '';
+  peekEl.style.transform = `translateX(${dx - dir * innerWidth}px)`;
+}
+
+// Back to normal: no movement, no peek.
+function clearEdge() {
+  [appEl, topbarEl, peekEl].forEach(el => { el.style.transition = 'none'; el.style.transform = ''; });
+  peekEl.hidden = true;
+  peekEl.innerHTML = '';
+  requestAnimationFrame(() => { appEl.style.transition = topbarEl.style.transition = ''; });
+}
 
 function edgeStart(x, y, target) {
   if (swipe || drag || !overlayEl.hidden || document.querySelector('.fab-menu.is-open')) return;
@@ -2144,12 +2232,12 @@ function edgeMove(x, y) {
   if (!edgeSwipe.active) {
     if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) { edgeSwipe = null; return false; } // a scroll
     if (dx * edgeSwipe.dir < 10) return false;
+    if (!fillPeek(edgeSwipe.dir)) { edgeSwipe = null; return false; }
     edgeSwipe.active = true;
   }
   // Only moves the way it's allowed to go
   edgeSwipe.dx = edgeSwipe.dir === 1 ? Math.max(0, dx) : Math.min(0, dx);
-  appEl.style.transition = 'none';
-  appEl.style.transform = `translateX(${edgeSwipe.dx}px)`;
+  placeEdge(edgeSwipe.dx, edgeSwipe.dir, false);
   return true;
 }
 
@@ -2161,15 +2249,18 @@ function edgeEnd(letGo) {
   dragEndedAt = Date.now(); // so letting go doesn't also tap whatever is under the thumb
   const target = letGo && Math.abs(dx) >= innerWidth * EDGE_GO_AT ? edgeTarget(dir) : null;
   if (!target) {
-    appEl.style.transition = '';
-    appEl.style.transform = ''; // slides back
+    placeEdge(0, dir, true); // both slide back
+    setTimeout(clearEdge, EDGE_SLIDE_MS);
     return;
   }
-  // Going: the new screen appears straight away, not sliding in from where the thumb left it.
-  appEl.style.transform = '';
-  requestAnimationFrame(() => { appEl.style.transition = ''; });
-  if (target === 'back') backBtn.click();
-  else if (target) go(target);
+  // Going: the rest of the way across, then the real screen takes the peek's place. (If Back
+  // stops to ask about unsaved changes, the current screen just comes back with the question.)
+  placeEdge(dir * innerWidth, dir, true);
+  setTimeout(() => {
+    if (target === 'back') backBtn.click();
+    else go(target);
+    clearEdge();
+  }, EDGE_SLIDE_MS);
 }
 
 // The phone uses touches; a mouse on the computer works too, for testing.
@@ -2272,6 +2363,23 @@ function fillWeightDown(exerciseId, setIndex, lbs) {
     const box = document.querySelector(`[data-ex="${exerciseId}"][data-set="${i}"][data-field="weight"]`);
     if (box) box.value = Units.showWeight(lbs);
   });
+}
+
+// During a workout, opening another exercise: redraws (so everything on the screen is up to date),
+// then plays the change as a slide, the one that was open folding away and the new one opening,
+// like the rows on a workout's screen before it's started. It does that by putting the two cards
+// back the way they were for a moment and then letting the CSS move them to their new state.
+function renderSliding(wasOpenId) {
+  render();
+  const cards = [wasOpenId, openExerciseId].filter(Boolean).map(id => document.getElementById(`ex-${id}`)).filter(Boolean);
+  const setOpen = (card, open) => {
+    card.classList.toggle('is-open', open);
+    card.querySelector('.ex-toggle').setAttribute('aria-expanded', open);
+    card.querySelector('.collapse').inert = !open; // a folded exercise's boxes can't be reached
+  };
+  cards.forEach(card => setOpen(card, card.id === `ex-${wasOpenId}`));
+  void appEl.offsetHeight; // (makes the browser take in the "before" state first)
+  cards.forEach(card => setOpen(card, card.id === `ex-${openExerciseId}`));
 }
 
 // A set's number turns into a green ✓ once its reps are typed, and back if they're cleared.

@@ -1228,14 +1228,17 @@ const Views = {
       const nextEx = workout.exercises[i + 1];
       const isOpen = ex.id === openId;
       // Collapsed rows show ✓ once every set is filled in, "1/3" part way, nothing before the first set.
+      // (Hidden by the CSS while the exercise is open.)
       const progress = Store.draftProgress(ex.id);
-      const badge = isOpen || !progress.filled ? ''
+      const badge = !progress.filled ? ''
         : progress.complete ? '<span class="check" aria-label="Done">✓</span>'
         : `<span class="set-count" aria-label="${progress.filled} of ${progress.total} sets done">${progress.filled}/${progress.total}</span>`;
 
-      // Collapsed: just the summary row. Expanded: the summary row plus the sets.
+      // The summary row, then the sets in a .collapse that slides open when the exercise is opened
+      // (every exercise has its sets drawn; the closed ones are just folded away, like on a
+      // workout's screen before it's started).
       let body = '';
-      if (isOpen) {
+      {
         const setRows = draft.entries[ex.id].map((set, i) => {
           const lastReps = last?.sets[i]?.reps;
           // The set's number becomes a green ✓ once its reps are typed (app.js updates it as you type).
@@ -1284,7 +1287,7 @@ const Views = {
             ${Store.draftProgress(ex.id).complete ? '' : 'hidden'}>${nextEx ? `Next: ${esc(Library.forExercise({ refId: Store.swappedRef(nextEx.id) || nextEx.refId }).name)}` : 'Done'}</button>`;
 
         body = `
-          <div class="ex-body">
+          <div class="collapse" ${isOpen ? '' : 'inert'}><div class="collapse-inner"><div class="ex-body">
             ${ex.repMin ? `<div class="ex-sub">Target ${targetText(ex, timed)}${last ? ` · last done ${formatDate(last.date)}` : ''}</div>`
               : last ? `<div class="ex-sub">Last done ${formatDate(last.date)}</div>` : ''}
             <div class="set-grid">
@@ -1296,7 +1299,7 @@ const Views = {
             ${nextButton}
             ${swapPanel}
             ${noteBox(refId)}
-          </div>`;
+          </div></div></div>`;
       }
 
       const plannedName = swapped ? Library.forExercise(ex).name : '';
@@ -1313,6 +1316,7 @@ const Views = {
             </span>
             <span class="tag">${esc(Library.primaryLabel(info))}</span>
             ${badge}
+            ${CHEVRON}
           </button>
           ${body}
         </div>`;
