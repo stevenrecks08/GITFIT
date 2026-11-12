@@ -54,7 +54,10 @@ body {
   background: var(--bg);
 }
 /* The top bar is taller with the Back row; things that scroll to just under it use --header-h */
-body.has-back { --header-h: calc(var(--topbar-h) + var(--back-row-h)); }
+body.has-back { --header-h: calc(var(--title-row-back) + var(--back-row-h)); }
+/* Under "‹ Back" the title's row is shorter, so the title sits close under Back instead of a big gap
+   between them (the user's request) */
+body.has-back .topbar h1 { line-height: var(--title-row-back); }
 .topbar h1 {
   flex: 1;
   min-width: 0;

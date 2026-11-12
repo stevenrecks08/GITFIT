@@ -95,6 +95,7 @@
   --tabbar-h: 58px;           /* tab bar, not counting the iPhone home-indicator area */
   --topbar-h: 52px;           /* the top bar's title row, below the iPhone status bar */
   --back-row-h: 36px;         /* "‹ Back", on its own row above the title on deeper screens */
+  --title-row-back: 40px;     /* the title's row under "‹ Back": shorter than --topbar-h, so the two sit close together */
   --header-h: var(--topbar-h); /* the whole top bar (styles.css adds the Back row when it shows) */
   --toast-gap: 16px;          /* a toast's distance above the tab bar (or the screen's bottom) */
   --focus-ring: 2px;
