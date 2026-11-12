@@ -917,11 +917,19 @@ main.is-searching { padding-bottom: 100vh; }
 }
 .swipe-row.is-swiping.show-edit .swipe-edit,
 .swipe-row.is-swiping.show-delete .swipe-delete { display: flex; }
+/* Both start gray with a colored icon (green pencil, red trash) held at their side… */
 .swipe-edit { justify-content: flex-start; background: var(--surface-field); }
 .swipe-edit svg { color: var(--success); }
-.swipe-delete { justify-content: flex-end; background: var(--danger); }
-.swipe-icon { display: flex; flex-direction: column; align-items: center; gap: 4px; transition: transform 0.15s ease; }
-/* Far enough: letting go will do it, so the icon grows a little and rides along with the row's edge */
+.swipe-delete { justify-content: flex-end; background: var(--surface-field); }
+.swipe-delete svg { color: var(--danger); }
+/* …and once pulled far enough to count, the icon swings over (app.js moves it) and the layer turns
+   solid: red with a white trash can, or green with a black pencil. */
+.swipe-row.is-armed .swipe-delete { background: var(--danger); }
+.swipe-row.is-armed .swipe-delete svg { color: var(--text-primary); }
+.swipe-row.is-armed .swipe-edit { background: var(--success); color: var(--on-success); }
+.swipe-row.is-armed .swipe-edit svg { color: var(--on-success); }
+/* A little overshoot so it swings into place */
+.swipe-icon { display: flex; flex-direction: column; align-items: center; gap: 4px; transition: transform 0.25s cubic-bezier(0.3, 1.4, 0.6, 1); }
 .swipe-row.is-armed .swipe-icon svg { transform: scale(1.2); }
 .swipe-icon svg { transition: transform 0.15s ease; }
 @media (prefers-reduced-motion: reduce) {

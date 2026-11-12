@@ -1976,7 +1976,8 @@ window.addEventListener('touchmove', event => {
 //   left → right: gray Edit. Past EDIT_AT of the row's width, letting go opens its sets & reps.
 //   right → left: red Delete. Only past DELETE_AT (most of the way across) does letting go delete it,
 //                 so a quick flick never deletes anything; that's why there's no "Are you sure?".
-// Once far enough, the icon jumps to follow the row's edge (and the phone buzzes where it can),
+// Both layers start gray with a colored icon at their side. Once far enough, the icon swings to the
+// middle and the layer turns solid red (white trash) or green (and the phone buzzes where it can),
 // so you know letting go will do it. Short of that the row just slides back.
 // It goes by how far you pulled, never how fast. A mostly up-and-down move is a scroll as usual
 // (touch-action: pan-y in styles.css), and holding still still picks the row up to reorder.
@@ -2015,17 +2016,30 @@ window.addEventListener('pointermove', event => {
     if (now) navigator.vibrate?.(15);
     swipe.armed = now;
     swipe.row.classList.toggle('is-armed', Boolean(now));
+    swipe.dx = dx;
+    swingIcon();
   }
   placeSwipe();
 });
 
-// Moves the row under the thumb. An armed icon sits just beside the row's edge.
+// Moves the row under the thumb.
 function placeSwipe() {
-  const { dx, row, front } = swipe;
-  front.style.transform = `translateX(${dx}px)`;
-  const icon = row.querySelector(dx > 0 ? '.swipe-edit .swipe-icon' : '.swipe-delete .swipe-icon');
-  const gap = 20 + icon.offsetWidth; // (the icon's own spot is 20px in from the side)
-  icon.style.transform = !swipe.armed ? '' : `translateX(${dx > 0 ? dx - gap - 16 : dx + gap + 16}px)`;
+  swipe.front.style.transform = `translateX(${swipe.dx}px)`;
+}
+
+// The moment a swipe becomes far enough to count (or stops being), the icon swings to the middle
+// and stays put there while the thumb keeps moving (or swings back to its side).
+//   Delete: the middle of the row. Edit counts sooner, when the middle is still under the row,
+//   so it goes to the middle of the gap that's showing.
+function swingIcon() {
+  const { row, dx, armed, width } = swipe;
+  row.querySelectorAll('.swipe-icon').forEach(el => { el.style.transform = ''; });
+  if (!armed) return;
+  const icon = row.querySelector(armed === 'edit' ? '.swipe-edit .swipe-icon' : '.swipe-delete .swipe-icon');
+  const half = icon.offsetWidth / 2;
+  const home = 20 + half; // its center at rest: 20px in from its side
+  const shift = armed === 'delete' ? -(width / 2 - home) : Math.max(0, dx / 2 - home);
+  icon.style.transform = `translateX(${shift}px)`;
 }
 
 window.addEventListener('pointerup', () => endSwipe(true));
