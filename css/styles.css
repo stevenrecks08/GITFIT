@@ -887,8 +887,46 @@ main.is-searching { padding-bottom: 100vh; }
    says so; it turns to point up once it's open. */
 .preview-toggle { width: 100%; padding: 0; border: none; background: none; color: var(--text-primary); font: inherit; text-align: left; }
 .preview-toggle .chev { flex: 0 0 auto; width: 18px; height: 18px; transform: rotate(90deg); }
-.preview-ex.is-open > .preview-toggle .chev { transform: rotate(-90deg); }
-.preview-ex.is-open > .collapse { grid-template-rows: 1fr; }
+.preview-ex.is-open .preview-toggle .chev { transform: rotate(-90deg); }
+.preview-ex.is-open .swipe-front > .collapse { grid-template-rows: 1fr; }
+
+/* Swiping an exercise's row (like iPhone Mail, see app.js). The row (.swipe-front) slides under the
+   thumb; behind it, gray Edit on the left and red Delete on the right show only while it's pulled. */
+.swipe-row { position: relative; padding: 0; overflow: hidden; border-radius: var(--r-container); touch-action: pan-y; }
+.swipe-front {
+  position: relative;
+  z-index: 1;
+  padding: var(--pad-row);
+  border-radius: var(--r-container);
+  background: var(--surface-2);
+  transition: transform 0.25s ease;
+}
+/* While the thumb is on it, the row follows with no delay */
+.swipe-row.is-swiping .swipe-front { transition: none; }
+.swipe-row.is-leaving .swipe-front { transition: transform 0.2s ease-in; }
+.swipe-action {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  padding: 0 20px;
+  border-radius: var(--r-container);
+  font-size: var(--fs-meta);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.swipe-row.is-swiping.show-edit .swipe-edit,
+.swipe-row.is-swiping.show-delete .swipe-delete { display: flex; }
+.swipe-edit { justify-content: flex-start; background: var(--surface-field); }
+.swipe-edit svg { color: var(--success); }
+.swipe-delete { justify-content: flex-end; background: var(--danger); }
+.swipe-icon { display: flex; flex-direction: column; align-items: center; gap: 4px; transition: transform 0.15s ease; }
+/* Far enough: letting go will do it, so the icon grows a little and rides along with the row's edge */
+.swipe-row.is-armed .swipe-icon svg { transform: scale(1.2); }
+.swipe-icon svg { transition: transform 0.15s ease; }
+@media (prefers-reduced-motion: reduce) {
+  .swipe-front, .swipe-icon, .swipe-icon svg { transition: none; }
+}
 /* Last time's sets on one line, cut short with "…" if they don't fit */
 .preview-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* What's inside: last time's sets in full, the note, then Edit and Log */

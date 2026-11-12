@@ -722,6 +722,14 @@ const Store = {
     this.save();
   },
 
+  // Undo of a delete: the same exercise (same id, so its history lines up) back in its old place.
+  restoreExercise(workoutId, exercise, index) {
+    const workout = this.getWorkout(workoutId);
+    if (!workout || workout.exercises.some(e => e.id === exercise.id)) return;
+    workout.exercises.splice(Math.min(index, workout.exercises.length), 0, exercise);
+    this.save();
+  },
+
   // An exercise is leaving the plan while its workout is in progress. Sets already logged today
   // shouldn't be lost, so they carry on as an exercise added for today only (draft.added), which
   // is saved with the workout as usual. Sets with no reps yet just go.

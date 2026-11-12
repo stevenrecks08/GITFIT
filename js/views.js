@@ -465,6 +465,11 @@ function goalPicker(name, selected) {
 const PENCIL_SVG = `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"
   stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>`;
 
+// A trash can, on the red layer behind an exercise being swiped to delete.
+const TRASH_SVG = `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"
+  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/>
+  <path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>`;
+
 // A week's dates, Monday → Sunday: "Nov 2 – 8", or "Oct 26 – Nov 1" across two months.
 // (The week starts at 3 am Monday, the same as the streak.)
 function weekDates(now = Date.now()) {
@@ -1149,9 +1154,14 @@ const Views = {
           </div>`;
       }
 
+      // The row can be swiped like iPhone Mail (see "Swiping an exercise" in app.js): the gray Edit
+      // and red Delete layers sit behind it and show only while it's being pulled.
       const isOpen = ui.open.has(ex.id);
       return `
-        <div class="card preview-ex ${isOpen ? 'is-open' : ''}" data-plan-ex="${ex.id}">
+        <div class="preview-ex swipe-row ${isOpen ? 'is-open' : ''}" data-plan-ex="${ex.id}">
+          <div class="swipe-action swipe-edit" aria-hidden="true"><span class="swipe-icon">${PENCIL_SVG}<span>Edit</span></span></div>
+          <div class="swipe-action swipe-delete" aria-hidden="true"><span class="swipe-icon">${TRASH_SVG}<span>Delete</span></span></div>
+          <div class="swipe-front">
           <button type="button" class="preview-head preview-toggle" data-action="toggle-plan-ex" data-id="${ex.id}" aria-expanded="${isOpen}">
             ${title}
               ${last ? `<span class="ex-sub preview-line">${lastSummary(last, timed, bw)}</span>` : ''}
@@ -1169,6 +1179,7 @@ const Views = {
               ${logButton(ex.refId)}
             </div>
           </div></div></div>
+          </div>
         </div>`;
     }).join('');
 
@@ -1184,7 +1195,8 @@ const Views = {
         <div class="plan-end">
           ${adding ? `<h2>Add exercise</h2><div id="exercise-panel">${this.exercisePanel(picker, null, hasExercises, added)}</div>`
             : '<button type="button" class="btn btn-add-ex" data-action="add-exercise">+ Add exercise</button>'}
-          ${hasExercises ? `<p class="muted preview-tip">Tap an exercise to see last time, add a note or edit it. Hold and drag to change the order.</p>
+          ${hasExercises ? `<p class="muted preview-tip">Tap an exercise to see last time, add a note or edit it. Hold and drag to change the order.
+            Swipe right to edit, or pull all the way left to delete.</p>
             <p class="muted preview-tip">Only log your working sets, not your warm-ups.</p>` : ''}
         </div>
         ${plannedStrip(workout, ui.strip, ui.stripRows, ui.changed)}

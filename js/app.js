@@ -1305,6 +1305,16 @@ const actions = {
     });
   },
 
+  // Undo on "Deleted Bench Press" after swiping an exercise away: puts it back where it was.
+  'undo-swipe-delete'() {
+    if (!lastSwipeDelete) return;
+    const { workoutId, exercise, index } = lastSwipeDelete;
+    lastSwipeDelete = null;
+    hideToast();
+    trackPlanned(() => Store.restoreExercise(workoutId, exercise, index));
+    render();
+  },
+
   'delete-exercise-confirm'(id) {
     trackPlanned(() => Store.deleteExercise(currentRoute().workoutId, id));
     hideDialog();
@@ -1959,6 +1969,109 @@ appEl.addEventListener('contextmenu', event => {
 // (iPhone Safari needs this on touchmove, and it must not be passive).
 window.addEventListener('touchmove', event => {
   if (drag?.active) event.preventDefault();
+}, { passive: false });
+
+// ---------- Swiping an exercise on a workout's screen (like iPhone Mail) ----------
+// Pull an exercise's row sideways with your thumb and it slides, showing a layer behind it:
+//   left → right: gray Edit. Past EDIT_AT of the row's width, letting go opens its sets & reps.
+//   right → left: red Delete. Only past DELETE_AT (most of the way across) does letting go delete it,
+//                 so a quick flick never deletes anything; that's why there's no "Are you sure?".
+// Once far enough, the icon jumps to follow the row's edge (and the phone buzzes where it can),
+// so you know letting go will do it. Short of that the row just slides back.
+// It goes by how far you pulled, never how fast. A mostly up-and-down move is a scroll as usual
+// (touch-action: pan-y in styles.css), and holding still still picks the row up to reorder.
+const EDIT_AT = 0.3;
+const DELETE_AT = 0.7;
+const SWIPE_START_PX = 10; // sideways movement before it counts as a swipe
+// { row, front, id, startX, startY, dx, width, active (sideways, so it's a swipe), armed ('edit'/'delete'/null) }
+let swipe = null;
+
+appEl.addEventListener('pointerdown', event => {
+  if (event.button > 0) return;
+  const row = event.target.closest('#plan-list .swipe-row');
+  // Not while an exercise's form is open, and not from its buttons or note inside.
+  if (!row || picker.exerciseId || event.target.closest('button:not(.preview-toggle), input, textarea, a')) return;
+  swipe = { row, front: row.querySelector('.swipe-front'), id: row.dataset.planEx,
+    startX: event.clientX, startY: event.clientY, dx: 0, width: row.offsetWidth, active: false, armed: null };
+});
+
+window.addEventListener('pointermove', event => {
+  if (!swipe || drag?.active) return; // (a held row is being reordered instead)
+  const dx = event.clientX - swipe.startX;
+  const dy = event.clientY - swipe.startY;
+  if (!swipe.active) {
+    if (Math.abs(dy) > SWIPE_START_PX && Math.abs(dy) > Math.abs(dx)) { swipe = null; return; } // a scroll
+    if (Math.abs(dx) < SWIPE_START_PX) return;
+    swipe.active = true;
+    swipe.row.classList.add('is-swiping');
+  }
+  swipe.dx = dx;
+  const side = dx > 0 ? 'edit' : 'delete';
+  swipe.row.classList.toggle('show-edit', side === 'edit');
+  swipe.row.classList.toggle('show-delete', side === 'delete');
+  const armed = side === 'edit' ? dx > swipe.width * EDIT_AT : -dx > swipe.width * DELETE_AT;
+  const now = armed ? side : null;
+  if (now !== swipe.armed) {
+    if (now) navigator.vibrate?.(15);
+    swipe.armed = now;
+    swipe.row.classList.toggle('is-armed', Boolean(now));
+  }
+  placeSwipe();
+});
+
+// Moves the row under the thumb. An armed icon sits just beside the row's edge.
+function placeSwipe() {
+  const { dx, row, front } = swipe;
+  front.style.transform = `translateX(${dx}px)`;
+  const icon = row.querySelector(dx > 0 ? '.swipe-edit .swipe-icon' : '.swipe-delete .swipe-icon');
+  const gap = 20 + icon.offsetWidth; // (the icon's own spot is 20px in from the side)
+  icon.style.transform = !swipe.armed ? '' : `translateX(${dx > 0 ? dx - gap - 16 : dx + gap + 16}px)`;
+}
+
+window.addEventListener('pointerup', () => endSwipe(true));
+window.addEventListener('pointercancel', () => endSwipe(false));
+
+function endSwipe(letGo) {
+  if (!swipe) return;
+  const { row, front, id, active, armed } = swipe;
+  swipe = null;
+  if (!active) return;
+  dragEndedAt = Date.now(); // so letting go doesn't also open or close the row
+  const action = letGo ? armed : null;
+  if (action === 'delete') {
+    // Slides the rest of the way off, then goes.
+    front.style.transition = '';
+    front.style.transform = 'translateX(-100%)';
+    row.classList.add('is-leaving');
+    setTimeout(() => swipeDelete(id), 200);
+    return;
+  }
+  // Back into place (the transition comes back once the class is off).
+  row.classList.remove('is-swiping', 'is-armed');
+  front.style.transform = '';
+  row.querySelectorAll('.swipe-icon').forEach(icon => { icon.style.transform = ''; });
+  if (action === 'edit') setTimeout(() => actions['edit-exercise'](id), 150);
+}
+
+// Deletes a swiped exercise straight away (pulling all the way was the "are you sure"),
+// with Undo on the message in case it was a mistake.
+function swipeDelete(id) {
+  const workoutId = currentRoute().workoutId;
+  const exercises = Store.getWorkout(workoutId).exercises;
+  const index = exercises.findIndex(e => e.id === id);
+  if (index === -1) return;
+  const exercise = exercises[index];
+  trackPlanned(() => Store.deleteExercise(workoutId, id));
+  openPlanEx.delete(id);
+  render();
+  lastSwipeDelete = { workoutId, exercise, index };
+  toast(`Deleted ${Library.forExercise(exercise).name}`, { label: 'Undo', action: 'undo-swipe-delete' }, 5000);
+}
+let lastSwipeDelete = null;
+
+// Once a row is being swiped, the page mustn't scroll under the thumb (iPhone Safari needs this).
+window.addEventListener('touchmove', event => {
+  if (swipe?.active) event.preventDefault();
 }, { passive: false });
 
 // ---------- Typing ----------
