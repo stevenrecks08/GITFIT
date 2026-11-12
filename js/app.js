@@ -473,9 +473,22 @@ function currentRoute() {
   return { view: 'home', tab: 'workouts' };
 }
 
+// Moving to another screen. It replaces the browser's history entry instead of adding one, so
+// the iPhone's own edge swipe (which walks back and forward through that history, and felt random)
+// has nowhere to go. The app's own edge swipes take its place ("Swiping from the edge" below).
 function go(hash) {
-  location.hash = hash;
+  const target = hash.startsWith('#') ? hash : `#${hash}`;
+  if (target === (location.hash || '#/')) return;
+  location.replace(target);
 }
+
+// Links (the tabs, Past workouts, the gear, …) go the same way, without adding history.
+document.addEventListener('click', event => {
+  const link = event.target.closest('a[href^="#"]');
+  if (!link || event.defaultPrevented) return;
+  event.preventDefault();
+  go(link.getAttribute('href'));
+}, true);
 
 function render() {
   Streak.update(); // decides any week that just ended, and catches a week that was just hit
@@ -2087,6 +2100,94 @@ let lastSwipeDelete = null;
 window.addEventListener('touchmove', event => {
   if (swipe?.active) event.preventDefault();
 }, { passive: false });
+
+// ---------- Swiping from the edge of the screen (like Instagram) ----------
+// A swipe that starts on the very edge of the screen, in the gap beside the cards (not on an
+// exercise's tile, which swipes to edit or delete instead):
+//   On a tab's main screen: from the right edge, right → left goes to the next tab; from the left
+//     edge, left → right goes to the one before (Workouts → Cardio → Log → Profile, the + skipped).
+//     Workouts has nothing before it and Profile nothing after, so it doesn't loop around.
+//   On any deeper screen (a workout, Settings, a log, …): from the left edge, left → right is Back
+//     (exactly like tapping "‹ Back", so unsaved changes still ask first). Right → left does nothing.
+// The page follows the thumb, and past EDGE_GO_AT of the screen's width letting go goes there;
+// short of that it slides back.
+const EDGE_PX_ZONE = 24;   // how close to the edge the swipe has to start
+const EDGE_GO_AT = 0.25;
+// { startX, startY, dir (1: left → right, -1: right → left), active, dx }
+let edgeSwipe = null;
+
+function edgeStart(x, y, target) {
+  if (swipe || drag || !overlayEl.hidden || document.querySelector('.fab-menu.is-open')) return;
+  if (target.closest('.swipe-row')) return; // an exercise's tile: that's edit/delete
+  const fromLeft = x <= EDGE_PX_ZONE;
+  const fromRight = x >= innerWidth - EDGE_PX_ZONE;
+  if (!fromLeft && !fromRight) return;
+  const dir = fromLeft ? 1 : -1;
+  if (!edgeTarget(dir)) return; // nowhere to go that way
+  edgeSwipe = { startX: x, startY: y, dir, active: false, dx: 0 };
+}
+
+// Where a swipe in this direction goes from here: 'back', a tab's address, or null.
+function edgeTarget(dir) {
+  if (!backBtn.hidden) return dir === 1 ? 'back' : null;
+  if (tabBarEl.hidden) return null; // (first-time setup)
+  const here = '#/' + location.hash.replace(/^#\/?/, '');
+  const i = TABS.findIndex(tab => tab.href === here);
+  if (i === -1) return null;
+  return TABS[i - dir]?.href || null; // left → right = the tab before
+}
+
+function edgeMove(x, y) {
+  if (!edgeSwipe) return false;
+  const dx = x - edgeSwipe.startX;
+  const dy = y - edgeSwipe.startY;
+  if (!edgeSwipe.active) {
+    if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) { edgeSwipe = null; return false; } // a scroll
+    if (dx * edgeSwipe.dir < 10) return false;
+    edgeSwipe.active = true;
+  }
+  // Only moves the way it's allowed to go
+  edgeSwipe.dx = edgeSwipe.dir === 1 ? Math.max(0, dx) : Math.min(0, dx);
+  appEl.style.transition = 'none';
+  appEl.style.transform = `translateX(${edgeSwipe.dx}px)`;
+  return true;
+}
+
+function edgeEnd(letGo) {
+  if (!edgeSwipe) return;
+  const { active, dx, dir } = edgeSwipe;
+  edgeSwipe = null;
+  if (!active) return;
+  dragEndedAt = Date.now(); // so letting go doesn't also tap whatever is under the thumb
+  const target = letGo && Math.abs(dx) >= innerWidth * EDGE_GO_AT ? edgeTarget(dir) : null;
+  if (!target) {
+    appEl.style.transition = '';
+    appEl.style.transform = ''; // slides back
+    return;
+  }
+  // Going: the new screen appears straight away, not sliding in from where the thumb left it.
+  appEl.style.transform = '';
+  requestAnimationFrame(() => { appEl.style.transition = ''; });
+  if (target === 'back') backBtn.click();
+  else if (target) go(target);
+}
+
+// The phone uses touches; a mouse on the computer works too, for testing.
+document.addEventListener('touchstart', event => {
+  const t = event.touches[0];
+  if (event.touches.length === 1) edgeStart(t.clientX, t.clientY, event.target);
+}, { passive: true });
+document.addEventListener('touchmove', event => {
+  const t = event.touches[0];
+  if (edgeMove(t.clientX, t.clientY)) event.preventDefault(); // the page mustn't scroll as well
+}, { passive: false });
+document.addEventListener('touchend', () => edgeEnd(true));
+document.addEventListener('touchcancel', () => edgeEnd(false));
+document.addEventListener('pointerdown', event => {
+  if (event.pointerType === 'mouse' && event.button === 0) edgeStart(event.clientX, event.clientY, event.target);
+});
+window.addEventListener('pointermove', event => { if (event.pointerType === 'mouse') edgeMove(event.clientX, event.clientY); });
+window.addEventListener('pointerup', event => { if (event.pointerType === 'mouse') edgeEnd(true); });
 
 // ---------- Typing ----------
 

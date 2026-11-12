@@ -895,6 +895,11 @@ main.is-searching { padding-bottom: 100vh; }
 
 /* Swiping an exercise's row (like iPhone Mail, see app.js). The row (.swipe-front) slides under the
    thumb; behind it, gray Edit on the left and red Delete on the right show only while it's pulled. */
+/* Swiping from the edge of the screen moves the page with the thumb (app.js); short of far enough,
+   it slides back */
+#app { transition: transform 0.25s ease; }
+@media (prefers-reduced-motion: reduce) { #app { transition: none; } }
+
 .swipe-row { position: relative; padding: 0; overflow: hidden; border-radius: var(--r-container); touch-action: pan-y; }
 .swipe-front {
   position: relative;
